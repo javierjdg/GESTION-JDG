@@ -109,6 +109,12 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations 
     });
   };
 
+  const handleDeleteAllProjects = () => {
+    if (window.confirm('⚠️ ¿Estás seguro de que quieres BORRAR TODAS LAS OBRAS? Esta acción vaciará el listado por completo.')) {
+        setData(prev => ({ ...prev, projects: [] }));
+    }
+  };
+
   const handleDeleteReport = (id: string) => {
     if (!window.confirm('¿Estás seguro de que deseas eliminar este parte de trabajo permanentemente?')) return;
     setData(prev => ({ ...prev, reports: prev.reports.filter(r => r.id !== id) }));
@@ -723,15 +729,23 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations 
         {tab === 'projects' && (
             <div className="space-y-6">
                 <div className="bg-gray-900/50 p-4 rounded-xl border border-gray-700">
-                <h3 className="text-sm font-bold text-white mb-4 uppercase">Gestión de Obras</h3>
-                <div className="flex gap-2 mb-4">
-                    <input type="text" placeholder="Ej: 24001 - HOSPITAL ALICANTE" value={newItemName} onChange={e => setNewItemName(e.target.value)} className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-sm" />
-                    <button onClick={() => handleAdd('projects')} className="bg-brand-teal text-white px-6 py-2 rounded-lg font-bold flex items-center justify-center gap-2"><PlusIcon className="w-4 h-4" /> Añadir</button>
-                </div>
-                <label className="flex items-center gap-2 text-xs text-brand-lime cursor-pointer bg-brand-lime/10 p-2 rounded-lg w-fit">
-                    <UploadIcon className="w-4 h-4" /> Importar Obras (Archivo TXT/CSV)
-                    <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept=".txt,.csv" className="hidden" />
-                </label>
+                    <h3 className="text-sm font-bold text-white mb-4 uppercase">Gestión de Obras</h3>
+                    <div className="flex flex-col sm:flex-row gap-2 mb-4">
+                        <input type="text" placeholder="Ej: 24001 - HOSPITAL ALICANTE" value={newItemName} onChange={e => setNewItemName(e.target.value)} className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-sm" />
+                        <button onClick={() => handleAdd('projects')} className="bg-brand-teal text-white px-6 py-2 rounded-lg font-bold flex items-center justify-center gap-2"><PlusIcon className="w-4 h-4" /> Añadir</button>
+                    </div>
+                    <div className="flex flex-wrap gap-3">
+                        <label className="flex items-center gap-2 text-xs text-brand-lime cursor-pointer bg-brand-lime/10 p-2 rounded-lg border border-brand-lime/20 hover:bg-brand-lime/20 transition-all">
+                            <UploadIcon className="w-4 h-4" /> Importar Obras (Archivo TXT/CSV)
+                            <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept=".txt,.csv" className="hidden" />
+                        </label>
+                        <button 
+                            onClick={handleDeleteAllProjects}
+                            className="flex items-center gap-2 text-xs text-red-400 cursor-pointer bg-red-900/20 p-2 rounded-lg border border-red-900/30 hover:bg-red-900/40 transition-all"
+                        >
+                            <TrashIcon className="w-4 h-4" /> Borrar Todas las Obras
+                        </button>
+                    </div>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
                 {data.projects.map((p, i) => (
@@ -753,6 +767,11 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations 
                         )}
                     </div>
                 ))}
+                {data.projects.length === 0 && (
+                    <div className="col-span-full py-10 text-center text-gray-600 border border-dashed border-gray-800 rounded-xl">
+                        No hay obras registradas.
+                    </div>
+                )}
                 </div>
             </div>
         )}
