@@ -78,6 +78,7 @@ export interface AppData {
   reports: WorkReport[];
   dailyOrg: DailyOrgData;
   vacationRequests: VacationRequest[];
+  holidays: string[];
   adminPassword?: string;
   firebaseConfig?: string;
 }
@@ -112,6 +113,7 @@ const INITIAL_DATA: AppData = {
   vehicles: [],
   reports: [],
   vacationRequests: [],
+  holidays: ['2025-01-01', '2025-01-06', '2025-04-18', '2025-04-21', '2025-05-01', '2025-08-15', '2025-10-12', '2025-11-01', '2025-12-06', '2025-12-08', '2025-12-25'],
   dailyOrg: DEFAULT_DAILY_ORG,
   adminPassword: 'admin',
   firebaseConfig: JSON.stringify(FIREBASE_CONFIG)
@@ -253,7 +255,7 @@ const App: React.FC = () => {
     } else {
         localStorage.setItem('workerApp_db', JSON.stringify(data));
     }
-  }, [data.technicians, data.projects, data.vehicles, data.dailyOrg, data.vacationRequests, isCloudConnected, hasSyncedWithCloud]);
+  }, [data.technicians, data.projects, data.vehicles, data.dailyOrg, data.vacationRequests, data.holidays, isCloudConnected, hasSyncedWithCloud]);
 
   const handleLogin = (role: 'admin' | 'tech', username?: string) => {
     setUserRole(role);

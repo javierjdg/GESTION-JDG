@@ -12,12 +12,6 @@ interface VacationManagerProps {
   onBack: () => void;
 }
 
-const FESTIVOS_2025 = [
-    '2025-01-01', '2025-01-06', '2025-04-18', '2025-04-21', 
-    '2025-05-01', '2025-08-15', '2025-10-12', '2025-11-01', 
-    '2025-12-06', '2025-12-08', '2025-12-25'
-];
-
 const LIMIT_DAYS = 20;
 
 // Paleta de colores para técnicos
@@ -46,22 +40,6 @@ const getTypeConfig = (type?: string) => {
     return TYPE_CONFIG[t] || TYPE_CONFIG.vacation;
 };
 
-const calculateBusinessDays = (start: string, end: string) => {
-    const d1 = new Date(start);
-    const d2 = new Date(end);
-    let count = 0;
-    const current = new Date(d1);
-    while (current <= d2) {
-        const dayOfWeek = current.getDay();
-        const dateStr = current.toISOString().split('T')[0];
-        if (dayOfWeek !== 0 && dayOfWeek !== 6 && !FESTIVOS_2025.includes(dateStr)) {
-            count++;
-        }
-        current.setDate(current.getDate() + 1);
-    }
-    return count;
-};
-
 const formatDateToSpanish = (dateStr: string) => {
     if (!dateStr) return '';
     const [year, month, day] = dateStr.split('-');
@@ -73,9 +51,28 @@ const VacationManager: React.FC<VacationManagerProps> = ({ role, currentUser, cu
     const [endDate, setEndDate] = useState('');
     const [reqType, setReqType] = useState<'vacation' | 'sick' | 'personal'>('vacation');
     const [adminSelectedTech, setAdminSelectedTech] = useState('');
+    const [newHoliday, setNewHoliday] = useState('');
     const [msg, setMsg] = useState('');
     
     const [viewDate, setViewDate] = useState(new Date());
+
+    const holidays = useMemo(() => data.holidays || [], [data.holidays]);
+
+    const calculateBusinessDays = (start: string, end: string) => {
+        const d1 = new Date(start);
+        const d2 = new Date(end);
+        let count = 0;
+        const current = new Date(d1);
+        while (current <= d2) {
+            const dayOfWeek = current.getDay();
+            const dateStr = current.toISOString().split('T')[0];
+            if (dayOfWeek !== 0 && dayOfWeek !== 6 && !holidays.includes(dateStr)) {
+                count++;
+            }
+            current.setDate(current.getDate() + 1);
+        }
+        return count;
+    };
 
     const userRequests = useMemo(() => {
         return (data.vacationRequests || []).filter(r => r.userName === currentUser);
@@ -90,7 +87,7 @@ const VacationManager: React.FC<VacationManagerProps> = ({ role, currentUser, cu
     const currentBusinessDays = useMemo(() => {
         if (!startDate || !endDate) return 0;
         return calculateBusinessDays(startDate, endDate);
-    }, [startDate, endDate]);
+    }, [startDate, endDate, holidays]);
 
     const calendarDays = useMemo(() => {
         const year = viewDate.getFullYear();
@@ -104,12 +101,12 @@ const VacationManager: React.FC<VacationManagerProps> = ({ role, currentUser, cu
                 day: i,
                 dateStr,
                 isWeekend: date.getDay() === 0 || date.getDay() === 6,
-                isHoliday: FESTIVOS_2025.includes(dateStr),
+                isHoliday: holidays.includes(dateStr),
                 label: ['D', 'L', 'M', 'X', 'J', 'V', 'S'][date.getDay()]
             });
         }
         return days;
-    }, [viewDate]);
+    }, [viewDate, holidays]);
 
     const handleRequest = (e: React.FormEvent) => {
         e.preventDefault();
@@ -141,6 +138,25 @@ const VacationManager: React.FC<VacationManagerProps> = ({ role, currentUser, cu
         setAdminSelectedTech('');
         setMsg(isManualAdmin ? '✓ Registro manual creado.' : '✓ Solicitud enviada correctamente.');
         setTimeout(() => setMsg(''), 3000);
+    };
+
+    const addHoliday = () => {
+        if (!newHoliday) return;
+        if (holidays.includes(newHoliday)) return alert('Este festivo ya está registrado.');
+        
+        onUpdate({
+            ...data,
+            holidays: [...holidays, newHoliday].sort()
+        });
+        setNewHoliday('');
+    };
+
+    const removeHoliday = (hDate: string) => {
+        if (!window.confirm('¿Eliminar este festivo local?')) return;
+        onUpdate({
+            ...data,
+            holidays: holidays.filter(h => h !== hDate)
+        });
     };
 
     const requestCancellation = (id: string) => {
@@ -250,6 +266,44 @@ const VacationManager: React.FC<VacationManagerProps> = ({ role, currentUser, cu
                                 </tbody>
                             </table>
                         </div>
+                    </div>
+                </div>
+
+                {/* Gestión de Festivos */}
+                <div className="bg-brand-panel p-6 rounded-2xl border border-gray-700 shadow-xl">
+                    <h3 className="text-sm font-bold text-white mb-4 flex items-center gap-2 uppercase tracking-widest">
+                        <CalendarIcon className="w-4 h-4 text-brand-lime" /> Gestión de Festivos Locales
+                    </h3>
+                    <div className="flex flex-col sm:flex-row gap-4 mb-6">
+                        <div className="flex-1">
+                            <label className="block text-[10px] text-gray-500 uppercase mb-1 font-bold">Nuevo Festivo</label>
+                            <input 
+                                type="date" 
+                                value={newHoliday} 
+                                onChange={e => setNewHoliday(e.target.value)} 
+                                className="w-full bg-gray-900 border border-gray-600 rounded-lg p-3 text-sm text-white focus:border-brand-teal outline-none [color-scheme:dark]" 
+                            />
+                        </div>
+                        <div className="flex items-end">
+                            <button 
+                                onClick={addHoliday} 
+                                className="bg-brand-lime hover:bg-lime-500 text-brand-dark font-bold px-6 py-3 rounded-xl transition-all shadow-lg flex items-center gap-2 uppercase text-xs tracking-widest"
+                            >
+                                <PlusIcon className="w-4 h-4" /> Añadir Festivo
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div className="flex flex-wrap gap-2">
+                        {holidays.map(h => (
+                            <div key={h} className="bg-gray-900 border border-gray-700 px-3 py-2 rounded-lg flex items-center gap-2 group transition-all hover:border-red-500/50">
+                                <span className="text-xs font-mono text-gray-300">{formatDateToSpanish(h)}</span>
+                                <button onClick={() => removeHoliday(h)} className="text-gray-500 hover:text-red-500">
+                                    <TrashIcon className="w-3 h-3" />
+                                </button>
+                            </div>
+                        ))}
+                        {holidays.length === 0 && <p className="text-xs text-gray-500 italic">No hay festivos locales registrados.</p>}
                     </div>
                 </div>
 
