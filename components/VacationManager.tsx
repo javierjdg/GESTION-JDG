@@ -28,6 +28,14 @@ const TYPE_CONFIG = {
     personal: { label: 'A. Propios', code: 'A', icon: '📋' }
 };
 
+// Helper para formatear Date a YYYY-MM-DD local (evita desfases de zona horaria)
+const toLocalISOString = (date: Date) => {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+};
+
 // Helper para obtener el color de un técnico de forma consistente
 const getTechColor = (name: string, technicians: TechUser[]) => {
     const idx = technicians.findIndex(t => t.name === name);
@@ -59,13 +67,17 @@ const VacationManager: React.FC<VacationManagerProps> = ({ role, currentUser, cu
     const holidays = useMemo(() => data.holidays || [], [data.holidays]);
 
     const calculateBusinessDays = (start: string, end: string) => {
-        const d1 = new Date(start);
-        const d2 = new Date(end);
+        // Parsear fechas manualmente para asegurar interpretación local
+        const [y1, m1, d1_val] = start.split('-').map(Number);
+        const [y2, m2, d2_val] = end.split('-').map(Number);
+        const dStart = new Date(y1, m1 - 1, d1_val);
+        const dEnd = new Date(y2, m2 - 1, d2_val);
+        
         let count = 0;
-        const current = new Date(d1);
-        while (current <= d2) {
+        const current = new Date(dStart);
+        while (current <= dEnd) {
             const dayOfWeek = current.getDay();
-            const dateStr = current.toISOString().split('T')[0];
+            const dateStr = toLocalISOString(current);
             if (dayOfWeek !== 0 && dayOfWeek !== 6 && !holidays.includes(dateStr)) {
                 count++;
             }
@@ -96,7 +108,7 @@ const VacationManager: React.FC<VacationManagerProps> = ({ role, currentUser, cu
         const days = [];
         for (let i = 1; i <= daysInMonth; i++) {
             const date = new Date(year, month, i);
-            const dateStr = date.toISOString().split('T')[0];
+            const dateStr = toLocalISOString(date);
             days.push({
                 day: i,
                 dateStr,
@@ -125,7 +137,7 @@ const VacationManager: React.FC<VacationManagerProps> = ({ role, currentUser, cu
             days,
             type: reqType,
             status: isManualAdmin ? 'approved' : 'pending',
-            requestDate: new Date().toISOString().split('T')[0]
+            requestDate: toLocalISOString(new Date())
         };
 
         onUpdate({
