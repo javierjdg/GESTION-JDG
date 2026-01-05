@@ -401,17 +401,19 @@ const App: React.FC = () => {
               </div>
             </div>
             <div className="flex gap-2">
-                <button 
-                  onClick={() => setView('vacations')} 
-                  className={`relative px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${view === 'vacations' ? 'bg-brand-teal text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}`}
-                >
-                  🌴 Vacaciones
-                  {userRole === 'admin' && pendingVacCount > 0 && (
-                    <span className="absolute -top-1 -right-1 bg-red-600 text-white text-[10px] font-black w-5 h-5 flex items-center justify-center rounded-full border-2 border-brand-panel animate-bounce shadow-lg">
-                      {pendingVacCount}
-                    </span>
-                  )}
-                </button>
+                {userRole && (
+                  <button 
+                    onClick={() => setView('vacations')} 
+                    className={`relative px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${view === 'vacations' ? 'bg-brand-teal text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}`}
+                  >
+                    🌴 Vacaciones
+                    {userRole === 'admin' && pendingVacCount > 0 && (
+                      <span className="absolute -top-1 -right-1 bg-red-600 text-white text-[10px] font-black w-5 h-5 flex items-center justify-center rounded-full border-2 border-brand-panel animate-bounce shadow-lg">
+                        {pendingVacCount}
+                      </span>
+                    )}
+                  </button>
+                )}
                 <button onClick={handleLogout} className="p-2 hover:bg-gray-700 rounded-full text-gray-400 hover:text-red-400"><LogOutIcon className="w-6 h-6" /></button>
             </div>
           </div>
