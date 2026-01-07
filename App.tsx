@@ -126,7 +126,6 @@ const App: React.FC = () => {
   const [currentUserId, setCurrentUserId] = useState<string>('');
   const [editingReport, setEditingReport] = useState<WorkReport | null>(null);
   const [isCloudConnected, setIsCloudConnected] = useState(false);
-  const [dbStatus, setDbStatus] = useState<'local' | 'cloud'>('local');
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [hasSyncedWithCloud, setHasSyncedWithCloud] = useState(false);
   const [isUploadingTickets, setIsUploadingTickets] = useState(false);
@@ -168,7 +167,6 @@ const App: React.FC = () => {
       const configStr = data.firebaseConfig || JSON.stringify(FIREBASE_CONFIG);
       if (configStr.includes("TU_NUEVA_API_KEY_AQUI") || configStr.includes("apiKey: \"\"")) {
           setIsInitialLoading(false);
-          setDbStatus('local');
           return;
       }
 
@@ -179,7 +177,6 @@ const App: React.FC = () => {
         firebaseRef.current = fb;
 
         setIsCloudConnected(true);
-        setDbStatus('cloud');
 
         unsubConfig = db.collection("jdg_teleco").doc("main_db").onSnapshot((snapshot: any) => {
             if (snapshot.exists) {
@@ -231,31 +228,39 @@ const App: React.FC = () => {
     };
   }, [data.firebaseConfig]);
 
+  // OPTIMIZACIÓN: Debounced save to avoid INP/Performance issues
   useEffect(() => {
-    if (isCloudConnected && hasSyncedWithCloud && !isInitialLoading) {
-        if (isInternalUpdate.current) {
-            isInternalUpdate.current = false;
-            return;
-        }
-        const saveConfigToCloud = async () => {
-            try {
-                const fb = (window as any).firebase;
-                if (!fb) return;
-                const db = fb.app().firestore();
-                const { reports, ...configOnly } = data;
-                const cleanConfig = JSON.parse(JSON.stringify(configOnly));
-                await db.collection("jdg_teleco").doc("main_db").set(cleanConfig);
-                localStorage.setItem('workerApp_db', JSON.stringify(data));
-            } catch (e: any) {
-                console.error("Cloud sync error", e);
+    if (isInitialLoading) return;
+
+    const timeoutId = setTimeout(() => {
+        // Save to LocalStorage (Asynchronously to not block interactions)
+        const serialized = JSON.stringify(data);
+        localStorage.setItem('workerApp_db', serialized);
+
+        // Save Config to Cloud if applicable
+        if (isCloudConnected && hasSyncedWithCloud) {
+            if (isInternalUpdate.current) {
+                isInternalUpdate.current = false;
+                return;
             }
-        };
-        const timeoutId = setTimeout(saveConfigToCloud, 500); 
-        return () => clearTimeout(timeoutId);
-    } else {
-        localStorage.setItem('workerApp_db', JSON.stringify(data));
-    }
-  }, [data.technicians, data.projects, data.vehicles, data.dailyOrg, data.vacationRequests, data.holidays, isCloudConnected, hasSyncedWithCloud]);
+            const saveToCloud = async () => {
+                try {
+                    const fb = (window as any).firebase;
+                    if (!fb) return;
+                    const db = fb.app().firestore();
+                    const { reports, ...configOnly } = data;
+                    const cleanConfig = JSON.parse(JSON.stringify(configOnly));
+                    await db.collection("jdg_teleco").doc("main_db").set(cleanConfig);
+                } catch (e: any) {
+                    console.error("Cloud sync error", e);
+                }
+            };
+            saveToCloud();
+        }
+    }, 800); // 800ms debounce
+
+    return () => clearTimeout(timeoutId);
+  }, [data, isCloudConnected, hasSyncedWithCloud, isInitialLoading]);
 
   const handleLogin = (role: 'admin' | 'tech', username?: string) => {
     setUserRole(role);
@@ -288,7 +293,6 @@ const App: React.FC = () => {
 
     const finalReport = { ...report, technician: currentUser };
 
-    // 1. Subida a Google Drive organizada por carpetas (Nombre Técnico y Mes)
     if (finalReport.tickets && finalReport.tickets.length > 0) {
       setIsUploadingTickets(true);
       for (let i = 0; i < finalReport.tickets.length; i++) {
@@ -303,7 +307,7 @@ const App: React.FC = () => {
               technician: currentUser,
               base64: ticket.data, 
               filename: `TICKET_${ticket.type.toUpperCase().replace(/\s+/g, '_')}_${finalReport.date}_${i+1}.jpg`,
-              reportDate: finalReport.date // Usado por el Script para crear la carpeta del mes
+              reportDate: finalReport.date 
             })
           });
           finalReport.tickets[i].driveUrl = '✅ Subido y Organizado';
@@ -315,7 +319,6 @@ const App: React.FC = () => {
       setIsUploadingTickets(false);
     }
 
-    // 2. ACTUALIZAR LOCALMENTE
     setData(prev => {
       const existingIndex = prev.reports.findIndex(r => r.id === finalReport.id);
       let updatedReports;
@@ -328,7 +331,6 @@ const App: React.FC = () => {
       return { ...prev, reports: updatedReports };
     });
 
-    // 3. Subida a Firebase
     if (isCloudConnected) {
         try {
             const fb = (window as any).firebase;
