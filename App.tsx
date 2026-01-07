@@ -133,6 +133,7 @@ const App: React.FC = () => {
   const [showConfigGuide, setShowConfigGuide] = useState(false);
   
   const isInternalUpdate = useRef(false);
+  const isSyncingRef = useRef(false);
   const firebaseRef = useRef<any>(null);
 
   const [data, setData] = useState<AppData>(() => {
@@ -179,6 +180,7 @@ const App: React.FC = () => {
         setIsCloudConnected(true);
 
         unsubConfig = db.collection("jdg_teleco").doc("main_db").onSnapshot((snapshot: any) => {
+            if (isSyncingRef.current) return; // Ignorar snapshots mientras el usuario está interactuando
             if (snapshot.exists) {
                 const cloudConfig = snapshot.data();
                 setData(prev => ({
@@ -195,6 +197,7 @@ const App: React.FC = () => {
         });
 
         unsubReports = db.collection("jdg_teleco").doc("main_db").collection("reports").onSnapshot((snapshot: any) => {
+            if (isSyncingRef.current) return; // Ignorar snapshots mientras el usuario está interactuando
             const cloudReports: WorkReport[] = [];
             snapshot.forEach((doc: any) => {
                 cloudReports.push(doc.data() as WorkReport);
@@ -233,7 +236,7 @@ const App: React.FC = () => {
     if (isInitialLoading) return;
 
     const timeoutId = setTimeout(() => {
-        // Save to LocalStorage (Asynchronously to not block interactions)
+        // Save to LocalStorage
         const serialized = JSON.stringify(data);
         localStorage.setItem('workerApp_db', serialized);
 
@@ -257,7 +260,7 @@ const App: React.FC = () => {
             };
             saveToCloud();
         }
-    }, 800); // 800ms debounce
+    }, 800); 
 
     return () => clearTimeout(timeoutId);
   }, [data, isCloudConnected, hasSyncedWithCloud, isInitialLoading]);
@@ -280,6 +283,35 @@ const App: React.FC = () => {
     setView('login');
   };
 
+  const deleteReport = async (reportId: string) => {
+    if (!window.confirm('¿Eliminar este parte permanentemente?')) return;
+
+    // Bloquear snapshots entrantes para evitar que el registro reaparezca
+    isSyncingRef.current = true;
+
+    // 1. Borrado local inmediato para feedback visual
+    setData(prev => ({
+        ...prev,
+        reports: prev.reports.filter(r => r.id !== reportId)
+    }));
+
+    // 2. Borrado en la nube
+    if (isCloudConnected) {
+        try {
+            const fb = (window as any).firebase;
+            const db = fb.app().firestore();
+            await db.collection("jdg_teleco").doc("main_db").collection("reports").doc(reportId).delete();
+        } catch (e) {
+            console.error("Error al borrar en la nube:", e);
+        }
+    }
+
+    // Desbloquear tras un breve periodo para asegurar que el snapshot del borrado haya sido procesado
+    setTimeout(() => {
+        isSyncingRef.current = false;
+    }, 1500);
+  };
+
   const saveReport = async (report: WorkReport) => {
     const isDuplicate = data.reports.some(r => 
         r.technician === currentUser && 
@@ -292,6 +324,9 @@ const App: React.FC = () => {
     }
 
     const finalReport = { ...report, technician: currentUser };
+    
+    // Bloquear snapshots durante la subida
+    isSyncingRef.current = true;
 
     if (finalReport.tickets && finalReport.tickets.length > 0) {
       setIsUploadingTickets(true);
@@ -342,6 +377,7 @@ const App: React.FC = () => {
         }
     }
 
+    setTimeout(() => { isSyncingRef.current = false; }, 2000);
     setEditingReport(null);
     setView('dashboard');
   };
@@ -424,11 +460,11 @@ const App: React.FC = () => {
 
       <main className={`container mx-auto p-4 ${view === 'admin' || view === 'vacations' ? 'max-w-6xl' : 'md:max-w-3xl'}`}>
         {view === 'login' && <UserLogin onLogin={handleLogin} technicians={data.technicians} adminPwd={data.adminPassword || 'admin'} onViewDailyOrg={() => setView('daily_org')} />}
-        {view === 'dashboard' && <TechDashboard reports={data.reports.filter(r => r.technician === currentUser)} projects={data.projects} onNewReport={() => setView('form')} onEditReport={(r) => { setEditingReport(r); setView('form'); }} onViewDailyOrg={() => setView('daily_org')} />}
+        {view === 'dashboard' && <TechDashboard reports={data.reports.filter(r => r.technician === currentUser)} projects={data.projects} onNewReport={() => setView('form')} onEditReport={(r) => { setEditingReport(r); setView('form'); }} onViewDailyOrg={() => setView('daily_org')} onDeleteReport={deleteReport} />}
         {view === 'vacations' && <VacationManager role={userRole || 'tech'} currentUser={currentUser} currentUserId={currentUserId} data={data} onUpdate={(newData) => { isInternalUpdate.current = false; setData(newData); }} onBack={() => setView(userRole === 'admin' ? 'admin' : 'dashboard')} />}
         {view === 'daily_org' && <DailyOrganization isReadOnly={userRole !== 'admin'} data={data.dailyOrg} onUpdate={(newOrg) => { isInternalUpdate.current = false; setData(prev => ({...prev, dailyOrg: newOrg})); }} onBack={() => setView(userRole ? (userRole === 'admin' ? 'admin' : 'dashboard') : 'login')} />}
         {view === 'form' && <ReportForm projects={data.projects} vehicles={data.vehicles} initialData={editingReport} onSave={saveReport} onCancel={() => setView('dashboard')} />}
-        {view === 'admin' && <AdminPanel data={data} setData={(updater) => { isInternalUpdate.current = false; setData(updater); }} onGoToVacations={() => setView('vacations')} />}
+        {view === 'admin' && <AdminPanel data={data} setData={(updater) => { isSyncingRef.current = true; setData(updater); setTimeout(() => {isSyncingRef.current = false;}, 2000); }} onGoToVacations={() => setView('vacations')} onDeleteReport={deleteReport} />}
       </main>
     </div>
   );
