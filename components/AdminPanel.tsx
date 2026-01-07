@@ -73,6 +73,11 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations 
     }
   }, [data.firebaseConfig]);
 
+  // Helper para resolver el nombre completo de una obra a partir de su número
+  const resolveProjectFullName = (num: string) => {
+      return data.projects.find(p => p.startsWith(num)) || num;
+  };
+
   // Solicitudes pendientes de revisión
   const pendingRequests = useMemo(() => {
     return (data.vacationRequests || []).filter(r => r.status === 'pending' || r.status === 'cancel_requested');
@@ -342,11 +347,12 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations 
   }, [filteredReports]);
 
   const downloadCSV = () => {
-    const headers = ['ID', 'Fecha', 'Técnico', 'Num Obra', 'Entrada', 'Salida', 'Vehículo', 'Conductor', 'Trayecto', 'Desc. Trabajo', 'Gasto Comida', 'Gasto Gasolina', 'Gasto Parking', 'Gasto Otros', 'Desc. Otros', 'Horas Extra', 'Tipo Extra'].join(',');
+    const headers = ['ID', 'Fecha', 'Técnico', 'Obra Completa', 'Num Obra', 'Entrada', 'Salida', 'Vehículo', 'Conductor', 'Trayecto', 'Desc. Trabajo', 'Gasto Comida', 'Gasto Gasolina', 'Gasto Parking', 'Gasto Otros', 'Desc. Otros', 'Horas Extra', 'Tipo Extra'].join(',');
     const rows = filteredReports.map(r => {
       const cleanDesc = r.description.replace(/(\r\n|\n|\r)/gm, " ").replace(/,/g, ";");
       const cleanOtherDesc = r.expenses.othersDesc.replace(/,/g, ";");
-      return [r.id, r.date, r.technician, r.projectNum, r.startTime, r.endTime, r.vehicle, r.isDriver ? 'SI' : 'NO', r.isDriver ? (r.driverTripType || '') : '', `"${cleanDesc}"`, r.expenses.food, r.expenses.gas, r.expenses.parking, r.expenses.others, `"${cleanOtherDesc}"`, r.overtimeHours || 0, r.overtimeType || 'NORMAL'].join(',');
+      const fullName = resolveProjectFullName(r.projectNum).replace(/,/g, " -");
+      return [r.id, r.date, r.technician, `"${fullName}"`, r.projectNum, r.startTime, r.endTime, r.vehicle, r.isDriver ? 'SI' : 'NO', r.isDriver ? (r.driverTripType || '') : '', `"${cleanDesc}"`, r.expenses.food, r.expenses.gas, r.expenses.parking, r.expenses.others, `"${cleanOtherDesc}"`, r.overtimeHours || 0, r.overtimeType || 'NORMAL'].join(',');
     });
     const csvContent = "data:text/csv;charset=utf-8," + [headers, ...rows].join('\n');
     const link = document.createElement("a");
@@ -526,7 +532,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations 
                                                                     </td>
                                                                     <td className="px-4 py-2 whitespace-nowrap text-xs font-mono">{formatDateToSpanish(report.date)}</td>
                                                                     <td className="px-4 py-2 text-xs font-bold text-gray-300">{report.technician}</td>
-                                                                    <td className="px-4 py-2 font-mono text-brand-teal text-xs">{report.projectNum}</td>
+                                                                    <td className="px-4 py-2 font-mono text-brand-teal text-xs">
+                                                                        {resolveProjectFullName(report.projectNum)}
+                                                                    </td>
                                                                     <td className="px-4 py-2 text-right text-yellow-500 font-mono text-xs">{report.overtimeHours ? `+${report.overtimeHours}h` : ''}</td>
                                                                     <td className="px-4 py-2 text-right font-medium text-gray-300 text-xs">{totalExpenses > 0 ? `${totalExpenses.toFixed(2)}€` : '-'}</td>
                                                                     <td className="px-4 py-2 text-center">
@@ -592,11 +600,13 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations 
                 <div className="space-y-6">
                     <h3 className="text-lg font-bold text-white mb-4">Resumen de Gastos y Actividad por Obra</h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {projectsSummary.map(([project, summary]) => (
-                            <div key={project} className="bg-gray-900/50 p-4 rounded-xl border border-gray-700 hover:border-brand-teal transition-all group">
+                        {projectsSummary.map(([projectNum, summary]) => (
+                            <div key={projectNum} className="bg-gray-900/50 p-4 rounded-xl border border-gray-700 hover:border-brand-teal transition-all group">
                                 <div className="flex justify-between items-start mb-3">
-                                    <h4 className="text-brand-teal font-black text-sm font-mono truncate mr-2" title={project}>{project}</h4>
-                                    <span className="bg-gray-800 text-brand-lime px-2 py-0.5 rounded text-[10px] font-bold">{summary.count} partes</span>
+                                    <h4 className="text-brand-teal font-black text-sm font-mono truncate mr-2" title={resolveProjectFullName(projectNum)}>
+                                        {resolveProjectFullName(projectNum)}
+                                    </h4>
+                                    <span className="bg-gray-800 text-brand-lime px-2 py-0.5 rounded text-[10px] font-bold flex-shrink-0">{summary.count} partes</span>
                                 </div>
                                 <div className="space-y-1 text-xs text-gray-400">
                                     <div className="flex justify-between italic"><span>Comida</span><span>{summary.food.toFixed(2)}€</span></div>

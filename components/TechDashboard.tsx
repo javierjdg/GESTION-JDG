@@ -5,6 +5,7 @@ import { PlusIcon, SearchIcon, EditIcon, FileTextIcon, CalendarIcon, ClockIcon, 
 
 interface TechDashboardProps {
   reports: WorkReport[];
+  projects: string[];
   onNewReport: () => void;
   onEditReport: (report: WorkReport) => void;
   onViewDailyOrg: () => void;
@@ -41,9 +42,14 @@ const getMonthYearLabel = (dateStr: string) => {
     return d.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' }).toUpperCase();
 };
 
-const TechDashboard: React.FC<TechDashboardProps> = ({ reports, onNewReport, onEditReport, onViewDailyOrg }) => {
+const TechDashboard: React.FC<TechDashboardProps> = ({ reports, projects, onNewReport, onEditReport, onViewDailyOrg }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [searchDate, setSearchDate] = useState('');
+
+  // Helper para resolver el nombre completo de una obra
+  const resolveProjectFullName = (num: string) => {
+    return projects.find(p => p.startsWith(num)) || num;
+  };
 
   // 1. Filter reports based on search inputs
   const filteredReports = useMemo(() => {
@@ -325,7 +331,7 @@ const TechDashboard: React.FC<TechDashboardProps> = ({ reports, onNewReport, onE
                                             <span className="font-bold text-gray-100 text-sm font-mono">{formatDateToSpanish(report.date)}</span>
                                             <span className="text-[10px] bg-gray-800 text-gray-500 px-1.5 py-0.5 rounded border border-gray-700">#{report.id.slice(-4)}</span>
                                         </div>
-                                        <div className="text-sm text-brand-lime mt-1 font-bold">Obra: <span className="font-mono">{report.projectNum}</span></div>
+                                        <div className="text-sm text-brand-lime mt-1 font-bold">Obra: <span className="font-mono">{resolveProjectFullName(report.projectNum)}</span></div>
                                         <div className="text-xs text-gray-400 mt-1 truncate max-w-full italic">"{report.description || 'Sin descripción'}"</div>
                                     </div>
                                     <div className="flex flex-col items-end gap-2 flex-shrink-0">
