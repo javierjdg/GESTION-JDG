@@ -43,8 +43,8 @@ const getMonthYearLabel = (dateStr: string) => {
 };
 
 const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations, onDeleteReport }) => {
-  const [tab, setTab] = useState<'techs' | 'projects' | 'reports' | 'settings' | 'daily' | 'vehicles'>('reports');
-  const [reportViewMode, setReportViewMode] = useState<'list' | 'by_project' | 'by_week' | 'by_hours'>('list');
+  const [tab, setTab] = useState<'techs' | 'projects' | 'reports' | 'settings' | 'daily' | 'vehicles' | 'expenses'>('reports');
+  const [reportViewMode, setReportViewMode] = useState<'list' | 'by_project' | 'by_hours'>('list');
   const [expandedReportId, setExpandedReportId] = useState<string | null>(null);
   const [newItemName, setNewItemName] = useState('');
   const [newTechPwd, setNewTechPwd] = useState('');
@@ -346,6 +346,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
 
       <div className="flex border-b border-gray-700 bg-brand-dark overflow-x-auto">
         <button onClick={() => setTab('reports')} className={`px-4 md:px-6 py-4 font-medium flex items-center gap-2 whitespace-nowrap ${tab === 'reports' ? 'text-brand-lime border-b-2 border-brand-lime bg-brand-panel' : 'text-gray-400'}`}><FileTextIcon className="w-4 h-4" /> Base de Datos</button>
+        <button onClick={() => setTab('expenses')} className={`px-4 md:px-6 py-4 font-medium flex items-center gap-2 whitespace-nowrap ${tab === 'expenses' ? 'text-brand-lime border-b-2 border-brand-lime bg-brand-panel' : 'text-gray-400'}`}><ChartPieIcon className="w-4 h-4" /> Gastos</button>
         <button onClick={() => setTab('techs')} className={`px-4 md:px-6 py-4 font-medium flex items-center gap-2 whitespace-nowrap ${tab === 'techs' ? 'text-brand-teal border-b-2 border-brand-teal bg-brand-panel' : 'text-gray-400'}`}><UserIcon className="w-4 h-4" /> Técnicos</button>
         <button onClick={() => setTab('projects')} className={`px-4 md:px-6 py-4 font-medium flex items-center gap-2 whitespace-nowrap ${tab === 'projects' ? 'text-brand-teal border-b-2 border-brand-teal bg-brand-panel' : 'text-gray-400'}`}>🚧 Obras</button>
         <button onClick={() => setTab('vehicles')} className={`px-4 md:px-6 py-4 font-medium flex items-center gap-2 whitespace-nowrap ${tab === 'vehicles' ? 'text-brand-teal border-b-2 border-brand-teal bg-brand-panel' : 'text-gray-400'}`}><TruckIcon className="w-4 h-4" /> Vehículos</button>
@@ -359,7 +360,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
             <div className="flex gap-2 mb-4 bg-gray-900 p-2 rounded-lg border border-gray-700 max-w-fit flex-wrap">
                 <button onClick={() => setReportViewMode('list')} className={`px-3 py-1.5 text-xs font-bold rounded flex items-center gap-1 ${reportViewMode === 'list' ? 'bg-brand-lime text-brand-dark' : 'text-gray-400'}`}><FileTextIcon className="w-3 h-3" /> Listado</button>
                 <button onClick={() => setReportViewMode('by_project')} className={`px-3 py-1.5 text-xs font-bold rounded flex items-center gap-1 ${reportViewMode === 'by_project' ? 'bg-brand-teal text-white' : 'text-gray-400'}`}><ChartPieIcon className="w-3 h-3" /> Por Obra</button>
-                <button onClick={() => setReportViewMode('by_week')} className={`px-3 py-1.5 text-xs font-bold rounded flex items-center gap-1 ${reportViewMode === 'by_week' ? 'bg-brand-teal text-white' : 'text-gray-400'}`}><CalendarIcon className="w-3 h-3" /> Gastos</button>
                 <button onClick={() => setReportViewMode('by_hours')} className={`px-3 py-1.5 text-xs font-bold rounded flex items-center gap-1 ${reportViewMode === 'by_hours' ? 'bg-brand-teal text-white' : 'text-gray-400'}`}><ClockIcon className="w-3 h-3" /> Horas</button>
             </div>
 
@@ -473,30 +473,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                 </div>
             )}
 
-            {reportViewMode === 'by_week' && (
-                <div className="space-y-6">
-                    <h3 className="text-lg font-bold text-white mb-4">Resumen de Gastos por Técnico y Semana</h3>
-                    <div className="space-y-8">
-                        {weeklyExpensesSummary.map(([week, techs]) => (
-                            <div key={week} className="bg-gray-900/30 rounded-xl border border-gray-700 overflow-hidden">
-                                <div className="bg-gray-800 p-3 border-b border-gray-700 flex items-center gap-2">
-                                    <ChartPieIcon className="w-4 h-4 text-brand-lime" />
-                                    <span className="text-brand-lime font-black text-sm uppercase">Semana: {week}</span>
-                                </div>
-                                <div className="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                                    {Object.entries(techs).map(([tech, total]) => (
-                                        <div key={tech} className="bg-gray-950 p-3 rounded-lg border border-gray-800 flex justify-between items-center">
-                                            <span className="text-xs font-bold text-gray-400">{tech}</span>
-                                            <span className="text-sm font-black text-white font-mono">{(total as number).toFixed(2)}€</span>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            )}
-
             {reportViewMode === 'by_hours' && (
                 <div className="space-y-6">
                     {hoursSummary.map(([week, techs]) => (
@@ -523,6 +499,31 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                 </div>
             )}
           </div>
+        )}
+
+        {tab === 'expenses' && (
+            <div className="space-y-6">
+                <h3 className="text-lg font-bold text-white mb-4">Resumen de Gastos por Técnico y Semana</h3>
+                <div className="space-y-8">
+                    {weeklyExpensesSummary.map(([week, techs]) => (
+                        <div key={week} className="bg-gray-900/30 rounded-xl border border-gray-700 overflow-hidden shadow-lg">
+                            <div className="bg-gray-800 p-3 border-b border-gray-700 flex items-center gap-2">
+                                <ChartPieIcon className="w-4 h-4 text-brand-lime" />
+                                <span className="text-brand-lime font-black text-sm uppercase tracking-widest">Semana: {week}</span>
+                            </div>
+                            <div className="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                                {Object.entries(techs).map(([tech, total]) => (
+                                    <div key={tech} className="bg-gray-950 p-4 rounded-xl border border-gray-800 flex flex-col justify-center items-center gap-1 group hover:border-brand-teal transition-all">
+                                        <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">{tech}</span>
+                                        <span className="text-lg font-black text-white font-mono">{(total as number).toFixed(2)}€</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    ))}
+                    {weeklyExpensesSummary.length === 0 && <p className="text-center text-gray-500 py-10 italic">No hay registros de gastos actualmente.</p>}
+                </div>
+            </div>
         )}
 
         {tab === 'techs' && (
