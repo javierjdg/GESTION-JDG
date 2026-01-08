@@ -590,6 +590,40 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
             </div>
         )}
 
+        {tab === 'vehicles' && (
+            <div className="space-y-4">
+                <div className="bg-gray-900/50 p-4 rounded-xl border border-gray-700 flex flex-col sm:flex-row gap-2">
+                    <input type="text" placeholder="Nombre/Matrícula del Vehículo" value={newItemName} onChange={e => setNewItemName(e.target.value)} className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-4 py-2" />
+                    <button onClick={() => handleAdd('vehicles')} className="bg-brand-teal text-white px-6 py-2 rounded-lg font-bold">Añadir</button>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {data.vehicles.map((v, i) => (
+                    <div key={i} className="bg-gray-900/30 p-4 rounded-xl border border-gray-700 flex justify-between items-center group">
+                        {editingIndex === i ? (
+                            <div className="flex-1 flex gap-2">
+                                <input value={editValue} onChange={e => setEditValue(e.target.value)} className="flex-1 bg-gray-800 border border-brand-teal rounded px-2 py-1 text-xs" />
+                                <button onClick={() => saveEditing('vehicles')} className="text-green-500"><SaveIcon className="w-4 h-4" /></button>
+                                <button onClick={cancelEditing} className="text-red-500"><XIcon className="w-4 h-4" /></button>
+                            </div>
+                        ) : (
+                            <>
+                                <div className="flex items-center gap-3">
+                                    <div className="w-8 h-8 bg-brand-teal/20 rounded-full flex items-center justify-center text-brand-teal font-bold"><TruckIcon className="w-4 h-4" /></div>
+                                    <p className="font-bold text-sm text-gray-200">{v}</p>
+                                </div>
+                                <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <button onClick={() => startEditing(i, v, 'vehicles')} className="text-gray-500 hover:text-brand-teal"><EditIcon className="w-4 h-4" /></button>
+                                    <button onClick={() => handleDelete('vehicles', i)} className="text-gray-500 hover:text-red-500"><TrashIcon className="w-4 h-4" /></button>
+                                </div>
+                            </>
+                        )}
+                    </div>
+                ))}
+                {data.vehicles.length === 0 && <p className="col-span-full text-center py-10 text-gray-500 italic">No hay vehículos registrados.</p>}
+                </div>
+            </div>
+        )}
+
         {tab === 'daily' && (<DailyOrganization isReadOnly={false} data={data.dailyOrg} onUpdate={(newOrg) => setData(prev => ({...prev, dailyOrg: newOrg}))} />)}
 
         {tab === 'settings' && (
