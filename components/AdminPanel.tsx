@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { AppData, TechUser, WorkReport } from '../App';
-import { TrashIcon, PlusIcon, DownloadIcon, UserIcon, TruckIcon, FileTextIcon, FilterIcon, EditIcon, SaveIcon, XIcon, LockIcon, UploadIcon, CloudIcon, CalendarIcon, ChartPieIcon, ClockIcon, EyeIcon, AlertIcon } from './icons';
+import { TrashIcon, PlusIcon, DownloadIcon, UserIcon, TruckIcon, FileTextIcon, FilterIcon, EditIcon, SaveIcon, XIcon, LockIcon, UploadIcon, CloudIcon, CalendarIcon, ChartPieIcon, ClockIcon, EyeIcon, AlertIcon, ChevronDownIcon } from './icons';
 import DailyOrganization from './DailyOrganization';
 
 interface AdminPanelProps {
@@ -59,6 +59,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
   const [filterDateStart, setFilterDateStart] = useState('');
   const [filterDateEnd, setFilterDateEnd] = useState('');
   
+  // Estado para controlar qué semanas están expandidas
+  const [expandedWeeks, setExpandedWeeks] = useState<Record<string, boolean>>({});
+
   const [selectedImage, setSelectedImage] = useState<{data: string, type: string} | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -69,6 +72,19 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
         setFirebaseConfigInput(data.firebaseConfig);
     }
   }, [data.firebaseConfig]);
+
+  // Inicializar expansión de la semana actual
+  useEffect(() => {
+    const today = new Date().toISOString().split('T')[0];
+    const currentWeek = getWeekRange(today);
+    setExpandedWeeks(prev => {
+        // Solo inicializamos si el estado está vacío (primera carga)
+        if (Object.keys(prev).length === 0) {
+            return { [currentWeek]: true };
+        }
+        return prev;
+    });
+  }, []);
 
   const resolveProjectFullName = (num: string) => {
       return data.projects.find(p => p.startsWith(num)) || num;
@@ -318,6 +334,13 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
 
   const toggleExpandReport = (id: string) => setExpandedReportId(prev => prev === id ? null : id);
 
+  const toggleWeekExpansion = (week: string) => {
+    setExpandedWeeks(prev => ({
+        ...prev,
+        [week]: !prev[week]
+    }));
+  };
+
   return (
     <div className="bg-brand-panel rounded-xl shadow-xl border border-gray-700 overflow-hidden min-h-[600px]">
       
@@ -389,72 +412,136 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                         </div>
                     </div>
                     
-                    <div className="space-y-8">
+                    <div className="space-y-12">
                         {Object.entries(groupedReports).map(([monthLabel, weeks]) => (
-                            <div key={monthLabel} className="space-y-4">
-                                <div className="bg-brand-teal/20 border-l-4 border-brand-teal px-4 py-2 flex items-center gap-3">
-                                    <h4 className="text-brand-teal font-black text-lg">{monthLabel}</h4>
+                            <div key={monthLabel} className="space-y-6">
+                                <div className="bg-brand-teal/20 border-l-4 border-brand-teal px-4 py-3 flex items-center gap-3">
+                                    <h4 className="text-brand-teal font-black text-xl tracking-widest">{monthLabel}</h4>
                                 </div>
-                                {Object.entries(weeks).sort((a, b) => b[1][0].date.localeCompare(a[1][0].date)).map(([weekRange, reports]) => (
-                                    <div key={weekRange} className="ml-4 space-y-2 overflow-x-auto">
-                                        <table className="w-full text-sm text-left">
-                                            <thead className="text-[10px] text-gray-500 uppercase bg-gray-900/30">
-                                                <tr>
-                                                    <th className="px-4 py-2 w-10"></th>
-                                                    <th className="px-4 py-2">Fecha</th>
-                                                    <th className="px-4 py-2">Técnico</th>
-                                                    <th className="px-4 py-2">Obra</th>
-                                                    <th className="px-4 py-2 text-right">Gastos</th>
-                                                    <th className="px-4 py-2 text-center"></th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {reports.map((report) => {
-                                                    const total = Object.values(report.expenses).reduce((a: number, b: any) => (typeof b === 'number' ? a + b : a), 0) as number;
-                                                    const isExpanded = expandedReportId === report.id;
-                                                    return (
-                                                        <React.Fragment key={report.id}>
-                                                            <tr className="bg-gray-800/40 border-b border-gray-700/50 hover:bg-gray-800 transition-colors">
-                                                                <td className="px-4 py-2"><button onClick={() => toggleExpandReport(report.id)} className="text-brand-teal"><EyeIcon className="w-4 h-4" /></button></td>
-                                                                <td className="px-4 py-2 font-mono text-xs">{formatDateToSpanish(report.date)}</td>
-                                                                <td className="px-4 py-2 text-xs font-bold text-gray-300">{report.technician}</td>
-                                                                <td className="px-4 py-2 text-xs text-brand-teal">{resolveProjectFullName(report.projectNum)}</td>
-                                                                <td className="px-4 py-2 text-right text-xs">{total > 0 ? `${total.toFixed(2)}€` : '-'}</td>
-                                                                <td className="px-4 py-2 text-center">
-                                                                    <button onClick={() => onDeleteReport(report.id)} className="text-red-500/50 hover:text-red-500"><TrashIcon className="w-4 h-4" /></button>
-                                                                </td>
+                                {Object.entries(weeks).sort((a, b) => b[1][0].date.localeCompare(a[1][0].date)).map(([weekRange, reports]) => {
+                                    const isExpanded = !!expandedWeeks[weekRange];
+                                    return (
+                                        <div key={weekRange} className="space-y-3">
+                                            {/* Cabecera de Semana Estilo Imagen - Ahora con Toggle */}
+                                            <div 
+                                                onClick={() => toggleWeekExpansion(weekRange)}
+                                                className="flex justify-between items-center border-b border-gray-800/50 pb-2 mb-2 cursor-pointer hover:bg-gray-800/20 transition-colors px-1 rounded"
+                                            >
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-brand-lime text-2xl leading-none">•</span>
+                                                    <span className="text-brand-lime font-black text-[11px] uppercase tracking-[2px]">SEMANA: {weekRange}</span>
+                                                </div>
+                                                <div className="flex items-center gap-3">
+                                                    <span className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">{reports.length} partes</span>
+                                                    <ChevronDownIcon className={`w-4 h-4 text-gray-600 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`} />
+                                                </div>
+                                            </div>
+
+                                            {isExpanded && (
+                                                <div className="overflow-x-auto animate-fade-in">
+                                                    <table className="w-full text-left">
+                                                        <thead className="text-[10px] text-gray-500 uppercase bg-gray-900/40 border-b border-gray-800">
+                                                            <tr>
+                                                                <th className="px-3 py-3 w-8"></th>
+                                                                <th className="px-3 py-3 w-28">Fecha</th>
+                                                                <th className="px-3 py-3 w-40">Técnico</th>
+                                                                <th className="px-3 py-3 w-24 text-brand-teal">Obra</th>
+                                                                <th className="px-3 py-3">Desc.</th>
+                                                                <th className="px-3 py-3 text-right">Extras</th>
+                                                                <th className="px-3 py-3 text-right">Gastos</th>
+                                                                <th className="px-3 py-3 text-center">Acción</th>
                                                             </tr>
-                                                            {isExpanded && (
-                                                                <tr className="bg-gray-900">
-                                                                    <td colSpan={6} className="p-4 border-l-4 border-brand-teal">
-                                                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                                            <div className="space-y-2">
-                                                                                <p className="text-[10px] uppercase text-gray-500">Descripción</p>
-                                                                                <p className="text-xs text-gray-300 bg-gray-800 p-2 rounded">{report.description}</p>
-                                                                                <p className="text-[10px] uppercase text-gray-500 mt-2">Vehículo</p>
-                                                                                <p className="text-xs text-white">{report.vehicle} {report.isDriver ? '(Conductor)' : ''}</p>
-                                                                            </div>
-                                                                            <div>
-                                                                                <p className="text-[10px] uppercase text-gray-500">Tickets</p>
-                                                                                <div className="flex gap-2 mt-1 overflow-x-auto pb-2">
-                                                                                    {report.tickets?.map((t, idx) => (
-                                                                                        <img key={idx} src={t.data} onClick={() => setSelectedImage({data: t.data, type: t.type})} className="w-16 h-16 object-cover rounded cursor-pointer hover:border-brand-lime border border-gray-700" />
-                                                                                    ))}
-                                                                                </div>
-                                                                            </div>
-                                                                        </div>
-                                                                    </td>
-                                                                </tr>
-                                                            )}
-                                                        </React.Fragment>
-                                                    );
-                                                })}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                ))}
+                                                        </thead>
+                                                        <tbody className="divide-y divide-gray-800/50">
+                                                            {reports.map((report) => {
+                                                                const total = Object.values(report.expenses).reduce((a: number, b: any) => (typeof b === 'number' ? a + b : a), 0) as number;
+                                                                const isReportExpanded = expandedReportId === report.id;
+                                                                return (
+                                                                    <React.Fragment key={report.id}>
+                                                                        <tr className="bg-gray-800/20 hover:bg-gray-800/60 transition-colors group">
+                                                                            <td className="px-3 py-3">
+                                                                                <button onClick={() => toggleExpandReport(report.id)} className="text-gray-600 hover:text-brand-teal transition-colors">
+                                                                                    <EyeIcon className="w-4 h-4" />
+                                                                                </button>
+                                                                            </td>
+                                                                            <td className="px-3 py-3 font-mono text-[11px] text-gray-400">{report.date}</td>
+                                                                            <td className="px-3 py-3 text-xs font-black text-gray-200">{report.technician}</td>
+                                                                            <td className="px-3 py-3 text-xs font-bold text-brand-teal/80">{report.projectNum}</td>
+                                                                            <td className="px-3 py-3 text-[11px] text-gray-500 italic max-w-xs truncate">
+                                                                                {report.description || 'Sin descripción'}
+                                                                            </td>
+                                                                            <td className="px-3 py-3 text-right font-black text-xs text-yellow-500">
+                                                                                {report.overtimeHours > 0 ? `+${report.overtimeHours}h` : '-'}
+                                                                            </td>
+                                                                            <td className="px-3 py-3 text-right text-xs font-black text-white">
+                                                                                {total > 0 ? `${total.toFixed(2)}€` : '-'}
+                                                                            </td>
+                                                                            <td className="px-3 py-3 text-center">
+                                                                                <button onClick={() => onDeleteReport(report.id)} className="text-red-500/30 hover:text-red-500 transition-colors">
+                                                                                    <TrashIcon className="w-4 h-4" />
+                                                                                </button>
+                                                                            </td>
+                                                                        </tr>
+                                                                        {isReportExpanded && (
+                                                                            <tr className="bg-gray-900/60">
+                                                                                <td colSpan={8} className="p-4 border-l-4 border-brand-teal">
+                                                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                                                                                        <div className="space-y-4">
+                                                                                            <div>
+                                                                                                <p className="text-[10px] uppercase font-black text-gray-500 tracking-widest mb-1">Descripción Completa</p>
+                                                                                                <p className="text-xs text-gray-300 leading-relaxed bg-gray-950/50 p-3 rounded-lg border border-gray-800">{report.description}</p>
+                                                                                            </div>
+                                                                                            <div className="grid grid-cols-2 gap-4">
+                                                                                                <div>
+                                                                                                    <p className="text-[10px] uppercase font-black text-gray-500 tracking-widest mb-1">Vehículo</p>
+                                                                                                    <p className="text-xs text-white font-bold">{report.vehicle} {report.isDriver ? '(Conductor)' : ''}</p>
+                                                                                                </div>
+                                                                                                <div>
+                                                                                                    <p className="text-[10px] uppercase font-black text-gray-500 tracking-widest mb-1">Horario</p>
+                                                                                                    <p className="text-xs text-white font-mono">{report.startTime} - {report.endTime}</p>
+                                                                                                </div>
+                                                                                            </div>
+                                                                                        </div>
+                                                                                        <div>
+                                                                                            <p className="text-[10px] uppercase font-black text-gray-500 tracking-widest mb-3">Evidencias / Tickets</p>
+                                                                                            <div className="flex gap-3 mt-1 overflow-x-auto pb-2 custom-scrollbar">
+                                                                                                {report.tickets?.map((t, idx) => (
+                                                                                                    <div key={idx} className="relative group/img flex-shrink-0">
+                                                                                                        <img 
+                                                                                                            src={t.data} 
+                                                                                                            onClick={() => setSelectedImage({data: t.data, type: t.type})} 
+                                                                                                            className="w-20 h-20 object-cover rounded-lg cursor-pointer hover:border-brand-lime border-2 border-gray-800 transition-all" 
+                                                                                                        />
+                                                                                                        <div className="absolute top-0 right-0 p-1 opacity-0 group-hover/img:opacity-100 transition-opacity">
+                                                                                                            <span className="bg-brand-teal text-[8px] font-bold px-1 rounded text-white">{t.type}</span>
+                                                                                                        </div>
+                                                                                                    </div>
+                                                                                                ))}
+                                                                                                {(!report.tickets || report.tickets.length === 0) && <p className="text-[10px] text-gray-600 italic">No hay archivos adjuntos.</p>}
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    </div>
+                                                                                </td>
+                                                                            </tr>
+                                                                        )}
+                                                                    </React.Fragment>
+                                                                );
+                                                            })}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })}
                             </div>
                         ))}
+                        {filteredReports.length === 0 && (
+                            <div className="py-20 text-center">
+                                <FileTextIcon className="w-12 h-12 text-gray-800 mx-auto mb-4" />
+                                <p className="text-gray-500 font-bold uppercase text-xs tracking-[3px]">Sin resultados en la búsqueda</p>
+                            </div>
+                        )}
                     </div>
                 </>
             )}
