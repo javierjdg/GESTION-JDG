@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { AppData, TechUser, WorkReport } from '../App';
-import { TrashIcon, PlusIcon, DownloadIcon, UserIcon, TruckIcon, FileTextIcon, FilterIcon, EditIcon, SaveIcon, XIcon, LockIcon, UploadIcon, CloudIcon, CalendarIcon, ChartPieIcon, ClockIcon, EyeIcon, AlertIcon, ChevronDownIcon } from './icons';
+import { AppData, TechUser, WorkReport, ProjectData, Budget } from '../App';
+import { TrashIcon, PlusIcon, DownloadIcon, UserIcon, TruckIcon, FileTextIcon, FilterIcon, EditIcon, SaveIcon, XIcon, LockIcon, UploadIcon, CloudIcon, CalendarIcon, ChartPieIcon, ClockIcon, EyeIcon, AlertIcon, ChevronDownIcon, BriefcaseIcon } from './icons';
 import DailyOrganization from './DailyOrganization';
 
 interface AdminPanelProps {
@@ -42,8 +42,19 @@ const getMonthYearLabel = (dateStr: string) => {
     return d.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' }).toUpperCase();
 };
 
+const getDaysDiff = (dateStr?: string) => {
+    if (!dateStr) return 0;
+    const start = new Date(dateStr);
+    const now = new Date();
+    // Reset hours to compare dates only
+    start.setHours(0,0,0,0);
+    now.setHours(0,0,0,0);
+    const diffTime = now.getTime() - start.getTime();
+    return Math.max(0, Math.floor(diffTime / (1000 * 60 * 60 * 24)));
+};
+
 const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations, onDeleteReport }) => {
-  const [tab, setTab] = useState<'techs' | 'projects' | 'reports' | 'settings' | 'daily' | 'vehicles' | 'expenses'>('reports');
+  const [tab, setTab] = useState<'techs' | 'projects' | 'budgets' | 'reports' | 'settings' | 'daily' | 'vehicles' | 'expenses'>('reports');
   const [reportViewMode, setReportViewMode] = useState<'list' | 'by_project' | 'by_hours'>('list');
   const [expandedReportId, setExpandedReportId] = useState<string | null>(null);
   const [newItemName, setNewItemName] = useState('');
@@ -63,6 +74,39 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
   const [expandedWeeks, setExpandedWeeks] = useState<Record<string, boolean>>({});
 
   const [selectedImage, setSelectedImage] = useState<{data: string, type: string} | null>(null);
+  
+  // Estados para Gestión de Obras
+  const [projectForm, setProjectForm] = useState<ProjectData>({
+    id: '',
+    name: '',
+    client: '',
+    budgetNum: '',
+    valuation: 'POR HORAS',
+    responsibleTech: '',
+    startDate: '',
+    isFinished: false,
+    isInvoiced: false,
+    hasWarning: false,
+    warningDate: '',
+    notes: ''
+  });
+  const [isEditingProject, setIsEditingProject] = useState(false);
+  const [idMode, setIdMode] = useState<'AUTO' | 'MANUAL'>('AUTO'); // Nuevo estado para controlar el modo de ID
+
+  // Estados para Presupuestos
+  const [budgetForm, setBudgetForm] = useState<Budget>({
+    id: '',
+    budgetNum: '',
+    name: '',
+    client: '',
+    deliveryDate: '',
+    excelName: '',
+    hasFolderData: false,
+    isFinished: false,
+    isAccepted: false,
+    comments: ''
+  });
+  const [isEditingBudget, setIsEditingBudget] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const reportImportInputRef = useRef<HTMLInputElement>(null);
@@ -86,22 +130,94 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
     });
   }, []);
 
+  // Calcular ID de Obra automático
+  useEffect(() => {
+    if (tab === 'projects' && !isEditingProject) {
+        if (idMode === 'AUTO') {
+            const yearPrefix = new Date().getFullYear().toString().slice(-2);
+            const existingIds = (data.projectsDetailed || [])
+                .map(p => p.id)
+                .filter(id => id.startsWith(yearPrefix) && !isNaN(Number(id.slice(2))))
+                .map(id => parseInt(id.slice(2)));
+            
+            const nextSeq = existingIds.length > 0 ? Math.max(...existingIds) + 1 : 1;
+            const nextId = `${yearPrefix}${nextSeq.toString().padStart(3, '0')}`;
+            setProjectForm(prev => ({ ...prev, id: nextId }));
+        }
+    }
+  }, [tab, data.projectsDetailed, isEditingProject, idMode]);
+
+  const generateNextProjectId = () => {
+        const yearPrefix = new Date().getFullYear().toString().slice(-2);
+        const existingIds = (data.projectsDetailed || [])
+            .map(p => p.id)
+            .filter(id => id.startsWith(yearPrefix) && !isNaN(Number(id.slice(2))))
+            .map(id => parseInt(id.slice(2)));
+        
+        const nextSeq = existingIds.length > 0 ? Math.max(...existingIds) + 1 : 1;
+        return `${yearPrefix}${nextSeq.toString().padStart(3, '0')}`;
+  };
+
   const resolveProjectFullName = (num: string) => {
-      return data.projects.find(p => p.startsWith(num)) || num;
+      const detailed = (data.projectsDetailed || []).find(p => p.id === num);
+      if (detailed) return detailed.name;
+      return num; // Fallback al ID si no encuentra nombre
+  };
+
+  const viewProjectHistory = (projectId: string) => {
+      setFilterProject(projectId);
+      setFilterTech('');
+      setFilterDateStart('');
+      setFilterDateEnd('');
+      setReportViewMode('list');
+      setTab('reports');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const pendingRequests = useMemo(() => {
     return (data.vacationRequests || []).filter(r => r.status === 'pending' || r.status === 'cancel_requested');
   }, [data.vacationRequests]);
 
-  const handleAdd = (type: 'techs' | 'projects' | 'vehicles') => {
+  // Lista única de clientes para sugerencias inteligentes
+  const uniqueClients = useMemo(() => {
+      const clients = new Set((data.projectsDetailed || []).map(p => p.client).filter(Boolean));
+      // Añadir clientes de presupuestos
+      (data.budgets || []).forEach(b => { if(b.client) clients.add(b.client); });
+      return Array.from(clients).sort();
+  }, [data.projectsDetailed, data.budgets]);
+
+  // Listado de obras ordenado: Activas primero (newest ID), luego Terminadas/Facturadas
+  const sortedProjects = useMemo(() => {
+      return [...(data.projectsDetailed || [])].sort((a, b) => {
+          // 0. Prioridad especial: Si tiene AVISO activado, sube arriba del todo
+          if (a.hasWarning && !b.hasWarning) return -1;
+          if (!a.hasWarning && b.hasWarning) return 1;
+
+          // 1. Prioridad: Activas antes que (Terminadas O Facturadas)
+          const aDone = a.isFinished || a.isInvoiced;
+          const bDone = b.isFinished || b.isInvoiced;
+          
+          if (aDone !== bDone) return aDone ? 1 : -1;
+          
+          // 2. Ordenar por ID descendente (más nuevas primero)
+          return b.id.localeCompare(a.id);
+      });
+  }, [data.projectsDetailed]);
+
+  // Presupuestos ordenados
+  const sortedBudgets = useMemo(() => {
+      return [...(data.budgets || [])].sort((a, b) => {
+          return b.id.localeCompare(a.id);
+      });
+  }, [data.budgets]);
+
+  const handleAdd = (type: 'techs' | 'vehicles') => {
     if (!newItemName.trim()) return;
     setData(prev => {
       if (type === 'techs') {
         const newTech: TechUser = { id: Date.now().toString(), name: newItemName, password: newTechPwd || '1234' };
         return { ...prev, technicians: [...prev.technicians, newTech] };
       }
-      if (type === 'projects') return { ...prev, projects: [...prev.projects, newItemName] };
       if (type === 'vehicles') return { ...prev, vehicles: [...prev.vehicles, newItemName] };
       return prev;
     });
@@ -109,29 +225,193 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
     setNewTechPwd('');
   };
 
-  const handleDelete = (type: 'techs' | 'projects' | 'vehicles', index: number) => {
+  const handleSaveProject = () => {
+      if (!projectForm.name || !projectForm.client) {
+          alert("Faltan datos obligatorios (Nombre, Cliente)");
+          return;
+      }
+      if (!projectForm.id) {
+          alert("El ID de obra es obligatorio.");
+          return;
+      }
+
+      // Check duplicate only if creating new
+      if (!isEditingProject) {
+          const exists = data.projectsDetailed.some(p => p.id === projectForm.id);
+          if (exists) {
+              alert(`ERROR: El ID de obra ${projectForm.id} ya existe. Por favor utiliza otro número.`);
+              return;
+          }
+      }
+      
+      const finalProject = { ...projectForm };
+      
+      // Lógica para fecha de aviso
+      if (finalProject.hasWarning && !finalProject.warningDate) {
+          finalProject.warningDate = new Date().toISOString().split('T')[0]; // Guardar fecha de hoy si se activa
+      } else if (!finalProject.hasWarning) {
+          finalProject.warningDate = ''; // Resetear si se desactiva
+      }
+
+      setData(prev => {
+          let updatedDetailed = [...(prev.projectsDetailed || [])];
+
+          if (isEditingProject) {
+              const idx = updatedDetailed.findIndex(p => p.id === finalProject.id);
+              if (idx >= 0) updatedDetailed[idx] = finalProject;
+          } else {
+              updatedDetailed.push(finalProject);
+          }
+
+          return { ...prev, projectsDetailed: updatedDetailed };
+      });
+      
+      resetProjectForm();
+  };
+
+  const handleSaveBudget = () => {
+      if (!budgetForm.name || !budgetForm.client) {
+          alert("Faltan datos obligatorios (Nombre, Cliente)");
+          return;
+      }
+
+      const finalBudget = { 
+          ...budgetForm, 
+          id: budgetForm.id || Date.now().toString() 
+      };
+
+      let newProjectCreated = false;
+      let newProjectId = '';
+
+      setData(prev => {
+          let updatedBudgets = [...(prev.budgets || [])];
+          const idx = updatedBudgets.findIndex(b => b.id === finalBudget.id);
+          
+          if (idx >= 0) {
+              updatedBudgets[idx] = finalBudget;
+          } else {
+              updatedBudgets = [finalBudget, ...updatedBudgets];
+          }
+
+          let updatedProjects = [...prev.projectsDetailed];
+
+          // Automatic Project Creation
+          if (finalBudget.isAccepted) {
+              newProjectId = generateNextProjectId();
+              const newProject: ProjectData = {
+                  id: newProjectId,
+                  name: finalBudget.name,
+                  client: finalBudget.client,
+                  budgetNum: finalBudget.budgetNum,
+                  valuation: 'PRESUPUESTO',
+                  responsibleTech: '',
+                  startDate: new Date().toISOString().split('T')[0],
+                  isFinished: false,
+                  isInvoiced: false,
+                  hasWarning: false,
+                  warningDate: '',
+                  notes: `Generado desde presupuesto: ${finalBudget.comments}`
+              };
+              
+              // Verify ID uniqueness in current state
+              while (updatedProjects.some(p => p.id === newProject.id)) {
+                  const num = parseInt(newProject.id.slice(2)) + 1;
+                  newProject.id = `${newProject.id.slice(0,2)}${num.toString().padStart(3, '0')}`;
+              }
+
+              updatedProjects.push(newProject);
+              newProjectCreated = true;
+          }
+
+          return { ...prev, budgets: updatedBudgets, projectsDetailed: updatedProjects };
+      });
+
+      if (newProjectCreated) {
+          alert(`✅ Obra creada automáticamente con ID: ${newProjectId}`);
+      }
+
+      resetBudgetForm();
+  };
+
+  const editBudget = (b: Budget) => {
+      setBudgetForm(b);
+      setIsEditingBudget(true);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const deleteBudget = (id: string) => {
+      if (!window.confirm("¿Eliminar presupuesto?")) return;
+      setData(prev => ({
+          ...prev,
+          budgets: prev.budgets.filter(b => b.id !== id)
+      }));
+  };
+
+  const resetBudgetForm = () => {
+      setBudgetForm({
+        id: '',
+        budgetNum: '',
+        name: '',
+        client: '',
+        deliveryDate: '',
+        excelName: '',
+        hasFolderData: false,
+        isFinished: false,
+        isAccepted: false,
+        comments: ''
+      });
+      setIsEditingBudget(false);
+  };
+
+  const editProject = (p: ProjectData) => {
+      setProjectForm(p);
+      setIsEditingProject(true);
+      setIdMode('AUTO'); // Al editar, por defecto bloqueamos el cambio a manual para no romper referencias, o podríamos dejarlo visual
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const deleteProject = (id: string) => {
+      if (!window.confirm("¿Eliminar obra? Se mantendrá en el historial de partes pero no aparecerá en la gestión.")) return;
+      setData(prev => ({
+          ...prev,
+          projectsDetailed: prev.projectsDetailed.filter(p => p.id !== id)
+      }));
+  };
+
+  const resetProjectForm = () => {
+      setProjectForm({
+        id: '', // Se recalculará por el useEffect si idMode es AUTO
+        name: '',
+        client: '',
+        budgetNum: '',
+        valuation: 'POR HORAS',
+        responsibleTech: '',
+        startDate: '',
+        isFinished: false,
+        isInvoiced: false,
+        hasWarning: false,
+        warningDate: '',
+        notes: ''
+      });
+      setIsEditingProject(false);
+      setIdMode('AUTO'); // Resetear a modo automático
+  };
+
+  const handleDelete = (type: 'techs' | 'vehicles', index: number) => {
     let itemName = "Elemento";
     if (type === 'techs' && data.technicians[index]) itemName = data.technicians[index].name;
-    else if (type === 'projects' && data.projects[index]) itemName = data.projects[index];
     else if (type === 'vehicles' && data.vehicles[index]) itemName = data.vehicles[index];
 
     if (!window.confirm(`¿Eliminar "${itemName}"? Esta acción no se puede deshacer.`)) return;
 
     setData(prev => {
       if (type === 'techs') return { ...prev, technicians: prev.technicians.filter((_, i) => i !== index) };
-      if (type === 'projects') return { ...prev, projects: prev.projects.filter((_, i) => i !== index) };
       if (type === 'vehicles') return { ...prev, vehicles: prev.vehicles.filter((_, i) => i !== index) };
       return prev;
     });
   };
 
-  const handleDeleteAllProjects = () => {
-    if (window.confirm('⚠️ ¿BORRAR TODAS LAS OBRAS?')) {
-        setData(prev => ({ ...prev, projects: [] }));
-    }
-  };
-
-  const startEditing = (index: number, item: any, type: 'techs' | 'projects' | 'vehicles') => {
+  const startEditing = (index: number, item: any, type: 'techs' | 'vehicles') => {
     setEditingIndex(index);
     if (type === 'techs') {
       const t = item as TechUser;
@@ -148,7 +428,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
     setEditPwdValue('');
   };
 
-  const saveEditing = (type: 'techs' | 'projects' | 'vehicles') => {
+  const saveEditing = (type: 'techs' | 'vehicles') => {
     if (!editValue.trim() || editingIndex === null) return;
     setData(prev => {
       let newData = { ...prev };
@@ -164,10 +444,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
         newArr[editingIndex] = editValue;
         newData.vehicles = newArr;
         newData.reports = prev.reports.map(r => r.vehicle === originalValue ? { ...r, vehicle: editValue } : r);
-      } else if (type === 'projects') {
-        const newArr = [...prev.projects];
-        newArr[editingIndex] = editValue;
-        newData.projects = newArr;
       }
       return newData;
     });
@@ -178,32 +454,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
     setData(prev => ({ ...prev, adminPassword: newAdminPwd, firebaseConfig: firebaseConfigInput }));
     setPwdMsg('Configuración actualizada.');
     setTimeout(() => setPwdMsg(''), 3000);
-  };
-
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const text = event.target?.result as string;
-      if (!text) return;
-      const lines = text.split(/\r\n|\n/);
-      const newProjects: string[] = [];
-      let count = 0;
-      lines.forEach(line => {
-        const trimmed = line.trim();
-        if (trimmed) {
-          const formatted = trimmed.replace(/[,;]/g, ' - ');
-          if (!data.projects.includes(formatted)) { newProjects.push(formatted); count++; }
-        }
-      });
-      if (count > 0) {
-        setData(prev => ({ ...prev, projects: [...prev.projects, ...newProjects] }));
-        alert(`Importadas ${count} obras.`);
-      }
-      if (fileInputRef.current) fileInputRef.current.value = '';
-    };
-    reader.readAsText(file);
   };
 
   const handleImportReports = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -261,12 +511,17 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
   const filteredReports = useMemo(() => {
     return data.reports.filter(r => {
         if (filterTech && r.technician !== filterTech) return false;
-        if (filterProject && !r.projectNum.includes(filterProject.split(' - ')[0])) return false;
+        // Filtrar usando el nombre resuelto o el ID
+        if (filterProject) {
+            const projectFilter = filterProject.toLowerCase();
+            const projectFull = resolveProjectFullName(r.projectNum).toLowerCase();
+            if (!projectFull.includes(projectFilter) && !r.projectNum.includes(projectFilter)) return false;
+        }
         if (filterDateStart && r.date < filterDateStart) return false;
         if (filterDateEnd && r.date > filterDateEnd) return false;
         return true;
     }).sort((a, b) => b.date.localeCompare(a.date));
-  }, [data.reports, filterTech, filterProject, filterDateStart, filterDateEnd]);
+  }, [data.reports, filterTech, filterProject, filterDateStart, filterDateEnd, data.projectsDetailed]);
 
   const groupedReports = useMemo(() => {
     const months: Record<string, Record<string, WorkReport[]>> = {};
@@ -341,16 +596,82 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
     }));
   };
 
+  // Helper para obtener clase de color según aviso
+  const getWarningStyle = (date?: string) => {
+      if (!date) return '';
+      const diff = getDaysDiff(date);
+      // 0-2 días: Verde
+      if (diff <= 2) return 'bg-green-100 dark:bg-green-900/30 border-green-500 dark:border-green-600';
+      // 3-5 días: Naranja
+      if (diff <= 5) return 'bg-orange-100 dark:bg-orange-900/30 border-orange-500 dark:border-orange-600';
+      // +5 días: Rojo
+      return 'bg-red-100 dark:bg-red-900/30 border-red-500 dark:border-red-600 animate-pulse-slow';
+  };
+
+  const getWarningBadge = (date?: string) => {
+      if (!date) return null;
+      const diff = getDaysDiff(date);
+      if (diff <= 2) return <span className="bg-green-200 text-green-800 text-[9px] font-black px-2 py-0.5 rounded">AVISO: {diff} días</span>;
+      if (diff <= 5) return <span className="bg-orange-200 text-orange-800 text-[9px] font-black px-2 py-0.5 rounded">AVISO: {diff} días</span>;
+      return <span className="bg-red-200 text-red-800 text-[9px] font-black px-2 py-0.5 rounded animate-pulse">AVISO: {diff} días</span>;
+  };
+
+  // Helper para el color de Presupuestos (basado en tiempo de creación si no tiene fecha)
+  const getBudgetStyle = (b: Budget) => {
+      // Si está terminado, aceptado o TIENE fecha, color normal
+      if (b.isFinished || b.isAccepted || b.deliveryDate) {
+          return 'bg-white dark:bg-brand-panel border-gray-200 dark:border-gray-700';
+      }
+
+      // Si no tiene fecha, calculamos días desde creación (usando ID como timestamp)
+      const created = parseInt(b.id);
+      if (isNaN(created)) return 'bg-white dark:bg-brand-panel border-gray-200 dark:border-gray-700';
+
+      const diff = Math.floor((Date.now() - created) / (1000 * 60 * 60 * 24));
+
+      if (diff < 2) return 'bg-green-50 dark:bg-green-900/20 border-green-500 dark:border-green-600'; // 0-1 días
+      if (diff < 5) return 'bg-orange-50 dark:bg-orange-900/20 border-orange-500 dark:border-orange-600'; // 2-4 días
+      return 'bg-red-50 dark:bg-red-900/20 border-red-500 dark:border-red-600 animate-pulse-slow'; // 5+ días
+  };
+
+  // Helper para badge de días en Presupuestos
+  const getBudgetDaysBadge = (b: Budget) => {
+      if (b.isFinished || b.isAccepted || b.deliveryDate) return null;
+      const created = parseInt(b.id);
+      if (isNaN(created)) return null;
+      const diff = Math.floor((Date.now() - created) / (1000 * 60 * 60 * 24));
+      
+      let colorClass = "bg-gray-100 text-gray-600";
+      if (diff < 2) colorClass = "bg-green-100 text-green-700";
+      else if (diff < 5) colorClass = "bg-orange-100 text-orange-700";
+      else colorClass = "bg-red-100 text-red-700 font-bold animate-pulse";
+
+      return <span className={`text-[9px] px-2 py-0.5 rounded ml-2 ${colorClass}`}>Sin fecha: {diff} días</span>;
+  };
+
+  const openGoogleCalendar = (p: ProjectData) => {
+      if (!p.startDate) {
+          alert('Por favor selecciona una fecha de inicio primero.');
+          return;
+      }
+      const title = encodeURIComponent(`${p.id} - ${p.name}`);
+      const details = encodeURIComponent(`Cliente: ${p.client}\nResponsable: ${p.responsibleTech || 'Sin asignar'}`);
+      const start = p.startDate.replace(/-/g, '');
+      const end = start; // Mismo día
+      const url = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&details=${details}&dates=${start}/${end}`;
+      window.open(url, '_blank');
+  };
+
   return (
-    <div className="bg-brand-panel rounded-xl shadow-xl border border-gray-700 overflow-hidden min-h-[600px]">
+    <div className="bg-white dark:bg-brand-panel rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 overflow-hidden min-h-[600px] transition-colors duration-300">
       
       {pendingRequests.length > 0 && (
-        <div className="bg-orange-600/20 border-b border-orange-500/50 p-4 flex flex-col sm:flex-row items-center justify-between gap-4 animate-pulse-slow">
+        <div className="bg-orange-100 dark:bg-orange-600/20 border-b border-orange-200 dark:border-orange-500/50 p-4 flex flex-col sm:flex-row items-center justify-between gap-4 animate-pulse-slow">
             <div className="flex items-center gap-3">
-                <div className="bg-orange-600 p-2 rounded-lg text-white"><AlertIcon className="w-5 h-5" /></div>
+                <div className="bg-orange-500 dark:bg-orange-600 p-2 rounded-lg text-white"><AlertIcon className="w-5 h-5" /></div>
                 <div>
-                    <p className="text-white font-black uppercase text-xs tracking-widest text-orange-400">Atención Admin</p>
-                    <p className="text-orange-200 text-sm">{pendingRequests.length} solicitudes de vacaciones pendientes.</p>
+                    <p className="text-orange-800 dark:text-orange-400 font-black uppercase text-xs tracking-widest">Atención Admin</p>
+                    <p className="text-orange-700 dark:text-orange-200 text-sm">{pendingRequests.length} solicitudes de vacaciones pendientes.</p>
                 </div>
             </div>
             <button onClick={onGoToVacations} className="bg-orange-600 hover:bg-orange-500 text-white px-6 py-2 rounded-xl text-xs font-black uppercase tracking-widest shadow-lg">Revisar</button>
@@ -367,45 +688,48 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
         </div>
       )}
 
-      <div className="flex border-b border-gray-700 bg-brand-dark overflow-x-auto">
-        <button onClick={() => setTab('reports')} className={`px-4 md:px-6 py-4 font-medium flex items-center gap-2 whitespace-nowrap ${tab === 'reports' ? 'text-brand-lime border-b-2 border-brand-lime bg-brand-panel' : 'text-gray-400'}`}><FileTextIcon className="w-4 h-4" /> Base de Datos</button>
-        <button onClick={() => setTab('expenses')} className={`px-4 md:px-6 py-4 font-medium flex items-center gap-2 whitespace-nowrap ${tab === 'expenses' ? 'text-brand-lime border-b-2 border-brand-lime bg-brand-panel' : 'text-gray-400'}`}><ChartPieIcon className="w-4 h-4" /> Gastos</button>
-        <button onClick={() => setTab('techs')} className={`px-4 md:px-6 py-4 font-medium flex items-center gap-2 whitespace-nowrap ${tab === 'techs' ? 'text-brand-teal border-b-2 border-brand-teal bg-brand-panel' : 'text-gray-400'}`}><UserIcon className="w-4 h-4" /> Técnicos</button>
-        <button onClick={() => setTab('projects')} className={`px-4 md:px-6 py-4 font-medium flex items-center gap-2 whitespace-nowrap ${tab === 'projects' ? 'text-brand-teal border-b-2 border-brand-teal bg-brand-panel' : 'text-gray-400'}`}>🚧 Obras</button>
-        <button onClick={() => setTab('vehicles')} className={`px-4 md:px-6 py-4 font-medium flex items-center gap-2 whitespace-nowrap ${tab === 'vehicles' ? 'text-brand-teal border-b-2 border-brand-teal bg-brand-panel' : 'text-gray-400'}`}><TruckIcon className="w-4 h-4" /> Vehículos</button>
-        <button onClick={() => setTab('daily')} className={`px-4 md:px-6 py-4 font-medium flex items-center gap-2 whitespace-nowrap ${tab === 'daily' ? 'text-brand-teal border-b-2 border-brand-teal bg-brand-panel' : 'text-gray-400'}`}><CalendarIcon className="w-4 h-4" /> Org. Diaria</button>
-        <button onClick={() => setTab('settings')} className={`px-4 md:px-6 py-4 font-medium flex items-center gap-2 whitespace-nowrap ${tab === 'settings' ? 'text-brand-teal border-b-2 border-brand-teal bg-brand-panel' : 'text-gray-400'}`}><LockIcon className="w-4 h-4" /> Configuración</button>
+      <div className="flex border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-brand-dark overflow-x-auto transition-colors duration-300">
+        <button onClick={() => setTab('reports')} className={`px-4 md:px-6 py-4 font-medium flex items-center gap-2 whitespace-nowrap transition-colors ${tab === 'reports' ? 'text-brand-teal dark:text-brand-lime border-b-2 border-brand-teal dark:border-brand-lime bg-white dark:bg-brand-panel' : 'text-gray-500 dark:text-gray-400'}`}><FileTextIcon className="w-4 h-4" /> Base de Datos</button>
+        <button onClick={() => setTab('expenses')} className={`px-4 md:px-6 py-4 font-medium flex items-center gap-2 whitespace-nowrap transition-colors ${tab === 'expenses' ? 'text-brand-teal dark:text-brand-lime border-b-2 border-brand-teal dark:border-brand-lime bg-white dark:bg-brand-panel' : 'text-gray-500 dark:text-gray-400'}`}><ChartPieIcon className="w-4 h-4" /> Gastos</button>
+        <button onClick={() => setTab('projects')} className={`px-4 md:px-6 py-4 font-medium flex items-center gap-2 whitespace-nowrap transition-colors ${tab === 'projects' ? 'text-brand-teal dark:text-brand-teal border-b-2 border-brand-teal dark:border-brand-teal bg-white dark:bg-brand-panel' : 'text-gray-500 dark:text-gray-400'}`}><BriefcaseIcon className="w-4 h-4" /> Gestión Obras</button>
+        <button onClick={() => setTab('budgets')} className={`px-4 md:px-6 py-4 font-medium flex items-center gap-2 whitespace-nowrap transition-colors ${tab === 'budgets' ? 'text-brand-teal dark:text-brand-teal border-b-2 border-brand-teal dark:border-brand-teal bg-white dark:bg-brand-panel' : 'text-gray-500 dark:text-gray-400'}`}><FileTextIcon className="w-4 h-4" /> Presupuestos</button>
+        <button onClick={() => setTab('techs')} className={`px-4 md:px-6 py-4 font-medium flex items-center gap-2 whitespace-nowrap transition-colors ${tab === 'techs' ? 'text-brand-teal dark:text-brand-teal border-b-2 border-brand-teal dark:border-brand-teal bg-white dark:bg-brand-panel' : 'text-gray-500 dark:text-gray-400'}`}><UserIcon className="w-4 h-4" /> Técnicos</button>
+        <button onClick={() => setTab('vehicles')} className={`px-4 md:px-6 py-4 font-medium flex items-center gap-2 whitespace-nowrap transition-colors ${tab === 'vehicles' ? 'text-brand-teal dark:text-brand-teal border-b-2 border-brand-teal dark:border-brand-teal bg-white dark:bg-brand-panel' : 'text-gray-500 dark:text-gray-400'}`}><TruckIcon className="w-4 h-4" /> Vehículos</button>
+        <button onClick={() => setTab('daily')} className={`px-4 md:px-6 py-4 font-medium flex items-center gap-2 whitespace-nowrap transition-colors ${tab === 'daily' ? 'text-brand-teal dark:text-brand-teal border-b-2 border-brand-teal dark:border-brand-teal bg-white dark:bg-brand-panel' : 'text-gray-500 dark:text-gray-400'}`}><CalendarIcon className="w-4 h-4" /> Org. Diaria</button>
+        <button onClick={() => setTab('settings')} className={`px-4 md:px-6 py-4 font-medium flex items-center gap-2 whitespace-nowrap transition-colors ${tab === 'settings' ? 'text-brand-teal dark:text-brand-teal border-b-2 border-brand-teal dark:border-brand-teal bg-white dark:bg-brand-panel' : 'text-gray-500 dark:text-gray-400'}`}><LockIcon className="w-4 h-4" /> Configuración</button>
       </div>
 
       <div className="p-6">
+        {/* ... (Existing tabs: reports, expenses) ... */}
         {tab === 'reports' && (
+          /* ... existing reports code ... */
           <div>
-            <div className="flex gap-2 mb-4 bg-gray-900 p-2 rounded-lg border border-gray-700 max-w-fit flex-wrap">
-                <button onClick={() => setReportViewMode('list')} className={`px-3 py-1.5 text-xs font-bold rounded flex items-center gap-1 ${reportViewMode === 'list' ? 'bg-brand-lime text-brand-dark' : 'text-gray-400'}`}><FileTextIcon className="w-3 h-3" /> Listado</button>
-                <button onClick={() => setReportViewMode('by_project')} className={`px-3 py-1.5 text-xs font-bold rounded flex items-center gap-1 ${reportViewMode === 'by_project' ? 'bg-brand-teal text-white' : 'text-gray-400'}`}><ChartPieIcon className="w-3 h-3" /> Por Obra</button>
-                <button onClick={() => setReportViewMode('by_hours')} className={`px-3 py-1.5 text-xs font-bold rounded flex items-center gap-1 ${reportViewMode === 'by_hours' ? 'bg-brand-teal text-white' : 'text-gray-400'}`}><ClockIcon className="w-3 h-3" /> Horas</button>
+            <div className="flex gap-2 mb-4 bg-gray-50 dark:bg-gray-900 p-2 rounded-lg border border-gray-200 dark:border-gray-700 max-w-fit flex-wrap">
+                <button onClick={() => setReportViewMode('list')} className={`px-3 py-1.5 text-xs font-bold rounded flex items-center gap-1 ${reportViewMode === 'list' ? 'bg-brand-teal dark:bg-brand-lime text-white dark:text-brand-dark' : 'text-gray-500 dark:text-gray-400'}`}><FileTextIcon className="w-3 h-3" /> Listado</button>
+                <button onClick={() => setReportViewMode('by_project')} className={`px-3 py-1.5 text-xs font-bold rounded flex items-center gap-1 ${reportViewMode === 'by_project' ? 'bg-brand-teal text-white' : 'text-gray-500 dark:text-gray-400'}`}><ChartPieIcon className="w-3 h-3" /> Por Obra</button>
+                <button onClick={() => setReportViewMode('by_hours')} className={`px-3 py-1.5 text-xs font-bold rounded flex items-center gap-1 ${reportViewMode === 'by_hours' ? 'bg-brand-teal text-white' : 'text-gray-500 dark:text-gray-400'}`}><ClockIcon className="w-3 h-3" /> Horas</button>
             </div>
 
-            <div className="bg-gray-900/50 p-4 rounded-lg border border-gray-700 mb-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                 <select value={filterTech} onChange={e => setFilterTech(e.target.value)} className="bg-gray-800 border border-gray-600 text-sm rounded-lg p-2.5 text-white outline-none">
+            <div className="bg-gray-50 dark:bg-gray-900/50 p-4 rounded-lg border border-gray-200 dark:border-gray-700 mb-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                 <select value={filterTech} onChange={e => setFilterTech(e.target.value)} className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-sm rounded-lg p-2.5 text-gray-900 dark:text-white outline-none">
                     <option value="">Técnicos...</option>
                     {data.technicians.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
                  </select>
-                 <select value={filterProject} onChange={e => setFilterProject(e.target.value)} className="bg-gray-800 border border-gray-600 text-sm rounded-lg p-2.5 text-white outline-none">
+                 <select value={filterProject} onChange={e => setFilterProject(e.target.value)} className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-sm rounded-lg p-2.5 text-gray-900 dark:text-white outline-none">
                     <option value="">Obras...</option>
-                    {data.projects.map(p => <option key={p} value={p}>{p}</option>)}
+                    {data.projectsDetailed.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                  </select>
-                 <input type="date" value={filterDateStart} onChange={e => setFilterDateStart(e.target.value)} className="bg-gray-800 border border-gray-600 text-sm rounded-lg p-2.5 text-white outline-none [color-scheme:dark]" />
-                 <input type="date" value={filterDateEnd} onChange={e => setFilterDateEnd(e.target.value)} className="bg-gray-800 border border-gray-600 text-sm rounded-lg p-2.5 text-white outline-none [color-scheme:dark]" />
+                 <input type="date" value={filterDateStart} onChange={e => setFilterDateStart(e.target.value)} className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-sm rounded-lg p-2.5 text-gray-900 dark:text-white outline-none dark:[color-scheme:dark]" />
+                 <input type="date" value={filterDateEnd} onChange={e => setFilterDateEnd(e.target.value)} className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-sm rounded-lg p-2.5 text-gray-900 dark:text-white outline-none dark:[color-scheme:dark]" />
             </div>
 
             {reportViewMode === 'list' && (
                 <>
                     <div className="flex flex-col sm:flex-row justify-between gap-4 mb-6">
-                        <h3 className="text-lg font-bold text-white">Registro de Actividad</h3>
+                        <h3 className="text-lg font-bold text-gray-800 dark:text-white">Registro de Actividad</h3>
                         <div className="flex gap-2">
                             <button onClick={downloadCSV} className="bg-brand-teal text-white px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-bold"><DownloadIcon className="w-4 h-4" /> CSV</button>
-                            <label className="bg-brand-lime text-brand-dark px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-bold cursor-pointer">
+                            <label className="bg-brand-lime text-brand-dark px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-bold cursor-pointer hover:bg-lime-400">
                                 <UploadIcon className="w-4 h-4" /> Importar
                                 <input type="file" ref={reportImportInputRef} onChange={handleImportReports} accept=".csv" className="hidden" />
                             </label>
@@ -415,21 +739,20 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                     <div className="space-y-12">
                         {Object.entries(groupedReports).map(([monthLabel, weeks]) => (
                             <div key={monthLabel} className="space-y-6">
-                                <div className="bg-brand-teal/20 border-l-4 border-brand-teal px-4 py-3 flex items-center gap-3">
-                                    <h4 className="text-brand-teal font-black text-xl tracking-widest">{monthLabel}</h4>
+                                <div className="bg-brand-teal/10 dark:bg-brand-teal/20 border-l-4 border-brand-teal px-4 py-3 flex items-center gap-3">
+                                    <h4 className="text-brand-teal dark:text-brand-teal font-black text-xl tracking-widest">{monthLabel}</h4>
                                 </div>
                                 {Object.entries(weeks).sort((a, b) => b[1][0].date.localeCompare(a[1][0].date)).map(([weekRange, reports]) => {
                                     const isExpanded = !!expandedWeeks[weekRange];
                                     return (
                                         <div key={weekRange} className="space-y-3">
-                                            {/* Cabecera de Semana Estilo Imagen - Ahora con Toggle */}
                                             <div 
                                                 onClick={() => toggleWeekExpansion(weekRange)}
-                                                className="flex justify-between items-center border-b border-gray-800/50 pb-2 mb-2 cursor-pointer hover:bg-gray-800/20 transition-colors px-1 rounded"
+                                                className="flex justify-between items-center border-b border-gray-200 dark:border-gray-800/50 pb-2 mb-2 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800/20 transition-colors px-1 rounded"
                                             >
                                                 <div className="flex items-center gap-2">
-                                                    <span className="text-brand-lime text-2xl leading-none">•</span>
-                                                    <span className="text-brand-lime font-black text-[11px] uppercase tracking-[2px]">SEMANA: {weekRange}</span>
+                                                    <span className="text-brand-teal dark:text-brand-lime text-2xl leading-none">•</span>
+                                                    <span className="text-brand-teal dark:text-brand-lime font-black text-[11px] uppercase tracking-[2px]">SEMANA: {weekRange}</span>
                                                 </div>
                                                 <div className="flex items-center gap-3">
                                                     <span className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">{reports.length} partes</span>
@@ -440,7 +763,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                                             {isExpanded && (
                                                 <div className="overflow-x-auto animate-fade-in">
                                                     <table className="w-full text-left">
-                                                        <thead className="text-[10px] text-gray-500 uppercase bg-gray-900/40 border-b border-gray-800">
+                                                        <thead className="text-[10px] text-gray-500 uppercase bg-gray-50 dark:bg-gray-900/40 border-b border-gray-200 dark:border-gray-800">
                                                             <tr>
                                                                 <th className="px-3 py-3 w-8"></th>
                                                                 <th className="px-3 py-3 w-28">Fecha</th>
@@ -452,28 +775,28 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                                                                 <th className="px-3 py-3 text-center">Acción</th>
                                                             </tr>
                                                         </thead>
-                                                        <tbody className="divide-y divide-gray-800/50">
+                                                        <tbody className="divide-y divide-gray-200 dark:divide-gray-800/50">
                                                             {reports.map((report) => {
                                                                 const total = Object.values(report.expenses).reduce((a: number, b: any) => (typeof b === 'number' ? a + b : a), 0) as number;
                                                                 const isReportExpanded = expandedReportId === report.id;
                                                                 return (
                                                                     <React.Fragment key={report.id}>
-                                                                        <tr className="bg-gray-800/20 hover:bg-gray-800/60 transition-colors group">
+                                                                        <tr className="bg-white dark:bg-gray-800/20 hover:bg-gray-50 dark:hover:bg-gray-800/60 transition-colors group">
                                                                             <td className="px-3 py-3">
-                                                                                <button onClick={() => toggleExpandReport(report.id)} className="text-gray-600 hover:text-brand-teal transition-colors">
+                                                                                <button onClick={() => toggleExpandReport(report.id)} className="text-gray-400 hover:text-brand-teal transition-colors">
                                                                                     <EyeIcon className="w-4 h-4" />
                                                                                 </button>
                                                                             </td>
-                                                                            <td className="px-3 py-3 font-mono text-[11px] text-gray-400">{report.date}</td>
-                                                                            <td className="px-3 py-3 text-xs font-black text-gray-200">{report.technician}</td>
+                                                                            <td className="px-3 py-3 font-mono text-[11px] text-gray-500 dark:text-gray-400">{report.date}</td>
+                                                                            <td className="px-3 py-3 text-xs font-black text-gray-700 dark:text-gray-200">{report.technician}</td>
                                                                             <td className="px-3 py-3 text-xs font-bold text-brand-teal/80">{report.projectNum}</td>
                                                                             <td className="px-3 py-3 text-[11px] text-gray-500 italic max-w-xs truncate">
                                                                                 {report.description || 'Sin descripción'}
                                                                             </td>
-                                                                            <td className="px-3 py-3 text-right font-black text-xs text-yellow-500">
+                                                                            <td className="px-3 py-3 text-right font-black text-xs text-yellow-600 dark:text-yellow-500">
                                                                                 {report.overtimeHours > 0 ? `+${report.overtimeHours}h` : '-'}
                                                                             </td>
-                                                                            <td className="px-3 py-3 text-right text-xs font-black text-white">
+                                                                            <td className="px-3 py-3 text-right text-xs font-black text-gray-800 dark:text-white">
                                                                                 {total > 0 ? `${total.toFixed(2)}€` : '-'}
                                                                             </td>
                                                                             <td className="px-3 py-3 text-center">
@@ -483,22 +806,22 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                                                                             </td>
                                                                         </tr>
                                                                         {isReportExpanded && (
-                                                                            <tr className="bg-gray-900/60">
+                                                                            <tr className="bg-gray-50 dark:bg-gray-900/60">
                                                                                 <td colSpan={8} className="p-4 border-l-4 border-brand-teal">
                                                                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                                                                                         <div className="space-y-4">
                                                                                             <div>
                                                                                                 <p className="text-[10px] uppercase font-black text-gray-500 tracking-widest mb-1">Descripción Completa</p>
-                                                                                                <p className="text-xs text-gray-300 leading-relaxed bg-gray-950/50 p-3 rounded-lg border border-gray-800">{report.description}</p>
+                                                                                                <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed bg-white dark:bg-gray-950/50 p-3 rounded-lg border border-gray-200 dark:border-gray-800">{report.description}</p>
                                                                                             </div>
                                                                                             <div className="grid grid-cols-2 gap-4">
                                                                                                 <div>
                                                                                                     <p className="text-[10px] uppercase font-black text-gray-500 tracking-widest mb-1">Vehículo</p>
-                                                                                                    <p className="text-xs text-white font-bold">{report.vehicle} {report.isDriver ? '(Conductor)' : ''}</p>
+                                                                                                    <p className="text-xs text-gray-700 dark:text-white font-bold">{report.vehicle} {report.isDriver ? '(Conductor)' : ''}</p>
                                                                                                 </div>
                                                                                                 <div>
                                                                                                     <p className="text-[10px] uppercase font-black text-gray-500 tracking-widest mb-1">Horario</p>
-                                                                                                    <p className="text-xs text-white font-mono">{report.startTime} - {report.endTime}</p>
+                                                                                                    <p className="text-xs text-gray-700 dark:text-white font-mono">{report.startTime} - {report.endTime}</p>
                                                                                                 </div>
                                                                                             </div>
                                                                                         </div>
@@ -510,14 +833,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                                                                                                         <img 
                                                                                                             src={t.data} 
                                                                                                             onClick={() => setSelectedImage({data: t.data, type: t.type})} 
-                                                                                                            className="w-20 h-20 object-cover rounded-lg cursor-pointer hover:border-brand-lime border-2 border-gray-800 transition-all" 
+                                                                                                            className="w-20 h-20 object-cover rounded-lg cursor-pointer hover:border-brand-lime border-2 border-gray-300 dark:border-gray-800 transition-all" 
                                                                                                         />
                                                                                                         <div className="absolute top-0 right-0 p-1 opacity-0 group-hover/img:opacity-100 transition-opacity">
                                                                                                             <span className="bg-brand-teal text-[8px] font-bold px-1 rounded text-white">{t.type}</span>
                                                                                                         </div>
                                                                                                     </div>
                                                                                                 ))}
-                                                                                                {(!report.tickets || report.tickets.length === 0) && <p className="text-[10px] text-gray-600 italic">No hay archivos adjuntos.</p>}
+                                                                                                {(!report.tickets || report.tickets.length === 0) && <p className="text-[10px] text-gray-500 italic">No hay archivos adjuntos.</p>}
                                                                                             </div>
                                                                                         </div>
                                                                                     </div>
@@ -538,22 +861,23 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                         ))}
                         {filteredReports.length === 0 && (
                             <div className="py-20 text-center">
-                                <FileTextIcon className="w-12 h-12 text-gray-800 mx-auto mb-4" />
+                                <FileTextIcon className="w-12 h-12 text-gray-300 dark:text-gray-800 mx-auto mb-4" />
                                 <p className="text-gray-500 font-bold uppercase text-xs tracking-[3px]">Sin resultados en la búsqueda</p>
                             </div>
                         )}
                     </div>
                 </>
             )}
-
+            
+            {/* ... Other report modes (by_project, by_hours) same as original ... */}
             {reportViewMode === 'by_project' && (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {projectsSummary.map(([projectNum, summary]) => (
-                        <div key={projectNum} className="bg-gray-900/50 p-4 rounded-xl border border-gray-700">
+                        <div key={projectNum} className="bg-gray-50 dark:bg-gray-900/50 p-4 rounded-xl border border-gray-200 dark:border-gray-700">
                             <h4 className="text-brand-teal font-black text-sm mb-2">{resolveProjectFullName(projectNum)}</h4>
-                            <div className="flex justify-between text-xs text-gray-400">
+                            <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400">
                                 <span>Partes: {summary.count}</span>
-                                <span className="text-brand-lime font-bold">Total: {(summary.food + summary.gas + summary.parking + summary.others).toFixed(2)}€</span>
+                                <span className="text-brand-teal dark:text-brand-lime font-bold">Total: {(summary.food + summary.gas + summary.parking + summary.others).toFixed(2)}€</span>
                             </div>
                         </div>
                     ))}
@@ -563,20 +887,20 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
             {reportViewMode === 'by_hours' && (
                 <div className="space-y-6">
                     {hoursSummary.map(([week, techs]) => (
-                        <div key={week} className="bg-gray-900/30 rounded-xl border border-gray-700 overflow-hidden">
-                            <div className="bg-gray-800 p-3 text-xs font-bold text-brand-teal uppercase">Semana: {week}</div>
+                        <div key={week} className="bg-gray-50 dark:bg-gray-900/30 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+                            <div className="bg-gray-100 dark:bg-gray-800 p-3 text-xs font-bold text-brand-teal uppercase">Semana: {week}</div>
                             <table className="w-full text-xs text-left">
-                                <thead><tr className="text-gray-500 bg-black/20">
+                                <thead><tr className="text-gray-500 bg-black/5 dark:bg-black/20">
                                     <th className="px-4 py-2">Técnico</th>
                                     <th className="px-4 py-2 text-right">Horas</th>
                                     <th className="px-4 py-2 text-right">Extras</th>
                                 </tr></thead>
                                 <tbody>
                                     {(Object.entries(techs) as [string, any][]).map(([tech, h]) => (
-                                        <tr key={tech} className="border-t border-gray-800">
-                                            <td className="px-4 py-2 font-bold">{tech}</td>
-                                            <td className="px-4 py-2 text-right">{h.reg.toFixed(1)}h</td>
-                                            <td className="px-4 py-2 text-right text-yellow-500">+{h.ot.toFixed(1)}h</td>
+                                        <tr key={tech} className="border-t border-gray-200 dark:border-gray-800">
+                                            <td className="px-4 py-2 font-bold text-gray-700 dark:text-gray-300">{tech}</td>
+                                            <td className="px-4 py-2 text-right text-gray-600 dark:text-gray-400">{h.reg.toFixed(1)}h</td>
+                                            <td className="px-4 py-2 text-right text-yellow-600 dark:text-yellow-500">+{h.ot.toFixed(1)}h</td>
                                         </tr>
                                     ))}
                                 </tbody>
@@ -590,19 +914,19 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
 
         {tab === 'expenses' && (
             <div className="space-y-6">
-                <h3 className="text-lg font-bold text-white mb-4">Resumen de Gastos por Técnico y Semana</h3>
+                <h3 className="text-lg font-bold text-gray-800 dark:text-white mb-4">Resumen de Gastos por Técnico y Semana</h3>
                 <div className="space-y-8">
                     {weeklyExpensesSummary.map(([week, techs]) => (
-                        <div key={week} className="bg-gray-900/30 rounded-xl border border-gray-700 overflow-hidden shadow-lg">
-                            <div className="bg-gray-800 p-3 border-b border-gray-700 flex items-center gap-2">
-                                <ChartPieIcon className="w-4 h-4 text-brand-lime" />
-                                <span className="text-brand-lime font-black text-sm uppercase tracking-widest">Semana: {week}</span>
+                        <div key={week} className="bg-gray-50 dark:bg-gray-900/30 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden shadow-lg">
+                            <div className="bg-gray-100 dark:bg-gray-800 p-3 border-b border-gray-200 dark:border-gray-700 flex items-center gap-2">
+                                <ChartPieIcon className="w-4 h-4 text-brand-teal dark:text-brand-lime" />
+                                <span className="text-brand-teal dark:text-brand-lime font-black text-sm uppercase tracking-widest">Semana: {week}</span>
                             </div>
                             <div className="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                                 {Object.entries(techs).map(([tech, total]) => (
-                                    <div key={tech} className="bg-gray-950 p-4 rounded-xl border border-gray-800 flex flex-col justify-center items-center gap-1 group hover:border-brand-teal transition-all">
-                                        <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">{tech}</span>
-                                        <span className="text-lg font-black text-white font-mono">{(total as number).toFixed(2)}€</span>
+                                    <div key={tech} className="bg-white dark:bg-gray-950 p-4 rounded-xl border border-gray-200 dark:border-gray-800 flex flex-col justify-center items-center gap-1 group hover:border-brand-teal transition-all">
+                                        <span className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest">{tech}</span>
+                                        <span className="text-lg font-black text-gray-800 dark:text-white font-mono">{(total as number).toFixed(2)}€</span>
                                     </div>
                                 ))}
                             </div>
@@ -615,18 +939,19 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
 
         {tab === 'techs' && (
             <div className="space-y-4">
-                <div className="bg-gray-900/50 p-4 rounded-xl border border-gray-700 flex flex-col sm:flex-row gap-2">
-                    <input type="text" placeholder="Nombre" value={newItemName} onChange={e => setNewItemName(e.target.value)} className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-4 py-2" />
-                    <input type="password" placeholder="Pass" value={newTechPwd} onChange={e => setNewTechPwd(e.target.value)} className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-4 py-2" />
+                {/* ... existing techs code ... */}
+                <div className="bg-gray-50 dark:bg-gray-900/50 p-4 rounded-xl border border-gray-200 dark:border-gray-700 flex flex-col sm:flex-row gap-2">
+                    <input type="text" placeholder="Nombre" value={newItemName} onChange={e => setNewItemName(e.target.value)} className="flex-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-4 py-2 text-gray-900 dark:text-white" />
+                    <input type="password" placeholder="Pass" value={newTechPwd} onChange={e => setNewTechPwd(e.target.value)} className="flex-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-4 py-2 text-gray-900 dark:text-white" />
                     <button onClick={() => handleAdd('techs')} className="bg-brand-teal text-white px-6 py-2 rounded-lg font-bold">Añadir</button>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {data.technicians.map((t, i) => (
-                    <div key={t.id} className="bg-gray-900/30 p-4 rounded-xl border border-gray-700 flex justify-between items-center group">
+                    <div key={t.id} className="bg-gray-50 dark:bg-gray-900/30 p-4 rounded-xl border border-gray-200 dark:border-gray-700 flex justify-between items-center group">
                         {editingIndex === i ? (
                             <div className="flex-1 flex gap-2">
-                                <input value={editValue} onChange={e => setEditValue(e.target.value)} className="flex-1 bg-gray-800 border border-brand-teal rounded px-2 py-1 text-xs" />
-                                <input value={editPwdValue} onChange={e => setEditPwdValue(e.target.value)} className="flex-1 bg-gray-800 border border-brand-teal rounded px-2 py-1 text-xs" />
+                                <input value={editValue} onChange={e => setEditValue(e.target.value)} className="flex-1 bg-white dark:bg-gray-800 border border-brand-teal rounded px-2 py-1 text-xs text-gray-900 dark:text-white" />
+                                <input value={editPwdValue} onChange={e => setEditPwdValue(e.target.value)} className="flex-1 bg-white dark:bg-gray-800 border border-brand-teal rounded px-2 py-1 text-xs text-gray-900 dark:text-white" />
                                 <button onClick={() => saveEditing('techs')} className="text-green-500"><SaveIcon className="w-4 h-4" /></button>
                                 <button onClick={cancelEditing} className="text-red-500"><XIcon className="w-4 h-4" /></button>
                             </div>
@@ -634,11 +959,11 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                             <>
                                 <div className="flex items-center gap-3">
                                     <div className="w-8 h-8 bg-brand-teal/20 rounded-full flex items-center justify-center text-brand-teal font-bold">{t.name.charAt(0)}</div>
-                                    <div><p className="font-bold text-sm text-gray-200">{t.name}</p></div>
+                                    <div><p className="font-bold text-sm text-gray-800 dark:text-gray-200">{t.name}</p></div>
                                 </div>
                                 <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <button onClick={() => startEditing(i, t, 'techs')} className="text-gray-500 hover:text-brand-teal"><EditIcon className="w-4 h-4" /></button>
-                                    <button onClick={() => handleDelete('techs', i)} className="text-gray-500 hover:text-red-500"><TrashIcon className="w-4 h-4" /></button>
+                                    <button onClick={() => startEditing(i, t, 'techs')} className="text-gray-400 dark:text-gray-500 hover:text-brand-teal"><EditIcon className="w-4 h-4" /></button>
+                                    <button onClick={() => handleDelete('techs', i)} className="text-gray-400 dark:text-gray-500 hover:text-red-500"><TrashIcon className="w-4 h-4" /></button>
                                 </div>
                             </>
                         )}
@@ -648,47 +973,369 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
             </div>
         )}
 
-        {tab === 'projects' && (
-            <div className="space-y-4">
-                <div className="bg-gray-900/50 p-4 rounded-xl border border-gray-700">
-                    <div className="flex gap-2 mb-4">
-                        <input type="text" placeholder="Ej: 24001 - HOSPITAL" value={newItemName} onChange={e => setNewItemName(e.target.value)} className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-4 py-2" />
-                        <button onClick={() => handleAdd('projects')} className="bg-brand-teal text-white px-6 py-2 rounded-lg font-bold">Añadir</button>
-                    </div>
-                    <div className="flex gap-2">
-                        <label className="text-xs text-brand-lime cursor-pointer bg-brand-lime/10 p-2 rounded-lg border border-brand-lime/20 flex items-center gap-2">
-                            <UploadIcon className="w-4 h-4" /> Importar TXT
-                            <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept=".txt,.csv" className="hidden" />
-                        </label>
-                        <button onClick={handleDeleteAllProjects} className="text-xs text-red-400 bg-red-900/10 p-2 rounded-lg border border-red-900/20">Borrar Todo</button>
-                    </div>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
-                {data.projects.map((p, i) => (
-                    <div key={i} className="bg-gray-900/30 px-3 py-2 rounded-lg border border-gray-700 flex justify-between items-center group">
-                        <span className="text-xs text-gray-300 font-mono truncate">{p}</span>
-                        <div className="flex gap-2 opacity-0 group-hover:opacity-100">
-                            <button onClick={() => startEditing(i, p, 'projects')} className="text-gray-500 hover:text-brand-teal"><EditIcon className="w-3 h-3" /></button>
-                            <button onClick={() => handleDelete('projects', i)} className="text-gray-500 hover:text-red-500"><TrashIcon className="w-3 h-3" /></button>
+        {tab === 'budgets' && (
+            /* ... existing budgets code ... */
+            <div className="space-y-6">
+                <div className="bg-white dark:bg-gray-900/50 p-6 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-xl">
+                   <div className="flex justify-between items-center mb-6">
+                        <h3 className="text-lg font-bold text-gray-800 dark:text-white flex items-center gap-2">
+                            <span className="text-brand-teal dark:text-brand-lime">{isEditingBudget ? '✏️' : '+'}</span> 
+                            {isEditingBudget ? 'Editar Presupuesto' : 'Nuevo Presupuesto'}
+                        </h3>
+                        {isEditingBudget && (
+                            <button onClick={resetBudgetForm} className="text-xs bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 px-3 py-1.5 rounded text-gray-500 dark:text-gray-300">
+                                Cancelar
+                            </button>
+                        )}
+                   </div>
+                   
+                   <div className="space-y-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-[10px] text-gray-500 uppercase font-black mb-1">Nombre del Presupuesto (Descripción)</label>
+                                <input type="text" placeholder="Descripción breve..." value={budgetForm.name} onChange={e => setBudgetForm({...budgetForm, name: e.target.value})} className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg p-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none" />
+                            </div>
+                            <div>
+                                <label className="block text-[10px] text-gray-500 uppercase font-black mb-1">Cliente</label>
+                                <input 
+                                    type="text" 
+                                    list="client-options-budget"
+                                    placeholder="" 
+                                    value={budgetForm.client} 
+                                    onChange={e => setBudgetForm({...budgetForm, client: e.target.value})} 
+                                    className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg p-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none" 
+                                />
+                                <datalist id="client-options-budget">
+                                    {uniqueClients.map(client => (
+                                        <option key={client} value={client} />
+                                    ))}
+                                </datalist>
+                            </div>
                         </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div>
+                                <label className="block text-[10px] text-gray-500 uppercase font-black mb-1">Número de Presupuesto</label>
+                                <input type="text" placeholder="5 cifras" value={budgetForm.budgetNum} onChange={e => setBudgetForm({...budgetForm, budgetNum: e.target.value})} className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg p-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none" />
+                            </div>
+                            <div>
+                                <label className="block text-[10px] text-gray-500 uppercase font-black mb-1">Fecha de Entrega</label>
+                                <input type="date" value={budgetForm.deliveryDate} onChange={e => setBudgetForm({...budgetForm, deliveryDate: e.target.value})} className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg p-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none dark:[color-scheme:dark]" />
+                            </div>
+                            <div>
+                                <label className="block text-[10px] text-gray-500 uppercase font-black mb-1">Nombre de la Excel</label>
+                                <input type="text" value={budgetForm.excelName} onChange={e => setBudgetForm({...budgetForm, excelName: e.target.value})} className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg p-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none" />
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 py-2">
+                             <label className="flex items-center gap-3 cursor-pointer bg-gray-100 dark:bg-gray-800/50 p-2 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-gray-400 dark:hover:border-gray-500 transition-colors">
+                                 <input type="checkbox" checked={budgetForm.hasFolderData} onChange={e => setBudgetForm({...budgetForm, hasFolderData: e.target.checked})} className="w-5 h-5 rounded border-gray-400 dark:border-gray-600 text-brand-teal bg-white dark:bg-gray-800 focus:ring-0" />
+                                 <span className="text-xs font-bold uppercase text-gray-700 dark:text-white">Datos Carpeta</span>
+                             </label>
+                             <label className="flex items-center gap-3 cursor-pointer bg-gray-100 dark:bg-gray-800/50 p-2 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-gray-400 dark:hover:border-gray-500 transition-colors">
+                                 <input type="checkbox" checked={budgetForm.isFinished} onChange={e => setBudgetForm({...budgetForm, isFinished: e.target.checked})} className="w-5 h-5 rounded border-gray-400 dark:border-gray-600 text-brand-teal bg-white dark:bg-gray-800 focus:ring-0" />
+                                 <span className="text-xs font-bold uppercase text-gray-700 dark:text-white">Terminado</span>
+                             </label>
+                             <label className="flex items-center gap-3 cursor-pointer bg-gray-100 dark:bg-gray-800/50 p-2 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-gray-400 dark:hover:border-gray-500 transition-colors">
+                                 <input type="checkbox" checked={budgetForm.isAccepted} onChange={e => setBudgetForm({...budgetForm, isAccepted: e.target.checked})} className="w-5 h-5 rounded border-gray-400 dark:border-gray-600 text-brand-teal bg-white dark:bg-gray-800 focus:ring-0" />
+                                 <span className="text-xs font-bold uppercase text-gray-700 dark:text-white">Aceptado (Crear Obra)</span>
+                             </label>
+                        </div>
+
+                        <div>
+                            <label className="block text-[10px] text-gray-500 uppercase font-black mb-1">Datos / Comentarios</label>
+                            <textarea placeholder="Comentarios adicionales..." rows={3} value={budgetForm.comments} onChange={e => setBudgetForm({...budgetForm, comments: e.target.value})} className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg p-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none" />
+                        </div>
+                   </div>
+
+                   <button onClick={handleSaveBudget} className="w-full mt-6 bg-brand-teal hover:bg-teal-600 text-white font-bold py-3 rounded-xl shadow-lg transition-all flex items-center justify-center gap-2">
+                       <SaveIcon className="w-5 h-5" /> {isEditingBudget ? 'Actualizar Presupuesto' : 'Crear Presupuesto'}
+                   </button>
+                </div>
+
+                {/* LISTADO DE PRESUPUESTOS */}
+                <div className="space-y-4 pt-4">
+                    <h3 className="text-gray-400 font-black mb-3 uppercase text-[11px] tracking-[3px] flex items-center gap-2">
+                        <FileTextIcon className="w-4 h-4" /> Listado de Presupuestos
+                    </h3>
+                    <div className="space-y-3">
+                        {(!sortedBudgets || sortedBudgets.length === 0) && (
+                             <p className="text-center py-10 text-gray-500 italic">No hay presupuestos registrados.</p>
+                        )}
+                        {sortedBudgets.map((b) => (
+                             <div key={b.id} className={`p-5 rounded-xl border flex flex-col md:flex-row justify-between items-start md:items-center gap-4 group hover:border-brand-teal/50 transition-all shadow-sm ${getBudgetStyle(b)}`}>
+                                  <div className="flex-1 w-full">
+                                      <div className="flex flex-wrap items-center gap-3 mb-2">
+                                          <span className="font-black uppercase text-sm text-gray-900 dark:text-white truncate">{b.name}</span>
+                                          {b.budgetNum && <span className="text-xs font-mono text-gray-500 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded">#{b.budgetNum}</span>}
+                                          {b.isAccepted && <span className="bg-green-100 dark:bg-green-900/40 text-green-600 dark:text-green-400 text-[9px] font-black px-2 py-0.5 rounded uppercase border border-green-200 dark:border-green-800">Aceptado</span>}
+                                          {b.isFinished && <span className="bg-teal-100 dark:bg-teal-900/40 text-teal-600 dark:text-teal-400 text-[9px] font-black px-2 py-0.5 rounded uppercase border border-teal-200 dark:border-teal-800">Terminado</span>}
+                                          {b.hasFolderData && <span className="bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 text-[9px] font-black px-2 py-0.5 rounded uppercase border border-blue-200 dark:border-blue-800">Datos Carpeta</span>}
+                                          {getBudgetDaysBadge(b)}
+                                      </div>
+                                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-[10px] text-gray-400 uppercase font-medium">
+                                          <div>
+                                              <span className="block text-gray-500 dark:text-gray-600 mb-0.5">Cliente</span>
+                                              <span className="text-gray-700 dark:text-gray-300">{b.client}</span>
+                                          </div>
+                                          <div>
+                                              <span className="block text-gray-500 dark:text-gray-600 mb-0.5">Entrega</span>
+                                              <span className="text-gray-700 dark:text-gray-300">{b.deliveryDate || '-'}</span>
+                                          </div>
+                                          <div className="col-span-2">
+                                              <span className="block text-gray-500 dark:text-gray-600 mb-0.5">Excel</span>
+                                              <span className="text-gray-700 dark:text-gray-300 truncate">{b.excelName || '-'}</span>
+                                          </div>
+                                      </div>
+                                      {b.comments && (
+                                        <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-800">
+                                            <p className="text-[10px] text-gray-500 italic truncate">{b.comments}</p>
+                                        </div>
+                                      )}
+                                  </div>
+                                  <div className="flex gap-2 self-end md:self-center">
+                                      <button onClick={() => editBudget(b)} className="p-2 text-gray-400 hover:text-brand-teal bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors"><EditIcon className="w-4 h-4" /></button>
+                                      <button onClick={() => deleteBudget(b.id)} className="p-2 text-gray-400 hover:text-red-500 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors"><TrashIcon className="w-4 h-4" /></button>
+                                  </div>
+                             </div>
+                        ))}
                     </div>
-                ))}
                 </div>
             </div>
         )}
 
+        {tab === 'projects' && (
+            <div className="space-y-6">
+                <div className="bg-white dark:bg-gray-900/50 p-6 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-xl">
+                   
+                   {/* Header Row */}
+                   <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4 border-b border-gray-200 dark:border-gray-800 pb-4">
+                        <h3 className="text-xl font-bold text-gray-800 dark:text-white flex items-center gap-2">
+                            <span className="text-brand-teal dark:text-brand-lime">{isEditingProject ? '✏️' : '+'}</span> 
+                            {isEditingProject ? 'Editar Obra' : 'Alta de Nueva Obra'}
+                        </h3>
+                        
+                        <div className="flex items-center gap-3">
+                            {!isEditingProject && (
+                                <div className="flex bg-gray-100 dark:bg-gray-950 rounded-lg p-1 border border-gray-200 dark:border-gray-800">
+                                    <button 
+                                        onClick={() => setIdMode('AUTO')} 
+                                        className={`px-4 py-1.5 text-[10px] font-black uppercase rounded-md transition-all tracking-wider ${idMode === 'AUTO' ? 'bg-gray-300 dark:bg-gray-700 text-gray-800 dark:text-gray-200 shadow-md' : 'text-gray-500 dark:text-gray-600 hover:text-gray-700 dark:hover:text-gray-400'}`}
+                                    >
+                                        Automático
+                                    </button>
+                                    <button 
+                                        onClick={() => { setIdMode('MANUAL'); setProjectForm(prev => ({...prev, id: ''})); }} 
+                                        className={`px-4 py-1.5 text-[10px] font-black uppercase rounded-md transition-all tracking-wider ${idMode === 'MANUAL' ? 'bg-orange-500 text-white shadow-md' : 'text-gray-500 dark:text-gray-600 hover:text-gray-700 dark:hover:text-gray-400'}`}
+                                    >
+                                        Manual
+                                    </button>
+                                </div>
+                            )}
+                            
+                            {isEditingProject && (
+                                <button onClick={resetProjectForm} className="text-xs bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 px-4 py-2 rounded-lg text-gray-500 dark:text-gray-300 border border-gray-200 dark:border-gray-700">
+                                    Cancelar Edición
+                                </button>
+                            )}
+                        </div>
+                   </div>
+                   
+                   {/* Form Grid */}
+                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+                        
+                        {/* ID Box - styled like the image request */}
+                        <div className={`relative p-6 rounded-2xl border-2 transition-all group ${idMode === 'MANUAL' ? 'border-orange-500/30 bg-orange-50 dark:bg-orange-500/5' : 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50'}`}>
+                             <div className="text-center space-y-2">
+                                <label className={`block text-[10px] uppercase font-black tracking-[2px] mb-2 ${idMode === 'MANUAL' ? 'text-orange-500 dark:text-orange-400' : 'text-gray-400 dark:text-gray-500'}`}>
+                                    {idMode === 'MANUAL' ? 'INTRODUCE Nº OBRA' : 'PRÓXIMO ID AUTOMÁTICO'}
+                                </label>
+                                
+                                {idMode === 'AUTO' || isEditingProject ? (
+                                    <div className="text-4xl font-black text-gray-800 dark:text-white tracking-widest font-mono py-2">
+                                        {projectForm.id}
+                                    </div>
+                                ) : (
+                                     <input 
+                                        type="text" 
+                                        value={projectForm.id} 
+                                        onChange={e => setProjectForm({...projectForm, id: e.target.value})} 
+                                        className="w-full bg-transparent border-b-2 border-orange-500/50 text-3xl font-black text-gray-900 dark:text-white text-center focus:border-orange-500 outline-none py-2 placeholder-gray-400 dark:placeholder-gray-700 font-mono"
+                                        placeholder="Nº OBRA"
+                                        autoFocus
+                                    />
+                                )}
+                                
+                                {idMode === 'AUTO' && !isEditingProject && (
+                                    <p className="text-[10px] text-gray-500 dark:text-gray-600">Calculado automáticamente según el año en curso</p>
+                                )}
+                             </div>
+                             {/* Decorative corner accent if manual */}
+                             {idMode === 'MANUAL' && <div className="absolute top-0 right-0 w-16 h-16 bg-gradient-to-bl from-orange-500/10 to-transparent rounded-tr-2xl pointer-events-none"></div>}
+                        </div>
+
+                        {/* Name Field */}
+                        <div>
+                             <label className="block text-[10px] text-gray-500 uppercase font-black mb-2 ml-1">Nombre de Obra</label>
+                             <input type="text" placeholder="Ej: REFORMA HOSPITAL..." value={projectForm.name} onChange={e => setProjectForm({...projectForm, name: e.target.value})} className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-xl p-4 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none transition-colors shadow-sm" />
+                        </div>
+
+                        <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-3 gap-6">
+                            <div>
+                                 <label className="block text-[10px] text-gray-500 uppercase font-black mb-2 ml-1">Nombre de Cliente</label>
+                                 <input 
+                                    type="text" 
+                                    list="client-options"
+                                    placeholder="" 
+                                    value={projectForm.client} 
+                                    onChange={e => setProjectForm({...projectForm, client: e.target.value})} 
+                                    className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-xl p-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none" 
+                                 />
+                                 <datalist id="client-options">
+                                    {uniqueClients.map(client => (
+                                        <option key={client} value={client} />
+                                    ))}
+                                 </datalist>
+                            </div>
+                             <div>
+                                 <label className="block text-[10px] text-gray-500 uppercase font-black mb-1">Número Presupuesto</label>
+                                 <input type="number" placeholder="" value={projectForm.budgetNum} onChange={e => setProjectForm({...projectForm, budgetNum: e.target.value})} className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-xl p-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none" />
+                            </div>
+                             <div>
+                                 <label className="block text-[10px] text-gray-500 uppercase font-black mb-1">Valoración</label>
+                                 <select value={projectForm.valuation} onChange={e => setProjectForm({...projectForm, valuation: e.target.value as any})} className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-xl p-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none">
+                                     <option value="POR HORAS">POR HORAS</option>
+                                     <option value="PRECIO CERRADO">PRECIO CERRADO</option>
+                                     <option value="PRESUPUESTO">PRESUPUESTO</option>
+                                 </select>
+                            </div>
+                             <div>
+                                 <label className="block text-[10px] text-gray-500 uppercase font-black mb-1">Técnico Responsable</label>
+                                 <select value={projectForm.responsibleTech} onChange={e => setProjectForm({...projectForm, responsibleTech: e.target.value})} className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-xl p-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none">
+                                     <option value="">Seleccionar responsable...</option>
+                                     {data.technicians.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
+                                 </select>
+                            </div>
+                            <div>
+                                 <label className="block text-[10px] text-gray-500 uppercase font-black mb-1">Fecha Inicio</label>
+                                 <div className="flex gap-2">
+                                    <input type="date" value={projectForm.startDate} onChange={e => setProjectForm({...projectForm, startDate: e.target.value})} className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-xl p-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none dark:[color-scheme:dark]" />
+                                    <button 
+                                        type="button" 
+                                        onClick={() => openGoogleCalendar(projectForm)}
+                                        title="Añadir a Google Calendar"
+                                        className="bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 rounded-xl p-3 hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-colors"
+                                    >
+                                        📅
+                                    </button>
+                                 </div>
+                            </div>
+                            <div className="flex flex-col justify-center gap-3">
+                                 <label className="flex items-center gap-3 cursor-pointer bg-gray-100 dark:bg-gray-800/50 p-2 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-gray-400 dark:hover:border-gray-500 transition-colors">
+                                     <input type="checkbox" checked={projectForm.isFinished} onChange={e => setProjectForm({...projectForm, isFinished: e.target.checked})} className="w-5 h-5 rounded border-gray-400 dark:border-gray-600 text-brand-teal bg-white dark:bg-gray-800 focus:ring-0" />
+                                     <span className="text-xs font-bold uppercase text-gray-700 dark:text-white">Obra Terminada</span>
+                                 </label>
+                                 <label className="flex items-center gap-3 cursor-pointer bg-gray-100 dark:bg-gray-800/50 p-2 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-gray-400 dark:hover:border-gray-500 transition-colors">
+                                     <input type="checkbox" checked={projectForm.isInvoiced} onChange={e => setProjectForm({...projectForm, isInvoiced: e.target.checked})} className="w-5 h-5 rounded border-gray-400 dark:border-gray-600 text-brand-teal bg-white dark:bg-gray-800 focus:ring-0" />
+                                     <span className="text-xs font-bold uppercase text-gray-700 dark:text-white">Facturado</span>
+                                 </label>
+                                 <label className="flex items-center gap-3 cursor-pointer bg-gray-100 dark:bg-gray-800/50 p-2 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-gray-400 dark:hover:border-gray-500 transition-colors">
+                                     <input type="checkbox" checked={projectForm.hasWarning} onChange={e => setProjectForm({...projectForm, hasWarning: e.target.checked})} className="w-5 h-5 rounded border-gray-400 dark:border-gray-600 text-brand-teal bg-white dark:bg-gray-800 focus:ring-0" />
+                                     <span className="text-xs font-bold uppercase text-gray-700 dark:text-white">AVISO</span>
+                                 </label>
+                            </div>
+                        </div>
+                   </div>
+                   
+                   <div className="mt-6">
+                        <label className="block text-[10px] text-gray-500 uppercase font-black mb-2 ml-1">Datos Adicionales (Enlaces, Notas...)</label>
+                        <textarea placeholder="Pegar enlaces a Drive, notas importantes, etc..." rows={3} value={projectForm.notes} onChange={e => setProjectForm({...projectForm, notes: e.target.value})} className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-xl p-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none" />
+                   </div>
+
+                   <button onClick={handleSaveProject} className="w-full mt-8 bg-brand-teal hover:bg-teal-600 text-white font-bold py-4 rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 transform active:scale-[0.99]">
+                       <SaveIcon className="w-5 h-5" /> {isEditingProject ? 'Actualizar Obra' : 'Crear Obra'}
+                   </button>
+                </div>
+
+                {/* LISTADO DE OBRAS */}
+                <div className="space-y-4 pt-6">
+                    <h3 className="text-gray-400 font-black mb-3 uppercase text-[11px] tracking-[3px] flex items-center gap-2">
+                        <BriefcaseIcon className="w-4 h-4" /> Listado de Obras
+                    </h3>
+                    <div className="space-y-3">
+                        {(!sortedProjects || sortedProjects.length === 0) && (
+                             <p className="text-center py-10 text-gray-500 italic">No hay obras registradas con el nuevo sistema.</p>
+                        )}
+                        {sortedProjects.map((p) => {
+                             const isInactive = p.isFinished || p.isInvoiced;
+                             const warningStyle = !isInactive && p.hasWarning ? getWarningStyle(p.warningDate) : '';
+                             
+                             return (
+                                 <div key={p.id} className={`bg-white dark:bg-brand-panel p-5 rounded-xl border flex flex-col md:flex-row justify-between items-start md:items-center gap-4 group hover:border-brand-teal/50 transition-all ${isInactive ? 'opacity-60 border-gray-300 dark:border-gray-800 bg-gray-100 dark:bg-gray-900/20' : warningStyle ? warningStyle : 'border-gray-200 dark:border-gray-700'}`}>
+                                      <div className="flex-1 w-full">
+                                          <div className="flex items-center gap-3 mb-1">
+                                              <button 
+                                                  onClick={() => viewProjectHistory(p.id)}
+                                                  className={`font-black px-2 py-0.5 rounded text-sm tracking-wider hover:scale-105 transition-transform cursor-pointer ${isInactive ? 'bg-gray-200 dark:bg-gray-800 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300' : 'bg-brand-teal/10 dark:bg-brand-teal/20 text-brand-teal hover:bg-brand-teal hover:text-white'}`}
+                                                  title="Ver historial de partes"
+                                              >
+                                                  {p.id}
+                                              </button>
+                                              <span className={`font-bold uppercase text-sm truncate ${isInactive ? 'text-gray-500 line-through decoration-brand-teal/50' : 'text-gray-900 dark:text-white'}`}>{p.name}</span>
+                                              {p.isFinished && <span className="bg-green-100 dark:bg-green-900/40 text-green-600 dark:text-green-400 text-[9px] font-black px-2 py-0.5 rounded uppercase border border-green-200 dark:border-green-800">Terminada</span>}
+                                              {p.isInvoiced && <span className="bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 text-[9px] font-black px-2 py-0.5 rounded uppercase border border-blue-200 dark:border-blue-800">Facturada</span>}
+                                              {!isInactive && p.hasWarning && getWarningBadge(p.warningDate)}
+                                          </div>
+                                          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-2 text-[10px] text-gray-400 uppercase font-medium">
+                                              <div>
+                                                  <span className="block text-gray-500 dark:text-gray-600 mb-0.5">Cliente</span>
+                                                  <span className="text-gray-700 dark:text-gray-300">{p.client}</span>
+                                              </div>
+                                              <div>
+                                                  <span className="block text-gray-500 dark:text-gray-600 mb-0.5">Responsable</span>
+                                                  <span className="text-gray-700 dark:text-gray-300">{p.responsibleTech || '-'}</span>
+                                              </div>
+                                              <div>
+                                                  <span className="block text-gray-500 dark:text-gray-600 mb-0.5">Valoración</span>
+                                                  <span className="text-gray-700 dark:text-gray-300">{p.valuation}</span>
+                                              </div>
+                                              <div>
+                                                  <span className="block text-gray-500 dark:text-gray-600 mb-0.5">Presupuesto</span>
+                                                  <span className="text-gray-700 dark:text-gray-300">{p.budgetNum || '-'}</span>
+                                              </div>
+                                          </div>
+                                          {p.notes && (
+                                            <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-800">
+                                                <p className="text-[10px] text-gray-500 italic truncate">{p.notes}</p>
+                                            </div>
+                                          )}
+                                      </div>
+                                      <div className="flex gap-2 self-end md:self-center">
+                                          <button onClick={() => editProject(p)} className="p-2 text-gray-400 hover:text-brand-teal bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors"><EditIcon className="w-4 h-4" /></button>
+                                          <button onClick={() => deleteProject(p.id)} className="p-2 text-gray-400 hover:text-red-500 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors"><TrashIcon className="w-4 h-4" /></button>
+                                      </div>
+                                 </div>
+                             );
+                        })}
+                    </div>
+                </div>
+            </div>
+        )}
+
+        {/* ... (Rest of existing tabs: vehicles, daily, settings) ... */}
         {tab === 'vehicles' && (
             <div className="space-y-4">
-                <div className="bg-gray-900/50 p-4 rounded-xl border border-gray-700 flex flex-col sm:flex-row gap-2">
-                    <input type="text" placeholder="Nombre/Matrícula del Vehículo" value={newItemName} onChange={e => setNewItemName(e.target.value)} className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-4 py-2" />
+                <div className="bg-gray-50 dark:bg-gray-900/50 p-4 rounded-xl border border-gray-200 dark:border-gray-700 flex flex-col sm:flex-row gap-2">
+                    <input type="text" placeholder="Nombre/Matrícula del Vehículo" value={newItemName} onChange={e => setNewItemName(e.target.value)} className="flex-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-4 py-2 text-gray-900 dark:text-white" />
                     <button onClick={() => handleAdd('vehicles')} className="bg-brand-teal text-white px-6 py-2 rounded-lg font-bold">Añadir</button>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {data.vehicles.map((v, i) => (
-                    <div key={i} className="bg-gray-900/30 p-4 rounded-xl border border-gray-700 flex justify-between items-center group">
+                    <div key={i} className="bg-gray-50 dark:bg-gray-900/30 p-4 rounded-xl border border-gray-200 dark:border-gray-700 flex justify-between items-center group">
                         {editingIndex === i ? (
                             <div className="flex-1 flex gap-2">
-                                <input value={editValue} onChange={e => setEditValue(e.target.value)} className="flex-1 bg-gray-800 border border-brand-teal rounded px-2 py-1 text-xs" />
+                                <input value={editValue} onChange={e => setEditValue(e.target.value)} className="flex-1 bg-white dark:bg-gray-800 border border-brand-teal rounded px-2 py-1 text-xs text-gray-900 dark:text-white" />
                                 <button onClick={() => saveEditing('vehicles')} className="text-green-500"><SaveIcon className="w-4 h-4" /></button>
                                 <button onClick={cancelEditing} className="text-red-500"><XIcon className="w-4 h-4" /></button>
                             </div>
@@ -696,11 +1343,11 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                             <>
                                 <div className="flex items-center gap-3">
                                     <div className="w-8 h-8 bg-brand-teal/20 rounded-full flex items-center justify-center text-brand-teal font-bold"><TruckIcon className="w-4 h-4" /></div>
-                                    <p className="font-bold text-sm text-gray-200">{v}</p>
+                                    <p className="font-bold text-sm text-gray-800 dark:text-gray-200">{v}</p>
                                 </div>
                                 <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <button onClick={() => startEditing(i, v, 'vehicles')} className="text-gray-500 hover:text-brand-teal"><EditIcon className="w-4 h-4" /></button>
-                                    <button onClick={() => handleDelete('vehicles', i)} className="text-gray-500 hover:text-red-500"><TrashIcon className="w-4 h-4" /></button>
+                                    <button onClick={() => startEditing(i, v, 'vehicles')} className="text-gray-400 dark:text-gray-500 hover:text-brand-teal"><EditIcon className="w-4 h-4" /></button>
+                                    <button onClick={() => handleDelete('vehicles', i)} className="text-gray-400 dark:text-gray-500 hover:text-red-500"><TrashIcon className="w-4 h-4" /></button>
                                 </div>
                             </>
                         )}
@@ -715,19 +1362,19 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
 
         {tab === 'settings' && (
             <div className="max-w-2xl mx-auto space-y-6">
-                <div className="bg-gray-900/50 p-6 rounded-2xl border border-gray-700">
-                    <h3 className="text-lg font-bold text-white mb-4">Configuración</h3>
+                <div className="bg-white dark:bg-gray-900/50 p-6 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-md">
+                    <h3 className="text-lg font-bold text-gray-800 dark:text-white mb-4">Configuración</h3>
                     <div className="space-y-4">
                         <div>
                             <label className="block text-xs text-gray-500 uppercase mb-1">Pass Admin</label>
-                            <input type="text" value={newAdminPwd} onChange={e => setNewAdminPwd(e.target.value)} className="w-full bg-gray-800 border border-gray-700 rounded-lg p-2 text-white font-mono" />
+                            <input type="text" value={newAdminPwd} onChange={e => setNewAdminPwd(e.target.value)} className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg p-2 text-gray-900 dark:text-white font-mono" />
                         </div>
                         <div>
                             <label className="block text-xs text-gray-500 uppercase mb-1">Firebase Config</label>
-                            <textarea value={firebaseConfigInput} onChange={e => setFirebaseConfigInput(e.target.value)} className="w-full bg-gray-900 border border-gray-700 rounded-lg p-2 text-white font-mono text-[9px]" rows={5} />
+                            <textarea value={firebaseConfigInput} onChange={e => setFirebaseConfigInput(e.target.value)} className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg p-2 text-gray-900 dark:text-white font-mono text-[9px]" rows={5} />
                         </div>
                         <button onClick={savePasswords} className="w-full bg-brand-teal text-white font-bold py-3 rounded-xl">Guardar</button>
-                        {pwdMsg && <p className="text-center text-xs text-green-400">{pwdMsg}</p>}
+                        {pwdMsg && <p className="text-center text-xs text-green-500">{pwdMsg}</p>}
                     </div>
                 </div>
             </div>

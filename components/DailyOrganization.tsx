@@ -169,20 +169,20 @@ const DailyOrganization: React.FC<DailyOrganizationProps> = ({ isReadOnly = fals
   const disponibles = trabajadores.filter(t => !t.asignado);
 
   return (
-    <div className="text-gray-200 animate-fade-in">
+    <div className="text-gray-900 dark:text-gray-200 animate-fade-in">
         {onBack && (
             <button 
                 onClick={onBack}
-                className="mb-4 flex items-center gap-2 text-gray-400 hover:text-white transition-colors py-2 px-4 rounded hover:bg-gray-800 border border-transparent hover:border-gray-700"
+                className="mb-4 flex items-center gap-2 text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-colors py-2 px-4 rounded hover:bg-gray-100 dark:hover:bg-gray-800 border border-transparent hover:border-gray-300 dark:hover:border-gray-700"
             >
                 ← Volver al Menú
             </button>
         )}
 
-        <div className="bg-gray-900/50 rounded-xl border border-gray-700 p-6 mb-6">
+        <div className="bg-white dark:bg-gray-900/50 rounded-xl border border-gray-200 dark:border-gray-700 p-6 mb-6 shadow-md">
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
             <div>
-              <h1 className="text-2xl font-bold text-brand-lime flex items-center gap-2">
+              <h1 className="text-2xl font-bold text-brand-teal dark:text-brand-lime flex items-center gap-2">
                  <CalendarIcon className="w-8 h-8" />
                  Organización Diaria
               </h1>
@@ -194,49 +194,49 @@ const DailyOrganization: React.FC<DailyOrganizationProps> = ({ isReadOnly = fals
                 value={fecha} 
                 onChange={(e) => !isReadOnly && onUpdate({...data, fecha: e.target.value})} 
                 disabled={isReadOnly}
-                className={`px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white ${isReadOnly ? 'opacity-70 cursor-not-allowed' : ''}`} 
+                className={`px-3 py-2 bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white ${isReadOnly ? 'opacity-70 cursor-not-allowed' : ''}`} 
               />
             </div>
           </div>
 
           {!isReadOnly && (
             <>
-              <div className="flex gap-2 mb-6 p-3 bg-gray-800/50 rounded-lg flex-wrap border border-gray-700">
-                <button onClick={exportar} className="px-4 py-2 bg-green-700 text-white rounded-lg hover:bg-green-600 text-sm">📥 Exportar</button>
-                <label className="px-4 py-2 bg-brand-teal text-white rounded-lg hover:bg-teal-600 cursor-pointer text-sm">
+              <div className="flex gap-2 mb-6 p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg flex-wrap border border-gray-200 dark:border-gray-700">
+                <button onClick={exportar} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-500 text-sm shadow-sm">📥 Exportar</button>
+                <label className="px-4 py-2 bg-brand-teal text-white rounded-lg hover:bg-teal-600 cursor-pointer text-sm shadow-sm">
                   📤 Importar
                   <input type="file" accept=".json" onChange={importar} className="hidden" />
                 </label>
-                <button onClick={reset} className="px-4 py-2 bg-red-700 text-white rounded-lg hover:bg-red-600 text-sm">🗑️ Resetear</button>
+                <button onClick={reset} className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-500 text-sm shadow-sm">🗑️ Resetear</button>
               </div>
 
               <div className="grid md:grid-cols-2 gap-4">
-                <div className="bg-gray-800 p-4 rounded-lg border border-gray-700">
-                  <h3 className="font-semibold text-blue-400 mb-3">🏢 Agregar Trabajo</h3>
+                <div className="bg-gray-100 dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-700">
+                  <h3 className="font-semibold text-blue-600 dark:text-blue-400 mb-3">🏢 Agregar Trabajo</h3>
                   <div className="flex gap-2">
                     <input 
                         type="text" 
                         value={nuevo} 
                         onChange={(e) => setNuevo(e.target.value)} 
                         placeholder="Nombre del trabajo" 
-                        className="flex-1 px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-brand-teal outline-none" 
+                        className="flex-1 px-3 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-teal outline-none" 
                         onKeyPress={(e) => e.key === 'Enter' && addTrabajo()} 
                     />
-                    <button onClick={addTrabajo} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-500">+</button>
+                    <button onClick={addTrabajo} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-500 shadow-sm">+</button>
                   </div>
                 </div>
-                <div className="bg-gray-800 p-4 rounded-lg border border-gray-700">
-                  <h3 className="font-semibold text-green-400 mb-3">👥 Agregar Trabajador</h3>
+                <div className="bg-gray-100 dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-700">
+                  <h3 className="font-semibold text-green-600 dark:text-green-400 mb-3">👥 Agregar Trabajador</h3>
                   <div className="flex gap-2">
                     <input 
                         type="text" 
                         value={nuevoT} 
                         onChange={(e) => setNuevoT(e.target.value)} 
                         placeholder="Nombre del trabajador" 
-                        className="flex-1 px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-brand-teal outline-none" 
+                        className="flex-1 px-3 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-teal outline-none" 
                         onKeyPress={(e) => e.key === 'Enter' && addTrabajador()} 
                     />
-                    <button onClick={addTrabajador} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-500">+</button>
+                    <button onClick={addTrabajador} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-500 shadow-sm">+</button>
                   </div>
                 </div>
               </div>
@@ -245,23 +245,23 @@ const DailyOrganization: React.FC<DailyOrganizationProps> = ({ isReadOnly = fals
         </div>
 
         <div className="grid lg:grid-cols-4 gap-6">
-          <div className="bg-brand-panel rounded-xl shadow-lg border border-gray-700 p-6">
-            <h2 className="text-xl font-bold mb-4 text-white">👥 Disponibles <span className="text-sm bg-gray-700 px-2 py-1 rounded-full text-white">{disponibles.length}</span></h2>
+          <div className="bg-white dark:bg-brand-panel rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 p-6">
+            <h2 className="text-xl font-bold mb-4 text-gray-800 dark:text-white">👥 Disponibles <span className="text-sm bg-gray-200 dark:bg-gray-700 px-2 py-1 rounded-full text-gray-700 dark:text-white">{disponibles.length}</span></h2>
             <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
               {disponibles.map(t => (
                 <div 
                     key={t.id} 
                     draggable={!isReadOnly} 
                     onDragStart={() => !isReadOnly && setDragged(t)} 
-                    className={`flex items-center justify-between p-4 rounded-xl border-2 border-dashed transition-all transform ${!isReadOnly ? 'cursor-move hover:shadow-lg hover:bg-gray-800 hover:-translate-y-1' : ''}`} 
+                    className={`flex items-center justify-between p-4 rounded-xl border-2 border-dashed transition-all transform ${!isReadOnly ? 'cursor-move hover:shadow-lg hover:bg-gray-50 dark:hover:bg-gray-800 hover:-translate-y-1' : ''}`} 
                     style={{ borderColor: t.color }}
                 >
                   <div className="flex items-center gap-4">
                     <div className="w-5 h-5 rounded-full flex-shrink-0" style={{ backgroundColor: t.color }}></div>
-                    <span className="font-bold text-lg text-white break-words">{t.nombre}</span>
+                    <span className="font-bold text-lg text-gray-800 dark:text-white break-words">{t.nombre}</span>
                   </div>
                   {!isReadOnly && (
-                    <button onClick={() => delTrabajador(t.id)} className="text-red-400 hover:text-red-300 p-2">
+                    <button onClick={() => delTrabajador(t.id)} className="text-red-500 dark:text-red-400 hover:text-red-600 dark:hover:text-red-300 p-2">
                         <TrashIcon className="w-5 h-5" />
                     </button>
                   )}
@@ -277,7 +277,7 @@ const DailyOrganization: React.FC<DailyOrganizationProps> = ({ isReadOnly = fals
                 key={trabajo.id} 
                 onDragOver={(e) => e.preventDefault()} 
                 onDrop={(e) => drop(e, trabajo)} 
-                className="bg-brand-panel rounded-xl shadow-lg overflow-hidden border-2 border-dashed flex flex-col" 
+                className="bg-white dark:bg-brand-panel rounded-xl shadow-lg overflow-hidden border-2 border-dashed flex flex-col" 
                 style={{ borderColor: trabajo.color }}
               >
                 <div className="p-4 text-white font-bold" style={{ backgroundColor: trabajo.color }}>
@@ -322,27 +322,27 @@ const DailyOrganization: React.FC<DailyOrganizationProps> = ({ isReadOnly = fals
                   </div>
                   <div className="text-xs text-center border-t border-white border-opacity-30 pt-2 text-white/90">📅 {new Date(fecha).toLocaleDateString('es-ES')}</div>
                 </div>
-                <div className="p-4 flex-1 bg-gray-900/30">
+                <div className="p-4 flex-1 bg-gray-50 dark:bg-gray-900/30">
                   <div className="flex justify-between items-center mb-3">
-                    <span className="text-sm font-semibold text-gray-400">Asignados</span>
-                    <span className="bg-gray-800 px-2 py-1 rounded-full text-xs text-gray-300">{(trabajo.trabajadores || []).length}</span>
+                    <span className="text-sm font-semibold text-gray-500 dark:text-gray-400">Asignados</span>
+                    <span className="bg-gray-200 dark:bg-gray-800 px-2 py-1 rounded-full text-xs text-gray-600 dark:text-gray-300">{(trabajo.trabajadores || []).length}</span>
                   </div>
                   <div className="space-y-3 min-h-[100px]">
                     {(trabajo.trabajadores || []).map(t => (
-                      <div key={t.id} className="flex items-center justify-between p-3 rounded-lg shadow-sm bg-gray-800 border border-gray-700">
+                      <div key={t.id} className="flex items-center justify-between p-3 rounded-lg shadow-sm bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
                         <div className="flex items-center gap-3">
                           <div className="w-4 h-4 rounded-full flex-shrink-0" style={{ backgroundColor: t.color }}></div>
-                          <span className="text-base font-bold text-gray-100 break-words">{t.nombre}</span>
+                          <span className="text-base font-bold text-gray-800 dark:text-gray-100 break-words">{t.nombre}</span>
                         </div>
                         {!isReadOnly && (
-                            <button onClick={() => remove(trabajo.id, t.id)} className="text-red-400 hover:text-red-300 text-xs flex-shrink-0 p-1">
+                            <button onClick={() => remove(trabajo.id, t.id)} className="text-red-500 dark:text-red-400 hover:text-red-600 dark:hover:text-red-300 text-xs flex-shrink-0 p-1">
                                 <TrashIcon className="w-4 h-4" />
                             </button>
                         )}
                       </div>
                     ))}
                     {(!trabajo.trabajadores || trabajo.trabajadores.length === 0) && (
-                      <div className="text-center text-gray-500 py-6 border-2 border-dashed border-gray-700 rounded-lg">
+                      <div className="text-center text-gray-500 py-6 border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-lg">
                         <p className="text-xs">
                             {isReadOnly ? 'Sin personal asignado' : 'Arrastra trabajadores aquí'}
                         </p>

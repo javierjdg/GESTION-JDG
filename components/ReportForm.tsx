@@ -1,10 +1,10 @@
 
-import React, { useState, useEffect, useRef } from 'react';
-import { WorkReport, ExpenseTicket } from '../App';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { WorkReport, ExpenseTicket, ProjectData } from '../App';
 import { SaveIcon, ChevronDownIcon, TrashIcon, CameraIcon, ImageIcon } from './icons';
 
 interface ReportFormProps {
-  projects: string[];
+  projects: ProjectData[];
   vehicles: string[];
   initialData?: WorkReport | null;
   onSave: (report: WorkReport) => void;
@@ -60,6 +60,13 @@ const ReportForm: React.FC<ReportFormProps> = ({ projects, vehicles, initialData
     }
   }, [initialData]);
 
+  // Filtramos las obras: Mostramos solo las NO terminadas, O la que ya está seleccionada (para ediciones)
+  const availableProjects = useMemo(() => {
+    return [...projects]
+      .filter(p => !p.isFinished || (initialData && p.id === initialData.projectNum))
+      .reverse(); // Las más nuevas primero
+  }, [projects, initialData]);
+
   const compressImage = (base64Str: string): Promise<string> => {
     return new Promise((resolve) => {
       const img = new Image();
@@ -95,7 +102,6 @@ const ReportForm: React.FC<ReportFormProps> = ({ projects, vehicles, initialData
   const validate = () => {
     const newErrors: Record<string, string> = {};
     if (!formData.projectNum) newErrors.projectNum = 'Requerido';
-    else if (!/^\d{5}$/.test(formData.projectNum)) newErrors.projectNum = 'Debe tener 5 cifras';
     
     if (formData.isDriver) {
         if (!formData.vehicle) newErrors.vehicle = 'Requerido al ser conductor';
@@ -181,18 +187,18 @@ const ReportForm: React.FC<ReportFormProps> = ({ projects, vehicles, initialData
   };
 
   return (
-    <div className="bg-brand-panel rounded-xl border border-gray-700 p-4 md:p-6 shadow-xl relative pb-20">
+    <div className="bg-white dark:bg-brand-panel rounded-xl border border-gray-200 dark:border-gray-700 p-4 md:p-6 shadow-xl relative pb-20 transition-colors duration-300">
       <div className="absolute top-0 left-0 w-full h-1 bg-brand-teal rounded-t-xl"></div>
       
       {isCompressing && (
-        <div className="absolute inset-0 z-50 bg-brand-dark/70 backdrop-blur-sm flex flex-col items-center justify-center rounded-xl">
+        <div className="absolute inset-0 z-50 bg-white/70 dark:bg-brand-dark/70 backdrop-blur-sm flex flex-col items-center justify-center rounded-xl">
            <div className="w-12 h-12 border-4 border-brand-teal border-t-brand-lime rounded-full animate-spin mb-4"></div>
-           <p className="text-sm font-black text-brand-lime uppercase tracking-widest animate-pulse">Optimizando Imagen...</p>
+           <p className="text-sm font-black text-brand-teal dark:text-brand-lime uppercase tracking-widest animate-pulse">Optimizando Imagen...</p>
         </div>
       )}
 
-      <h2 className="text-xl font-bold mb-6 flex items-center gap-2 text-white">
-        <span className="text-brand-lime">{initialData ? '✏️' : '📝'}</span> {initialData ? 'Editar Parte' : 'Nuevo Parte'}
+      <h2 className="text-xl font-bold mb-6 flex items-center gap-2 text-gray-800 dark:text-white">
+        <span className="text-brand-teal dark:text-brand-lime">{initialData ? '✏️' : '📝'}</span> {initialData ? 'Editar Parte' : 'Nuevo Parte'}
       </h2>
       
       <form onSubmit={handleSubmit} className="space-y-6">
@@ -216,19 +222,17 @@ const ReportForm: React.FC<ReportFormProps> = ({ projects, vehicles, initialData
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-brand-lime mb-1">Obra *</label>
+            <label className="block text-sm font-medium text-brand-teal dark:text-brand-lime mb-1">Obra *</label>
             <div className="relative">
                 <select
                 value={formData.projectNum}
                 onChange={e => setFormData({...formData, projectNum: e.target.value})}
-                className={`w-full bg-gray-900 border ${errors.projectNum ? 'border-red-500' : 'border-gray-600'} rounded-lg pl-4 pr-10 py-3 text-white focus:ring-2 focus:ring-brand-teal outline-none appearance-none`}
+                className={`w-full bg-gray-50 dark:bg-gray-900 border ${errors.projectNum ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'} rounded-lg pl-4 pr-10 py-3 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-teal outline-none appearance-none`}
                 >
                 <option value="">Seleccionar Obra...</option>
-                {projects.map(p => {
-                    const splitIdx = p.indexOf(' - ');
-                    const id = splitIdx !== -1 ? p.substring(0, splitIdx) : p;
-                    return <option key={p} value={id}>{p}</option>
-                })}
+                {availableProjects.map(p => (
+                    <option key={p.id} value={p.id}>{p.id} - {p.name}</option>
+                ))}
                 </select>
                 <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-gray-400">
                     <ChevronDownIcon className="w-5 h-5" />
@@ -238,40 +242,40 @@ const ReportForm: React.FC<ReportFormProps> = ({ projects, vehicles, initialData
           </div>
           
           <div>
-            <label className="block text-sm font-medium text-brand-lime mb-1">Fecha *</label>
+            <label className="block text-sm font-medium text-brand-teal dark:text-brand-lime mb-1">Fecha *</label>
             <input
               type="date"
               value={formData.date}
               onChange={e => setFormData({...formData, date: e.target.value})}
-              className="w-full bg-gray-900 border border-gray-600 rounded-lg px-4 py-3 text-white focus:ring-2 focus:ring-brand-teal outline-none [color-scheme:dark] cursor-pointer"
+              className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg px-4 py-3 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-teal outline-none dark:[color-scheme:dark] cursor-pointer"
             />
           </div>
         </div>
 
-        <div className="bg-gray-900/30 p-4 rounded-lg border border-gray-700 space-y-4">
+        <div className="bg-gray-50 dark:bg-gray-900/30 p-4 rounded-lg border border-gray-200 dark:border-gray-700 space-y-4">
             <div className="grid grid-cols-2 gap-4">
                 <div>
-                    <label className="block text-sm font-medium text-gray-400 mb-1">Entrada</label>
+                    <label className="block text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">Entrada</label>
                     <input
                     type="time"
                     value={formData.startTime}
                     onChange={e => setFormData({...formData, startTime: e.target.value})}
-                    className="w-full bg-gray-900 border border-gray-600 rounded-lg px-4 py-3 text-white focus:ring-2 focus:ring-brand-teal outline-none [color-scheme:dark] cursor-pointer"
+                    className="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg px-4 py-3 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-teal outline-none dark:[color-scheme:dark] cursor-pointer"
                     />
                 </div>
                 <div>
-                    <label className="block text-sm font-medium text-gray-400 mb-1">Salida</label>
+                    <label className="block text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">Salida</label>
                     <input
                     type="time"
                     value={formData.endTime}
                     onChange={e => setFormData({...formData, endTime: e.target.value})}
-                    className="w-full bg-gray-900 border border-gray-600 rounded-lg px-4 py-3 text-white focus:ring-2 focus:ring-brand-teal outline-none [color-scheme:dark] cursor-pointer"
+                    className="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg px-4 py-3 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-teal outline-none dark:[color-scheme:dark] cursor-pointer"
                     />
                 </div>
             </div>
             
-            <div className="border-t border-gray-700 pt-4">
-                 <h4 className="text-sm font-medium text-brand-lime mb-2 uppercase tracking-wide">Horas Extra</h4>
+            <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
+                 <h4 className="text-sm font-medium text-brand-teal dark:text-brand-lime mb-2 uppercase tracking-wide">Horas Extra</h4>
                  <div className="grid grid-cols-2 gap-4">
                     <div>
                         <label className="block text-xs font-medium text-gray-500 mb-1">Nº Horas</label>
@@ -281,7 +285,7 @@ const ReportForm: React.FC<ReportFormProps> = ({ projects, vehicles, initialData
                         step="0.5"
                         value={formData.overtimeHours}
                         onChange={e => setFormData({...formData, overtimeHours: Number(e.target.value)})}
-                        className="w-full bg-gray-800 border border-gray-600 rounded-lg px-4 py-2.5 text-white focus:ring-2 focus:ring-brand-teal outline-none"
+                        className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg px-4 py-2.5 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-teal outline-none"
                         />
                     </div>
                     <div>
@@ -290,7 +294,7 @@ const ReportForm: React.FC<ReportFormProps> = ({ projects, vehicles, initialData
                             <select
                                 value={formData.overtimeType}
                                 onChange={e => setFormData({...formData, overtimeType: e.target.value as any})}
-                                className="w-full bg-gray-800 border border-gray-600 rounded-lg pl-4 pr-10 py-2.5 text-white focus:ring-2 focus:ring-brand-teal outline-none appearance-none"
+                                className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg pl-4 pr-10 py-2.5 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-teal outline-none appearance-none"
                             >
                                 <option value="NORMAL">NORMAL</option>
                                 <option value="NOCTURNA">NOCTURNA</option>
@@ -306,23 +310,23 @@ const ReportForm: React.FC<ReportFormProps> = ({ projects, vehicles, initialData
         </div>
 
         <div>
-           <label className="block text-sm font-medium text-gray-400 mb-1">Descripción del Trabajo</label>
+           <label className="block text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">Descripción del Trabajo</label>
            <textarea
              rows={3}
              value={formData.description}
              onChange={e => setFormData({...formData, description: e.target.value})}
-             className="w-full bg-gray-900 border border-gray-600 rounded-lg px-4 py-3 text-white focus:ring-2 focus:ring-brand-teal outline-none"
+             className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg px-4 py-3 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-teal outline-none"
              placeholder="Detalla las tareas realizadas..."
            />
         </div>
 
-        <div className="bg-gray-900/30 p-4 rounded-lg border border-gray-700">
-          <label className="block text-sm font-medium text-brand-lime mb-2">Vehículo *</label>
+        <div className="bg-gray-50 dark:bg-gray-900/30 p-4 rounded-lg border border-gray-200 dark:border-gray-700">
+          <label className="block text-sm font-medium text-brand-teal dark:text-brand-lime mb-2">Vehículo *</label>
           <div className="relative">
             <select
                 value={formData.vehicle}
                 onChange={e => setFormData({...formData, vehicle: e.target.value})}
-                className={`w-full bg-gray-800 border ${errors.vehicle ? 'border-red-500' : 'border-gray-600'} rounded-lg pl-4 pr-10 py-3 text-white focus:ring-2 focus:ring-brand-teal outline-none appearance-none mb-3`}
+                className={`w-full bg-white dark:bg-gray-800 border ${errors.vehicle ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'} rounded-lg pl-4 pr-10 py-3 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-teal outline-none appearance-none mb-3`}
             >
                 <option value="">Seleccionar vehículo...</option>
                 {vehicles.map(v => <option key={v} value={v}>{v}</option>)}
@@ -339,9 +343,9 @@ const ReportForm: React.FC<ReportFormProps> = ({ projects, vehicles, initialData
                 type="checkbox" 
                 checked={formData.isDriver}
                 onChange={e => setFormData({...formData, isDriver: e.target.checked})}
-                className="w-5 h-5 rounded border-gray-600 text-brand-teal focus:ring-brand-teal bg-gray-800"
+                className="w-5 h-5 rounded border-gray-300 dark:border-gray-600 text-brand-teal focus:ring-brand-teal bg-white dark:bg-gray-800"
                 />
-                <span className="text-gray-300">He sido el conductor</span>
+                <span className="text-gray-700 dark:text-gray-300">He sido el conductor</span>
             </label>
 
             {formData.isDriver && (
@@ -351,7 +355,7 @@ const ReportForm: React.FC<ReportFormProps> = ({ projects, vehicles, initialData
                         <select
                             value={formData.driverTripType}
                             onChange={e => setFormData({...formData, driverTripType: e.target.value as any})}
-                            className={`w-full bg-gray-800 border ${errors.driverTripType ? 'border-red-500' : 'border-gray-600'} rounded-lg pl-3 pr-8 py-2 text-white text-sm focus:ring-2 focus:ring-brand-teal outline-none appearance-none`}
+                            className={`w-full bg-white dark:bg-gray-800 border ${errors.driverTripType ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'} rounded-lg pl-3 pr-8 py-2 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-brand-teal outline-none appearance-none`}
                         >
                             <option value="">Seleccionar trayecto...</option>
                             <option value="IDA">A LA IDA</option>
@@ -368,8 +372,8 @@ const ReportForm: React.FC<ReportFormProps> = ({ projects, vehicles, initialData
           </div>
         </div>
 
-        <div className="bg-gray-900/30 p-4 rounded-lg border border-gray-700">
-           <h3 className="text-gray-300 font-medium mb-3">Gastos y Tickets (€)</h3>
+        <div className="bg-gray-50 dark:bg-gray-900/30 p-4 rounded-lg border border-gray-200 dark:border-gray-700">
+           <h3 className="text-gray-700 dark:text-gray-300 font-medium mb-3">Gastos y Tickets (€)</h3>
            <div className="space-y-4">
              {[
                { field: 'food', label: 'Comida' },
@@ -385,34 +389,34 @@ const ReportForm: React.FC<ReportFormProps> = ({ projects, vehicles, initialData
                         step="0.01" 
                         value={(formData.expenses as any)[item.field] || ''} 
                         onChange={e => handleExpenseChange(item.field, e.target.value)} 
-                        className="w-full bg-gray-800 border border-gray-600 rounded p-2 text-white focus:border-brand-teal outline-none" 
+                        className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded p-2 text-gray-900 dark:text-white focus:border-brand-teal outline-none" 
                       />
                   </div>
                   <div className="flex gap-1">
-                      <button type="button" onClick={() => openCamera(item.label)} className="bg-gray-700 hover:bg-gray-600 p-2.5 rounded text-brand-lime border border-gray-600 transition-colors">
+                      <button type="button" onClick={() => openCamera(item.label)} className="bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 p-2.5 rounded text-brand-teal dark:text-brand-lime border border-gray-300 dark:border-gray-600 transition-colors">
                         <CameraIcon className="w-5 h-5" />
                       </button>
-                      <button type="button" onClick={() => openGallery(item.label)} className="bg-gray-700 hover:bg-gray-600 p-2.5 rounded text-brand-teal border border-gray-600 transition-colors">
+                      <button type="button" onClick={() => openGallery(item.label)} className="bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 p-2.5 rounded text-brand-teal border border-gray-300 dark:border-gray-600 transition-colors">
                         <ImageIcon className="w-5 h-5" />
                       </button>
                   </div>
                </div>
              ))}
 
-             <div className="pt-2 border-t border-gray-700">
+             <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
                 <div className="flex items-end gap-2 mb-2">
                     <div className="flex-1">
                         <label className="text-xs text-gray-500 mb-1 block">Otros (Ferretería, etc.)</label>
                         <div className="flex gap-2">
-                            <input type="number" min="0" step="0.01" placeholder="0.00 €" value={formData.expenses.others || ''} onChange={e => handleExpenseChange('others', e.target.value)} className="w-1/3 bg-gray-800 border border-gray-600 rounded p-2 text-white focus:border-brand-teal outline-none" />
-                            <input type="text" placeholder="Concepto (ej. Ferretería)" value={formData.expenses.othersDesc} onChange={e => handleExpenseChange('othersDesc', e.target.value)} className="w-2/3 bg-gray-800 border border-gray-600 rounded p-2 text-white text-sm focus:border-brand-teal outline-none" />
+                            <input type="number" min="0" step="0.01" placeholder="0.00 €" value={formData.expenses.others || ''} onChange={e => handleExpenseChange('others', e.target.value)} className="w-1/3 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded p-2 text-gray-900 dark:text-white focus:border-brand-teal outline-none" />
+                            <input type="text" placeholder="Concepto (ej. Ferretería)" value={formData.expenses.othersDesc} onChange={e => handleExpenseChange('othersDesc', e.target.value)} className="w-2/3 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded p-2 text-gray-900 dark:text-white text-sm focus:border-brand-teal outline-none" />
                         </div>
                     </div>
                     <div className="flex gap-1">
-                        <button type="button" onClick={() => openCamera('Otros')} className="bg-gray-700 hover:bg-gray-600 p-2.5 rounded text-brand-lime border border-gray-600 transition-colors">
+                        <button type="button" onClick={() => openCamera('Otros')} className="bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 p-2.5 rounded text-brand-teal dark:text-brand-lime border border-gray-300 dark:border-gray-600 transition-colors">
                             <CameraIcon className="w-5 h-5" />
                         </button>
-                        <button type="button" onClick={() => openGallery('Otros')} className="bg-gray-700 hover:bg-gray-600 p-2.5 rounded text-brand-teal border border-gray-600 transition-colors">
+                        <button type="button" onClick={() => openGallery('Otros')} className="bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 p-2.5 rounded text-brand-teal border border-gray-300 dark:border-gray-600 transition-colors">
                             <ImageIcon className="w-5 h-5" />
                         </button>
                     </div>
@@ -421,12 +425,12 @@ const ReportForm: React.FC<ReportFormProps> = ({ projects, vehicles, initialData
            </div>
 
            {formData.tickets.length > 0 && (
-             <div className="mt-6 pt-4 border-t border-gray-700">
+             <div className="mt-6 pt-4 border-t border-gray-200 dark:border-gray-700">
                 <h4 className="text-[10px] uppercase font-bold text-gray-500 mb-3 tracking-widest">Tickets Adjuntos</h4>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                   {formData.tickets.map((t) => (
-                    <div key={t.timestamp} className="relative aspect-square bg-gray-950 rounded-lg overflow-hidden border border-gray-700 group">
-                      <img src={t.data} className="w-full h-full object-cover opacity-70 group-hover:opacity-100 transition-opacity" />
+                    <div key={t.timestamp} className="relative aspect-square bg-gray-100 dark:bg-gray-950 rounded-lg overflow-hidden border border-gray-300 dark:border-gray-700 group">
+                      <img src={t.data} className="w-full h-full object-cover opacity-90 dark:opacity-70 group-hover:opacity-100 transition-opacity" />
                       <div className="absolute top-1 left-1 bg-brand-teal/80 px-1.5 py-0.5 rounded text-[8px] font-bold text-white shadow-sm">{t.type}</div>
                       <button onClick={() => removeTicket(t.timestamp)} className="absolute top-1 right-1 bg-red-600/80 hover:bg-red-600 p-1.5 rounded-full text-white shadow-lg backdrop-blur-sm transition-all"><TrashIcon className="w-3 h-3"/></button>
                     </div>
@@ -441,7 +445,7 @@ const ReportForm: React.FC<ReportFormProps> = ({ projects, vehicles, initialData
           <button
             type="button"
             onClick={onCancel}
-            className="flex-1 bg-transparent border border-gray-600 text-gray-300 py-3 rounded-lg hover:bg-gray-700 font-medium"
+            className="flex-1 bg-transparent border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 py-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 font-medium transition-colors"
           >
             Cancelar
           </button>

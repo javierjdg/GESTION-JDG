@@ -7,7 +7,7 @@ import TechDashboard from './components/TechDashboard';
 import DailyOrganization, { DailyOrgData } from './components/DailyOrganization';
 import VacationManager from './components/VacationManager';
 import { Logo } from './components/Logo';
-import { LogOutIcon, WifiIcon, CloudIcon, AlertIcon, XIcon, CheckCircleIcon } from './components/icons';
+import { LogOutIcon, WifiIcon, CloudIcon, AlertIcon, XIcon, CheckCircleIcon, SunIcon, MoonIcon } from './components/icons';
 
 // IMPORTANTE: Esta URL DEBE estar entre comillas dobles ""
 const GOOGLE_DRIVE_WEBHOOK = "https://script.google.com/macros/s/AKfycbxCp4zaMn_dbdqoAm6G4Cw62gxKBrCac7snYqDRspM_6xCLRWKEbenCrQWx50N4awRMAQ/exec";
@@ -71,9 +71,38 @@ export interface TechUser {
   password: string;
 }
 
+export interface ProjectData {
+  id: string; // El ID calculado ej: 26001
+  name: string;
+  client: string;
+  budgetNum: string;
+  valuation: 'POR HORAS' | 'PRECIO CERRADO' | 'PRESUPUESTO';
+  responsibleTech: string;
+  startDate: string;
+  isFinished: boolean;
+  isInvoiced: boolean;
+  hasWarning?: boolean; // Nuevo campo para check de aviso
+  warningDate?: string; // Fecha en la que se activó el aviso
+  notes: string;
+}
+
+export interface Budget {
+  id: string;
+  budgetNum: string; // Numero de 5 cifras manual
+  name: string;
+  client: string;
+  deliveryDate: string;
+  excelName: string;
+  hasFolderData: boolean;
+  isFinished: boolean;
+  isAccepted: boolean;
+  comments: string;
+}
+
 export interface AppData {
   technicians: TechUser[];
-  projects: string[];
+  projectsDetailed: ProjectData[]; // Única fuente de verdad para obras
+  budgets: Budget[]; // Nueva colección de presupuestos
   vehicles: string[];
   reports: WorkReport[];
   dailyOrg: DailyOrgData;
@@ -109,7 +138,8 @@ const DEFAULT_DAILY_ORG: DailyOrgData = {
 
 const INITIAL_DATA: AppData = {
   technicians: [],
-  projects: [],
+  projectsDetailed: [],
+  budgets: [],
   vehicles: [],
   reports: [],
   vacationRequests: [],
@@ -131,6 +161,7 @@ const App: React.FC = () => {
   const [isUploadingTickets, setIsUploadingTickets] = useState(false);
   const [firebaseError, setFirebaseError] = useState<string | null>(null);
   const [showConfigGuide, setShowConfigGuide] = useState(false);
+  const [theme, setTheme] = useState<'light' | 'dark'>('dark');
   
   const isInternalUpdate = useRef(false);
   const isSyncingRef = useRef(false);
@@ -148,6 +179,31 @@ const App: React.FC = () => {
     }
     return INITIAL_DATA;
   });
+
+  // Theme Logic
+  useEffect(() => {
+    const savedTheme = localStorage.getItem('app_theme') as 'light' | 'dark' | null;
+    if (savedTheme) {
+        setTheme(savedTheme);
+    } else {
+        // Default to dark
+        setTheme('dark');
+    }
+  }, []);
+
+  useEffect(() => {
+      const root = window.document.documentElement;
+      if (theme === 'dark') {
+          root.classList.add('dark');
+      } else {
+          root.classList.remove('dark');
+      }
+      localStorage.setItem('app_theme', theme);
+  }, [theme]);
+
+  const toggleTheme = () => {
+      setTheme(prev => prev === 'dark' ? 'light' : 'dark');
+  };
 
   // Contador de vacaciones pendientes para el admin
   const pendingVacCount = useMemo(() => {
@@ -383,16 +439,16 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-brand-dark text-gray-100 font-sans pb-20">
+    <div className="min-h-screen bg-gray-100 dark:bg-brand-dark text-gray-900 dark:text-gray-100 font-sans pb-20 transition-colors duration-300">
       
       {showConfigGuide && (
           <div className="fixed inset-0 z-[200] bg-black/95 p-6 flex items-center justify-center backdrop-blur-md overflow-y-auto">
-              <div className="bg-brand-panel w-full max-w-lg rounded-2xl border border-gray-700 p-6 shadow-2xl space-y-6">
+              <div className="bg-white dark:bg-brand-panel w-full max-w-lg rounded-2xl border border-gray-200 dark:border-gray-700 p-6 shadow-2xl space-y-6">
                   <div className="flex justify-between items-center">
-                      <h2 className="text-xl font-black text-brand-lime uppercase tracking-widest">Guía de Solución</h2>
-                      <button onClick={() => setShowConfigGuide(false)} className="p-2 bg-gray-800 rounded-full"><XIcon className="w-5 h-5"/></button>
+                      <h2 className="text-xl font-black text-brand-teal dark:text-brand-lime uppercase tracking-widest">Guía de Solución</h2>
+                      <button onClick={() => setShowConfigGuide(false)} className="p-2 bg-gray-200 dark:bg-gray-800 rounded-full"><XIcon className="w-5 h-5"/></button>
                   </div>
-                  <div className="space-y-4 text-sm text-gray-300">
+                  <div className="space-y-4 text-sm text-gray-700 dark:text-gray-300">
                       <p>Para que las fotos se guarden organizadas en Drive:</p>
                       <ul className="list-disc ml-5 space-y-2">
                         <li>Asegúrate de haber pegado el código actualizado en Google Apps Script.</li>
@@ -416,54 +472,57 @@ const App: React.FC = () => {
       )}
 
       {isUploadingTickets && (
-        <div className="fixed inset-0 z-[60] bg-brand-dark/95 flex flex-col items-center justify-center backdrop-blur-sm">
+        <div className="fixed inset-0 z-[60] bg-white/90 dark:bg-brand-dark/95 flex flex-col items-center justify-center backdrop-blur-sm">
             <CloudIcon className="w-16 h-16 text-brand-teal animate-bounce mb-4" />
-            <p className="text-white font-black text-xl mb-2 text-center px-6">Organizando carpetas en Drive...</p>
-            <p className="text-brand-lime text-xs animate-pulse uppercase tracking-widest">No cierres la aplicación</p>
+            <p className="text-gray-900 dark:text-white font-black text-xl mb-2 text-center px-6">Organizando carpetas en Drive...</p>
+            <p className="text-brand-teal dark:text-brand-lime text-xs animate-pulse uppercase tracking-widest">No cierres la aplicación</p>
         </div>
       )}
 
       {view !== 'login' && (
-        <header className="bg-brand-panel border-b border-gray-700 p-4 sticky top-0 z-10 shadow-md">
+        <header className="bg-white dark:bg-brand-panel border-b border-gray-200 dark:border-gray-700 p-4 sticky top-0 z-10 shadow-md transition-colors duration-300">
           <div className="container mx-auto flex justify-between items-center">
             <div className="flex items-center gap-2 cursor-pointer" onClick={() => setView(userRole === 'admin' ? 'admin' : 'dashboard')}>
               <Logo className="h-8 w-auto" />
               <div>
-                <h1 className="font-bold text-lg leading-tight text-white hidden sm:block">Control de Obras</h1>
+                <h1 className="font-bold text-lg leading-tight text-gray-900 dark:text-white hidden sm:block">Control de Obras</h1>
                 <div className="flex items-center gap-2">
-                    <p className="text-[10px] text-brand-lime font-bold tracking-widest uppercase">{userRole === 'admin' ? 'ADMIN' : currentUser}</p>
-                    <span className={`flex items-center gap-1 text-[9px] px-2 py-0.5 rounded-full border ${hasSyncedWithCloud ? 'text-green-400 bg-green-900/30 border-green-800' : 'text-yellow-400 bg-yellow-900/30 border-yellow-800'}`}>
+                    <p className="text-[10px] text-brand-teal dark:text-brand-lime font-bold tracking-widest uppercase">{userRole === 'admin' ? 'ADMIN' : currentUser}</p>
+                    <span className={`flex items-center gap-1 text-[9px] px-2 py-0.5 rounded-full border ${hasSyncedWithCloud ? 'text-green-600 dark:text-green-400 bg-green-100 dark:bg-green-900/30 border-green-200 dark:border-green-800' : 'text-yellow-600 dark:text-yellow-400 bg-yellow-100 dark:bg-yellow-900/30 border-yellow-200 dark:border-yellow-800'}`}>
                         <WifiIcon className="w-2.5 h-2.5" /> {hasSyncedWithCloud ? 'En Línea' : 'Offline'}
                     </span>
                 </div>
               </div>
             </div>
             <div className="flex gap-2">
+                 <button onClick={toggleTheme} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full text-gray-500 dark:text-gray-400 transition-colors">
+                    {theme === 'dark' ? <SunIcon className="w-6 h-6 text-yellow-400" /> : <MoonIcon className="w-6 h-6 text-brand-dark" />}
+                 </button>
                 {userRole && (
                   <button 
                     onClick={() => setView('vacations')} 
-                    className={`relative px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${view === 'vacations' ? 'bg-brand-teal text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}`}
+                    className={`relative px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${view === 'vacations' ? 'bg-brand-teal text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:text-brand-teal dark:hover:text-white'}`}
                   >
                     🌴 Vacaciones
                     {userRole === 'admin' && pendingVacCount > 0 && (
-                      <span className="absolute -top-1 -right-1 bg-red-600 text-white text-[10px] font-black w-5 h-5 flex items-center justify-center rounded-full border-2 border-brand-panel animate-bounce shadow-lg">
+                      <span className="absolute -top-1 -right-1 bg-red-600 text-white text-[10px] font-black w-5 h-5 flex items-center justify-center rounded-full border-2 border-white dark:border-brand-panel animate-bounce shadow-lg">
                         {pendingVacCount}
                       </span>
                     )}
                   </button>
                 )}
-                <button onClick={handleLogout} className="p-2 hover:bg-gray-700 rounded-full text-gray-400 hover:text-red-400"><LogOutIcon className="w-6 h-6" /></button>
+                <button onClick={handleLogout} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full text-gray-400 hover:text-red-500 transition-colors"><LogOutIcon className="w-6 h-6" /></button>
             </div>
           </div>
         </header>
       )}
 
       <main className={`container mx-auto p-4 ${view === 'admin' || view === 'vacations' ? 'max-w-6xl' : 'md:max-w-3xl'}`}>
-        {view === 'login' && <UserLogin onLogin={handleLogin} technicians={data.technicians} adminPwd={data.adminPassword || 'admin'} onViewDailyOrg={() => setView('daily_org')} />}
-        {view === 'dashboard' && <TechDashboard reports={data.reports.filter(r => r.technician === currentUser)} projects={data.projects} onNewReport={() => setView('form')} onEditReport={(r) => { setEditingReport(r); setView('form'); }} onViewDailyOrg={() => setView('daily_org')} onDeleteReport={deleteReport} />}
+        {view === 'login' && <UserLogin onLogin={handleLogin} technicians={data.technicians} adminPwd={data.adminPassword || 'admin'} onViewDailyOrg={() => setView('daily_org')} toggleTheme={toggleTheme} isDark={theme === 'dark'} />}
+        {view === 'dashboard' && <TechDashboard reports={data.reports.filter(r => r.technician === currentUser)} projects={data.projectsDetailed} onNewReport={() => setView('form')} onEditReport={(r) => { setEditingReport(r); setView('form'); }} onViewDailyOrg={() => setView('daily_org')} onDeleteReport={deleteReport} />}
         {view === 'vacations' && <VacationManager role={userRole || 'tech'} currentUser={currentUser} currentUserId={currentUserId} data={data} onUpdate={(newData) => { isInternalUpdate.current = false; setData(newData); }} onBack={() => setView(userRole === 'admin' ? 'admin' : 'dashboard')} />}
         {view === 'daily_org' && <DailyOrganization isReadOnly={userRole !== 'admin'} data={data.dailyOrg} onUpdate={(newOrg) => { isInternalUpdate.current = false; setData(prev => ({...prev, dailyOrg: newOrg})); }} onBack={() => setView(userRole ? (userRole === 'admin' ? 'admin' : 'dashboard') : 'login')} />}
-        {view === 'form' && <ReportForm projects={data.projects} vehicles={data.vehicles} initialData={editingReport} onSave={saveReport} onCancel={() => setView('dashboard')} />}
+        {view === 'form' && <ReportForm projects={data.projectsDetailed} vehicles={data.vehicles} initialData={editingReport} onSave={saveReport} onCancel={() => setView('dashboard')} />}
         {view === 'admin' && <AdminPanel data={data} setData={(updater) => { isSyncingRef.current = true; setData(updater); setTimeout(() => {isSyncingRef.current = false;}, 2000); }} onGoToVacations={() => setView('vacations')} onDeleteReport={deleteReport} />}
       </main>
     </div>

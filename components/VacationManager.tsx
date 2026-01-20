@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from 'react';
 import { AppData, VacationRequest, TechUser } from '../App';
 import { CalendarIcon, ClockIcon, CheckCircleIcon, XCircleIcon, PlusIcon, TrashIcon, AlertIcon, ChevronLeftIcon, ChevronRightIcon, UserIcon } from './icons';
@@ -214,29 +213,29 @@ const VacationManager: React.FC<VacationManagerProps> = ({ role, currentUser, cu
 
         return (
             <div className="space-y-6 animate-fade-in pb-10">
-                <div className="flex justify-between items-center bg-gray-900/50 p-4 rounded-xl border border-gray-700">
-                    <h2 className="text-xl font-bold text-brand-lime flex items-center gap-2">🌴 Gestión de Personal</h2>
-                    <button onClick={onBack} className="text-xs text-gray-400 hover:text-white underline">← Volver</button>
+                <div className="flex justify-between items-center bg-white dark:bg-gray-900/50 p-4 rounded-xl border border-gray-200 dark:border-gray-700">
+                    <h2 className="text-xl font-bold text-brand-teal dark:text-brand-lime flex items-center gap-2">🌴 Gestión de Personal</h2>
+                    <button onClick={onBack} className="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-white underline">← Volver</button>
                 </div>
 
                 {/* Registro Manual y Stats */}
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    <div className="lg:col-span-2 bg-brand-panel p-6 rounded-2xl border border-gray-700 shadow-xl">
-                        <h3 className="text-sm font-bold text-white mb-4 flex items-center gap-2 uppercase tracking-widest">
-                            <PlusIcon className="w-4 h-4 text-brand-lime" /> Registrar Día Manualmente
+                    <div className="lg:col-span-2 bg-white dark:bg-brand-panel p-6 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-xl">
+                        <h3 className="text-sm font-bold text-gray-800 dark:text-white mb-4 flex items-center gap-2 uppercase tracking-widest">
+                            <PlusIcon className="w-4 h-4 text-brand-teal dark:text-brand-lime" /> Registrar Día Manualmente
                         </h3>
                         <form onSubmit={handleRequest} className="space-y-4">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div>
                                     <label className="block text-[10px] text-gray-500 uppercase mb-1 font-bold">Técnico</label>
-                                    <select required value={adminSelectedTech} onChange={e => setAdminSelectedTech(e.target.value)} className="w-full bg-gray-900 border border-gray-600 rounded-lg p-3 text-sm text-white focus:border-brand-teal outline-none">
+                                    <select required value={adminSelectedTech} onChange={e => setAdminSelectedTech(e.target.value)} className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg p-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none">
                                         <option value="">Seleccionar técnico...</option>
                                         {data.technicians.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
                                     </select>
                                 </div>
                                 <div>
                                     <label className="block text-[10px] text-gray-500 uppercase mb-1 font-bold">Tipo de Día</label>
-                                    <select value={reqType} onChange={e => setReqType(e.target.value as any)} className="w-full bg-gray-900 border border-gray-600 rounded-lg p-3 text-sm text-white focus:border-brand-teal outline-none">
+                                    <select value={reqType} onChange={e => setReqType(e.target.value as any)} className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg p-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none">
                                         <option value="vacation">🌴 Vacaciones</option>
                                         <option value="sick">🤒 Enfermedad</option>
                                         <option value="personal">📋 Asuntos Propios</option>
@@ -244,35 +243,35 @@ const VacationManager: React.FC<VacationManagerProps> = ({ role, currentUser, cu
                                 </div>
                                 <div>
                                     <label className="block text-[10px] text-gray-500 uppercase mb-1 font-bold">Desde</label>
-                                    <input type="date" required value={startDate} onChange={e => setStartDate(e.target.value)} className="w-full bg-gray-900 border border-gray-600 rounded-lg p-3 text-sm text-white focus:border-brand-teal outline-none [color-scheme:dark]" />
+                                    <input type="date" required value={startDate} onChange={e => setStartDate(e.target.value)} className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg p-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none dark:[color-scheme:dark]" />
                                 </div>
                                 <div>
                                     <label className="block text-[10px] text-gray-500 uppercase mb-1 font-bold">Hasta</label>
-                                    <input type="date" required value={endDate} onChange={e => setEndDate(e.target.value)} className="w-full bg-gray-900 border border-gray-600 rounded-lg p-3 text-sm text-white focus:border-brand-teal outline-none [color-scheme:dark]" />
+                                    <input type="date" required value={endDate} onChange={e => setEndDate(e.target.value)} className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg p-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none dark:[color-scheme:dark]" />
                                 </div>
                             </div>
                             <button type="submit" className="w-full bg-brand-teal hover:bg-teal-600 text-white font-bold py-3 rounded-xl shadow-lg transition-all flex items-center justify-center gap-2">
                                 <PlusIcon className="w-5 h-5" /> CREAR REGISTRO DIRECTO
                             </button>
-                            {msg && <p className="text-center text-xs text-brand-lime font-bold">{msg}</p>}
+                            {msg && <p className="text-center text-xs text-brand-teal dark:text-brand-lime font-bold">{msg}</p>}
                         </form>
                     </div>
 
-                    <div className="bg-brand-panel p-6 rounded-2xl border border-gray-700 shadow-xl overflow-hidden h-full">
-                        <h3 className="text-sm font-bold text-gray-400 mb-4 uppercase tracking-widest">Resumen Vacacional</h3>
+                    <div className="bg-white dark:bg-brand-panel p-6 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-xl overflow-hidden h-full">
+                        <h3 className="text-sm font-bold text-gray-400 dark:text-gray-400 mb-4 uppercase tracking-widest">Resumen Vacacional</h3>
                         <div className="overflow-y-auto max-h-[220px] custom-scrollbar">
                             <table className="w-full text-xs">
-                                <thead className="text-gray-500 border-b border-gray-800">
+                                <thead className="text-gray-500 border-b border-gray-200 dark:border-gray-800">
                                     <tr><th className="text-left pb-2">Técnico</th><th className="text-right pb-2">Usados</th></tr>
                                 </thead>
-                                <tbody className="divide-y divide-gray-800">
+                                <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
                                     {techSummary.map(t => (
-                                        <tr key={t.name} className="hover:bg-gray-800/20">
+                                        <tr key={t.name} className="hover:bg-gray-50 dark:hover:bg-gray-800/20">
                                             <td className="py-2 flex items-center gap-2">
                                                 <div className="w-2 h-2 rounded-full" style={{ backgroundColor: t.color }}></div>
-                                                <span className="text-gray-300 font-bold">{t.name}</span>
+                                                <span className="text-gray-700 dark:text-gray-300 font-bold">{t.name}</span>
                                             </td>
-                                            <td className="py-2 text-right font-mono text-brand-lime">{t.used}/20</td>
+                                            <td className="py-2 text-right font-mono text-brand-teal dark:text-brand-lime">{t.used}/20</td>
                                         </tr>
                                     ))}
                                 </tbody>
@@ -282,9 +281,9 @@ const VacationManager: React.FC<VacationManagerProps> = ({ role, currentUser, cu
                 </div>
 
                 {/* Gestión de Festivos */}
-                <div className="bg-brand-panel p-6 rounded-2xl border border-gray-700 shadow-xl">
-                    <h3 className="text-sm font-bold text-white mb-4 flex items-center gap-2 uppercase tracking-widest">
-                        <CalendarIcon className="w-4 h-4 text-brand-lime" /> Gestión de Festivos Locales
+                <div className="bg-white dark:bg-brand-panel p-6 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-xl">
+                    <h3 className="text-sm font-bold text-gray-800 dark:text-white mb-4 flex items-center gap-2 uppercase tracking-widest">
+                        <CalendarIcon className="w-4 h-4 text-brand-teal dark:text-brand-lime" /> Gestión de Festivos Locales
                     </h3>
                     <div className="flex flex-col sm:flex-row gap-4 mb-6">
                         <div className="flex-1">
@@ -293,7 +292,7 @@ const VacationManager: React.FC<VacationManagerProps> = ({ role, currentUser, cu
                                 type="date" 
                                 value={newHoliday} 
                                 onChange={e => setNewHoliday(e.target.value)} 
-                                className="w-full bg-gray-900 border border-gray-600 rounded-lg p-3 text-sm text-white focus:border-brand-teal outline-none [color-scheme:dark]" 
+                                className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg p-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none dark:[color-scheme:dark]" 
                             />
                         </div>
                         <div className="flex items-end">
@@ -308,8 +307,8 @@ const VacationManager: React.FC<VacationManagerProps> = ({ role, currentUser, cu
                     
                     <div className="flex flex-wrap gap-2">
                         {holidays.map(h => (
-                            <div key={h} className="bg-gray-900 border border-gray-700 px-3 py-2 rounded-lg flex items-center gap-2 group transition-all hover:border-red-500/50">
-                                <span className="text-xs font-mono text-gray-300">{formatDateToSpanish(h)}</span>
+                            <div key={h} className="bg-gray-100 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 px-3 py-2 rounded-lg flex items-center gap-2 group transition-all hover:border-red-500/50">
+                                <span className="text-xs font-mono text-gray-600 dark:text-gray-300">{formatDateToSpanish(h)}</span>
                                 <button onClick={() => removeHoliday(h)} className="text-gray-500 hover:text-red-500">
                                     <TrashIcon className="w-3 h-3" />
                                 </button>
@@ -320,45 +319,45 @@ const VacationManager: React.FC<VacationManagerProps> = ({ role, currentUser, cu
                 </div>
 
                 {/* Calendario Admin */}
-                <div className="bg-brand-panel rounded-2xl border border-gray-700 shadow-xl overflow-hidden">
-                    <div className="p-4 bg-gray-800/50 border-b border-gray-700 flex justify-between items-center">
+                <div className="bg-white dark:bg-brand-panel rounded-2xl border border-gray-200 dark:border-gray-700 shadow-xl overflow-hidden">
+                    <div className="p-4 bg-gray-50 dark:bg-gray-800/50 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
                         <div className="flex items-center gap-4">
-                            <h3 className="font-bold text-white uppercase tracking-widest flex items-center gap-2">
+                            <h3 className="font-bold text-gray-800 dark:text-white uppercase tracking-widest flex items-center gap-2">
                                 <CalendarIcon className="w-5 h-5 text-brand-teal" />
                                 {viewDate.toLocaleString('es-ES', { month: 'long', year: 'numeric' }).toUpperCase()}
                             </h3>
                             <div className="flex gap-1">
-                                <button onClick={() => changeMonth(-1)} className="p-1.5 hover:bg-gray-700 rounded-lg text-gray-400 transition-colors"><ChevronLeftIcon className="w-5 h-5"/></button>
-                                <button onClick={() => changeMonth(1)} className="p-1.5 hover:bg-gray-700 rounded-lg text-gray-400 transition-colors"><ChevronRightIcon className="w-5 h-5"/></button>
+                                <button onClick={() => changeMonth(-1)} className="p-1.5 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg text-gray-500 dark:text-gray-400 transition-colors"><ChevronLeftIcon className="w-5 h-5"/></button>
+                                <button onClick={() => changeMonth(1)} className="p-1.5 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg text-gray-500 dark:text-gray-400 transition-colors"><ChevronRightIcon className="w-5 h-5"/></button>
                             </div>
                         </div>
                         <div className="flex gap-3 text-[9px] text-gray-500 font-bold uppercase overflow-x-auto">
-                            <div className="flex items-center gap-1"><span className="font-black text-gray-300">V</span> Vac.</div>
-                            <div className="flex items-center gap-1"><span className="font-black text-gray-300">E</span> Enf.</div>
-                            <div className="flex items-center gap-1"><span className="font-black text-gray-300">A</span> A.P.</div>
+                            <div className="flex items-center gap-1"><span className="font-black text-gray-700 dark:text-gray-300">V</span> Vac.</div>
+                            <div className="flex items-center gap-1"><span className="font-black text-gray-700 dark:text-gray-300">E</span> Enf.</div>
+                            <div className="flex items-center gap-1"><span className="font-black text-gray-700 dark:text-gray-300">A</span> A.P.</div>
                         </div>
                     </div>
 
                     <div className="overflow-x-auto custom-scrollbar">
                         <table className="w-full border-collapse">
                             <thead>
-                                <tr className="bg-gray-900/50 border-b border-gray-700">
-                                    <th className="sticky left-0 z-20 bg-gray-900 px-4 py-2 text-left text-[10px] font-black text-gray-500 uppercase border-r border-gray-700 min-w-[120px]">Técnico</th>
+                                <tr className="bg-gray-50 dark:bg-gray-900/50 border-b border-gray-200 dark:border-gray-700">
+                                    <th className="sticky left-0 z-20 bg-gray-50 dark:bg-gray-900 px-4 py-2 text-left text-[10px] font-black text-gray-500 uppercase border-r border-gray-200 dark:border-gray-700 min-w-[120px]">Técnico</th>
                                     {calendarDays.map(d => (
-                                        <th key={d.day} className={`px-1 py-2 text-center min-w-[30px] border-r border-gray-800/30 ${d.isWeekend || d.isHoliday ? 'bg-gray-800/30' : ''}`}>
+                                        <th key={d.day} className={`px-1 py-2 text-center min-w-[30px] border-r border-gray-200 dark:border-gray-800/30 ${d.isWeekend || d.isHoliday ? 'bg-gray-100 dark:bg-gray-800/30' : ''}`}>
                                             <p className={`text-[10px] font-bold ${d.isHoliday ? 'text-red-500' : 'text-gray-500'}`}>{d.label}</p>
-                                            <p className={`text-xs ${d.isHoliday ? 'text-red-400 font-black' : 'text-gray-300'}`}>{d.day}</p>
+                                            <p className={`text-xs ${d.isHoliday ? 'text-red-400 font-black' : 'text-gray-600 dark:text-gray-300'}`}>{d.day}</p>
                                         </th>
                                     ))}
                                 </tr>
                             </thead>
                             <tbody>
                                 {data.technicians.map((tech) => (
-                                    <tr key={tech.name} className="border-b border-gray-800/50 hover:bg-gray-800/20 group">
-                                        <td className="sticky left-0 z-20 bg-brand-panel px-4 py-3 border-r border-gray-700">
+                                    <tr key={tech.name} className="border-b border-gray-200 dark:border-gray-800/50 hover:bg-gray-50 dark:hover:bg-gray-800/20 group">
+                                        <td className="sticky left-0 z-20 bg-white dark:bg-brand-panel px-4 py-3 border-r border-gray-200 dark:border-gray-700">
                                             <div className="flex items-center gap-2">
                                                 <div className="w-2.5 h-2.5 rounded-full shadow-sm" style={{ backgroundColor: getTechColor(tech.name, data.technicians) }}></div>
-                                                <span className="text-xs font-bold text-gray-300 group-hover:text-white transition-colors">{tech.name}</span>
+                                                <span className="text-xs font-bold text-gray-700 dark:text-gray-300 group-hover:text-gray-900 dark:group-hover:text-white transition-colors">{tech.name}</span>
                                             </div>
                                         </td>
                                         {calendarDays.map(d => {
@@ -370,7 +369,7 @@ const VacationManager: React.FC<VacationManagerProps> = ({ role, currentUser, cu
                                             );
 
                                             if (!activeRequest) return (
-                                                <td key={d.day} className={`p-0 border-r border-gray-800/30 h-10 relative ${d.isHoliday ? 'bg-red-900/10' : d.isWeekend ? 'bg-gray-800/20' : ''}`}></td>
+                                                <td key={d.day} className={`p-0 border-r border-gray-200 dark:border-gray-800/30 h-10 relative ${d.isHoliday ? 'bg-red-100 dark:bg-red-900/10' : d.isWeekend ? 'bg-gray-50 dark:bg-gray-800/20' : ''}`}></td>
                                             );
 
                                             const config = getTypeConfig(activeRequest.type);
@@ -379,7 +378,7 @@ const VacationManager: React.FC<VacationManagerProps> = ({ role, currentUser, cu
                                             return (
                                                 <td 
                                                     key={d.day} 
-                                                    className={`p-0 border-r border-gray-800/30 h-10 relative ${d.isHoliday ? 'bg-red-900/10' : d.isWeekend ? 'bg-gray-800/20' : ''}`}
+                                                    className={`p-0 border-r border-gray-200 dark:border-gray-800/30 h-10 relative ${d.isHoliday ? 'bg-red-100 dark:bg-red-900/10' : d.isWeekend ? 'bg-gray-50 dark:bg-gray-800/20' : ''}`}
                                                 >
                                                     <div 
                                                         className="absolute inset-y-1 left-0 right-0 shadow-sm transition-transform hover:scale-110 z-10 flex items-center justify-center"
@@ -399,15 +398,15 @@ const VacationManager: React.FC<VacationManagerProps> = ({ role, currentUser, cu
                 </div>
 
                 {/* Leyenda de Técnicos (Team Legend) */}
-                <div className="bg-brand-panel p-5 rounded-xl border border-gray-700 shadow-lg">
+                <div className="bg-white dark:bg-brand-panel p-5 rounded-xl border border-gray-200 dark:border-gray-700 shadow-lg">
                     <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-4 flex items-center gap-2">
                         <UserIcon className="w-4 h-4" /> Código de Colores Equipo
                     </h3>
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
                         {data.technicians.map(t => (
-                            <div key={t.id} className="flex items-center gap-2 bg-gray-900/40 p-2 rounded-lg border border-gray-800">
+                            <div key={t.id} className="flex items-center gap-2 bg-gray-50 dark:bg-gray-900/40 p-2 rounded-lg border border-gray-200 dark:border-gray-800">
                                 <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: getTechColor(t.name, data.technicians) }}></div>
-                                <span className="text-[10px] font-bold text-gray-300 truncate">{t.name}</span>
+                                <span className="text-[10px] font-bold text-gray-700 dark:text-gray-300 truncate">{t.name}</span>
                             </div>
                         ))}
                     </div>
@@ -415,22 +414,22 @@ const VacationManager: React.FC<VacationManagerProps> = ({ role, currentUser, cu
 
                 {/* Bandeja de Solicitudes */}
                 <div className="space-y-4">
-                    <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest">Bandeja de Entrada ({inbox.length})</h3>
+                    <h3 className="text-sm font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest">Bandeja de Entrada ({inbox.length})</h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {inbox.map(r => {
                             const config = getTypeConfig(r.type);
                             const color = getTechColor(r.userName, data.technicians);
                             return (
-                                <div key={r.id} className={`bg-brand-panel p-4 rounded-xl border flex justify-between items-center shadow-lg ${r.status === 'cancel_requested' ? 'border-orange-500' : 'border-gray-700'}`}>
+                                <div key={r.id} className={`bg-white dark:bg-brand-panel p-4 rounded-xl border flex justify-between items-center shadow-lg ${r.status === 'cancel_requested' ? 'border-orange-400 dark:border-orange-500' : 'border-gray-200 dark:border-gray-700'}`}>
                                     <div className="flex gap-3">
                                         <div className="w-1.5 rounded-full" style={{ backgroundColor: color }}></div>
                                         <div>
                                             <div className="flex items-center gap-2">
-                                                <p className="font-bold text-white text-lg">{r.userName}</p>
-                                                <span className="text-xs px-2 py-0.5 rounded bg-gray-800 text-gray-400">{config.icon} {config.label}</span>
+                                                <p className="font-bold text-gray-900 dark:text-white text-lg">{r.userName}</p>
+                                                <span className="text-xs px-2 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400">{config.icon} {config.label}</span>
                                             </div>
-                                            <p className="text-sm text-brand-teal font-mono">{formatDateToSpanish(r.startDate)} - {formatDateToSpanish(r.endDate)}</p>
-                                            {r.status === 'cancel_requested' && <p className="text-[10px] text-orange-400 font-bold uppercase mt-1">⚠️ Petición de ANULACIÓN</p>}
+                                            <p className="text-sm text-brand-teal dark:text-brand-teal font-mono">{formatDateToSpanish(r.startDate)} - {formatDateToSpanish(r.endDate)}</p>
+                                            {r.status === 'cancel_requested' && <p className="text-[10px] text-orange-500 dark:text-orange-400 font-bold uppercase mt-1">⚠️ Petición de ANULACIÓN</p>}
                                         </div>
                                     </div>
                                     <div className="flex gap-2">
@@ -458,36 +457,36 @@ const VacationManager: React.FC<VacationManagerProps> = ({ role, currentUser, cu
     // VISTA TÉCNICO
     return (
         <div className="space-y-6 animate-fade-in pb-10">
-            <div className="flex justify-between items-center bg-gray-900/50 p-4 rounded-xl border border-gray-700">
+            <div className="flex justify-between items-center bg-white dark:bg-gray-900/50 p-4 rounded-xl border border-gray-200 dark:border-gray-700">
                 <h2 className="text-xl font-bold text-brand-teal flex items-center gap-2">🌴 Mis Vacaciones y Ausencias</h2>
-                <button onClick={onBack} className="text-xs text-gray-400 hover:text-white underline">← Volver</button>
+                <button onClick={onBack} className="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white underline">← Volver</button>
             </div>
 
             <div className="grid grid-cols-3 gap-3">
-                <div className="bg-brand-panel p-4 rounded-2xl border border-gray-700 shadow-lg text-center">
+                <div className="bg-white dark:bg-brand-panel p-4 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-lg text-center">
                     <p className="text-[10px] text-gray-500 uppercase mb-1">Total Año</p>
-                    <p className="text-2xl font-black text-white">{LIMIT_DAYS}</p>
+                    <p className="text-2xl font-black text-gray-800 dark:text-white">{LIMIT_DAYS}</p>
                 </div>
-                <div className="bg-brand-panel p-4 rounded-2xl border border-brand-lime/30 shadow-lg text-center">
+                <div className="bg-white dark:bg-brand-panel p-4 rounded-2xl border border-brand-lime shadow-lg text-center">
                     <p className="text-[10px] text-gray-500 uppercase mb-1">Días Usados</p>
-                    <p className="text-2xl font-black text-brand-lime">{usedDays}</p>
+                    <p className="text-2xl font-black text-brand-teal dark:text-brand-lime">{usedDays}</p>
                 </div>
-                <div className="bg-brand-panel p-4 rounded-2xl border border-orange-500/30 shadow-lg text-center">
+                <div className="bg-white dark:bg-brand-panel p-4 rounded-2xl border border-orange-500/30 shadow-lg text-center">
                     <p className="text-[10px] text-gray-500 uppercase mb-1">Disponibles</p>
-                    <p className={`text-2xl font-black ${LIMIT_DAYS - usedDays <= 0 ? 'text-red-500' : 'text-white'}`}>{LIMIT_DAYS - usedDays}</p>
+                    <p className={`text-2xl font-black ${LIMIT_DAYS - usedDays <= 0 ? 'text-red-500' : 'text-gray-800 dark:text-white'}`}>{LIMIT_DAYS - usedDays}</p>
                 </div>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* Formulario Solicitud */}
-                <div className="bg-brand-panel p-6 rounded-2xl border border-gray-700 shadow-xl h-fit">
-                    <h3 className="text-lg font-bold text-white mb-6 flex items-center gap-2">
+                <div className="bg-white dark:bg-brand-panel p-6 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-xl h-fit">
+                    <h3 className="text-lg font-bold text-gray-800 dark:text-white mb-6 flex items-center gap-2">
                         <PlusIcon className="w-5 h-5 text-brand-teal" /> Nueva Solicitud
                     </h3>
                     <form onSubmit={handleRequest} className="space-y-4">
                         <div>
                             <label className="block text-xs text-gray-500 uppercase mb-1">Motivo de la ausencia</label>
-                            <select value={reqType} onChange={e => setReqType(e.target.value as any)} className="w-full bg-gray-900 border border-gray-600 rounded-lg p-3 text-sm text-white focus:border-brand-teal outline-none">
+                            <select value={reqType} onChange={e => setReqType(e.target.value as any)} className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg p-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none">
                                 <option value="vacation">🌴 Vacaciones</option>
                                 <option value="sick">🤒 Enfermedad</option>
                                 <option value="personal">📋 Asuntos Propios</option>
@@ -496,11 +495,11 @@ const VacationManager: React.FC<VacationManagerProps> = ({ role, currentUser, cu
                         <div className="grid grid-cols-2 gap-4">
                             <div>
                                 <label className="block text-xs text-gray-500 uppercase mb-1">Inicio</label>
-                                <input type="date" required value={startDate} onChange={e => setStartDate(e.target.value)} className="w-full bg-gray-900 border border-gray-600 rounded-lg p-3 text-sm text-white focus:border-brand-teal outline-none [color-scheme:dark]" />
+                                <input type="date" required value={startDate} onChange={e => setStartDate(e.target.value)} className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg p-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none dark:[color-scheme:dark]" />
                             </div>
                             <div>
                                 <label className="block text-xs text-gray-500 uppercase mb-1">Fin</label>
-                                <input type="date" required value={endDate} onChange={e => setEndDate(e.target.value)} className="w-full bg-gray-900 border border-gray-600 rounded-lg p-3 text-sm text-white focus:border-brand-teal outline-none [color-scheme:dark]" />
+                                <input type="date" required value={endDate} onChange={e => setEndDate(e.target.value)} className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg p-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none dark:[color-scheme:dark]" />
                             </div>
                         </div>
                         {currentBusinessDays > 0 && (
@@ -509,7 +508,7 @@ const VacationManager: React.FC<VacationManagerProps> = ({ role, currentUser, cu
                                 <span className="text-lg font-black text-brand-teal">{currentBusinessDays}</span>
                             </div>
                         )}
-                        {msg && <p className={`text-xs text-center p-2 rounded ${msg.includes('✓') ? 'bg-green-900/30 text-green-400' : 'bg-red-900/30 text-red-400'}`}>{msg}</p>}
+                        {msg && <p className={`text-xs text-center p-2 rounded ${msg.includes('✓') ? 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400' : 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400'}`}>{msg}</p>}
                         <button type="submit" disabled={currentBusinessDays <= 0} className="w-full bg-brand-teal hover:bg-teal-600 disabled:opacity-50 text-white font-bold py-4 rounded-xl shadow-lg transition-all flex items-center justify-center gap-2">
                             <CalendarIcon className="w-5 h-5" /> ENVIAR PETICIÓN
                         </button>
@@ -525,49 +524,42 @@ const VacationManager: React.FC<VacationManagerProps> = ({ role, currentUser, cu
                         {userRequests.map(r => {
                             const config = getTypeConfig(r.type);
                             return (
-                                <div key={r.id} className="bg-gray-900/50 p-4 rounded-xl border border-gray-800 flex justify-between items-center group shadow-sm">
+                                <div key={r.id} className="bg-gray-50 dark:bg-gray-900/50 p-4 rounded-xl border border-gray-200 dark:border-gray-800 flex justify-between items-center group shadow-sm">
                                     <div className="flex-1 min-w-0 pr-2">
                                         <div className="flex items-center gap-2">
-                                            <p className="text-white font-bold text-sm font-mono truncate">{formatDateToSpanish(r.startDate)} al {formatDateToSpanish(r.endDate)}</p>
+                                            <p className="text-gray-900 dark:text-white font-bold text-sm font-mono truncate">{formatDateToSpanish(r.startDate)} al {formatDateToSpanish(r.endDate)}</p>
                                             <span className="text-[10px] opacity-60">{config.icon}</span>
                                         </div>
                                         <div className="flex gap-2 mt-1 flex-wrap">
                                             <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${
-                                                r.status === 'approved' ? 'bg-green-900/30 text-green-400 border-green-800' :
-                                                r.status === 'rejected' ? 'bg-red-900/30 text-red-400 border-red-800' :
-                                                r.status === 'cancel_requested' ? 'bg-orange-900/30 text-orange-400 border-orange-800' :
-                                                'bg-blue-900/30 text-blue-400 border-blue-800'
+                                                r.status === 'approved' ? 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 border-green-200 dark:border-green-800' :
+                                                r.status === 'rejected' ? 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 border-red-200 dark:border-red-800' :
+                                                r.status === 'cancel_requested' ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 border-orange-200 dark:border-orange-800' :
+                                                'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-800'
                                             }`}>
                                                 {r.status === 'cancel_requested' ? 'ANULACIÓN PENDIENTE' : r.status.toUpperCase()}
                                             </span>
-                                            <span className="text-[9px] text-gray-600 font-bold uppercase">{r.days} días ({config.label})</span>
+                                            <span className="text-[9px] text-gray-500 font-bold uppercase">{r.days} días ({config.label})</span>
                                         </div>
                                     </div>
                                     <div className="flex-shrink-0">
                                         {r.status === 'pending' && (
-                                            <button onClick={() => deleteRequest(r.id)} className="text-gray-700 hover:text-red-500 transition-colors p-2" title="Eliminar solicitud pendiente">
-                                                <TrashIcon className="w-4 h-4"/>
+                                            <button onClick={() => deleteRequest(r.id)} className="text-gray-400 hover:text-red-500 p-2 transition-colors" title="Borrar solicitud">
+                                                <TrashIcon className="w-5 h-5" />
                                             </button>
                                         )}
                                         {r.status === 'approved' && (
-                                            <button onClick={() => requestCancellation(r.id)} className="text-xs bg-orange-900/20 hover:bg-orange-900/40 text-orange-500 border border-orange-900 px-3 py-1 rounded-lg font-bold transition-all" title="Solicitar cambio/borrado">
-                                                SOLICITAR ANULACIÓN
+                                            <button onClick={() => requestCancellation(r.id)} className="text-gray-400 hover:text-orange-500 p-2 transition-colors" title="Solicitar Anulación">
+                                                <XCircleIcon className="w-5 h-5" />
                                             </button>
                                         )}
                                     </div>
                                 </div>
                             );
                         })}
-                        {userRequests.length === 0 && <p className="text-center py-10 text-gray-700 border border-dashed border-gray-800 rounded-xl italic text-sm">No hay registros.</p>}
+                        {userRequests.length === 0 && <p className="text-center py-6 text-gray-400 text-xs italic">No hay solicitudes registradas.</p>}
                     </div>
                 </div>
-            </div>
-            
-            <div className="bg-blue-900/10 p-4 rounded-xl border border-blue-900/30 flex gap-3">
-                <AlertIcon className="w-5 h-5 text-blue-500 flex-shrink-0" />
-                <p className="text-xs text-gray-400 leading-relaxed">
-                    Si necesitas cambiar días ya aprobados (en verde), pulsa el botón <b>"SOLICITAR ANULACIÓN"</b>. El administrador recibirá tu petición y procederá a borrar los días para que puedas pedirlos de nuevo.
-                </p>
             </div>
         </div>
     );
