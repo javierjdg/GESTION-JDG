@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { AppData, TechUser, WorkReport, ProjectData, Budget } from '../App';
-import { TrashIcon, PlusIcon, DownloadIcon, UserIcon, TruckIcon, FileTextIcon, FilterIcon, EditIcon, SaveIcon, XIcon, LockIcon, UploadIcon, CloudIcon, CalendarIcon, ChartPieIcon, ClockIcon, EyeIcon, AlertIcon, ChevronDownIcon, BriefcaseIcon } from './icons';
+import { TrashIcon, PlusIcon, DownloadIcon, UserIcon, TruckIcon, FileTextIcon, FilterIcon, EditIcon, SaveIcon, XIcon, LockIcon, UploadIcon, CloudIcon, CalendarIcon, ChartPieIcon, ClockIcon, EyeIcon, AlertIcon, ChevronDownIcon, BriefcaseIcon, SearchIcon } from './icons';
 import DailyOrganization from './DailyOrganization';
 
 interface AdminPanelProps {
@@ -92,6 +92,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
   });
   const [isEditingProject, setIsEditingProject] = useState(false);
   const [idMode, setIdMode] = useState<'AUTO' | 'MANUAL'>('AUTO'); // Nuevo estado para controlar el modo de ID
+  const [projectSearchTerm, setProjectSearchTerm] = useState(''); // Estado para búsqueda de obras
 
   // Estados para Presupuestos
   const [budgetForm, setBudgetForm] = useState<Budget>({
@@ -203,6 +204,17 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
           return b.id.localeCompare(a.id);
       });
   }, [data.projectsDetailed]);
+
+  // Filtrar obras para administración basado en búsqueda
+  const filteredAdminProjects = useMemo(() => {
+      if (!projectSearchTerm) return sortedProjects;
+      const lowerTerm = projectSearchTerm.toLowerCase();
+      return sortedProjects.filter(p => 
+          p.id.toLowerCase().includes(lowerTerm) || 
+          p.name.toLowerCase().includes(lowerTerm) ||
+          (p.client && p.client.toLowerCase().includes(lowerTerm))
+      );
+  }, [sortedProjects, projectSearchTerm]);
 
   // Presupuestos ordenados
   const sortedBudgets = useMemo(() => {
@@ -1260,14 +1272,30 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
 
                 {/* LISTADO DE OBRAS */}
                 <div className="space-y-4 pt-6">
-                    <h3 className="text-gray-400 font-black mb-3 uppercase text-[11px] tracking-[3px] flex items-center gap-2">
-                        <BriefcaseIcon className="w-4 h-4" /> Listado de Obras
-                    </h3>
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-3">
+                        <h3 className="text-gray-400 font-black uppercase text-[11px] tracking-[3px] flex items-center gap-2">
+                            <BriefcaseIcon className="w-4 h-4" /> Listado de Obras
+                        </h3>
+                    </div>
+
+                    <div className="relative">
+                        <input 
+                            type="text" 
+                            placeholder="🔍 Buscar obra por ID, Nombre o Cliente..." 
+                            value={projectSearchTerm} 
+                            onChange={(e) => setProjectSearchTerm(e.target.value)} 
+                            className="w-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl pl-10 pr-4 py-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none transition-colors shadow-sm" 
+                        />
+                        <div className="absolute left-3 top-3.5 text-gray-400">
+                            <SearchIcon className="w-4 h-4" />
+                        </div>
+                    </div>
+
                     <div className="space-y-3">
-                        {(!sortedProjects || sortedProjects.length === 0) && (
-                             <p className="text-center py-10 text-gray-500 italic">No hay obras registradas con el nuevo sistema.</p>
+                        {(!filteredAdminProjects || filteredAdminProjects.length === 0) && (
+                             <p className="text-center py-10 text-gray-500 italic">No se encontraron obras.</p>
                         )}
-                        {sortedProjects.map((p) => {
+                        {filteredAdminProjects.map((p) => {
                              const isInactive = p.isFinished || p.isInvoiced;
                              const warningStyle = !isInactive && p.hasWarning ? getWarningStyle(p.warningDate) : '';
                              
