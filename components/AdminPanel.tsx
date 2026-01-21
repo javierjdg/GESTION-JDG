@@ -94,6 +94,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
   const [idMode, setIdMode] = useState<'AUTO' | 'MANUAL'>('AUTO'); // Nuevo estado para controlar el modo de ID
   const [projectSearchTerm, setProjectSearchTerm] = useState(''); // Estado para búsqueda de obras
 
+  // Ref para scroll a obras terminadas
+  const archiveRef = useRef<HTMLDivElement>(null);
+
   // Estados para Presupuestos
   const [budgetForm, setBudgetForm] = useState<Budget>({
     id: '',
@@ -190,17 +193,17 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
   // Listado de obras ordenado: Activas primero (newest ID), luego Terminadas/Facturadas
   const sortedProjects = useMemo(() => {
       return [...(data.projectsDetailed || [])].sort((a, b) => {
-          // 0. Prioridad especial: Si tiene AVISO activado, sube arriba del todo
-          if (a.hasWarning && !b.hasWarning) return -1;
-          if (!a.hasWarning && b.hasWarning) return 1;
-
-          // 1. Prioridad: Activas antes que (Terminadas O Facturadas)
           const aDone = a.isFinished || a.isInvoiced;
           const bDone = b.isFinished || b.isInvoiced;
           
+          // 1. Prioridad: Activas antes que (Terminadas O Facturadas)
           if (aDone !== bDone) return aDone ? 1 : -1;
+
+          // 2. Prioridad secundaria: Si tiene AVISO activado, sube arriba dentro de su grupo
+          if (a.hasWarning && !b.hasWarning) return -1;
+          if (!a.hasWarning && b.hasWarning) return 1;
           
-          // 2. Ordenar por ID descendente (más nuevas primero)
+          // 3. Ordenar por ID descendente (más nuevas primero)
           return b.id.localeCompare(a.id);
       });
   }, [data.projectsDetailed]);
@@ -215,6 +218,19 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
           (p.client && p.client.toLowerCase().includes(lowerTerm))
       );
   }, [sortedProjects, projectSearchTerm]);
+
+  // Encontrar el índice de la primera obra terminada/facturada para el scroll
+  const firstArchiveIndex = useMemo(() => {
+      return filteredAdminProjects.findIndex(p => p.isFinished || p.isInvoiced);
+  }, [filteredAdminProjects]);
+
+  const scrollToArchive = () => {
+      if (archiveRef.current) {
+          archiveRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      } else {
+          alert("No hay obras terminadas o facturadas visibles.");
+      }
+  };
 
   // Presupuestos ordenados
   const sortedBudgets = useMemo(() => {
@@ -1276,6 +1292,12 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                         <h3 className="text-gray-400 font-black uppercase text-[11px] tracking-[3px] flex items-center gap-2">
                             <BriefcaseIcon className="w-4 h-4" /> Listado de Obras
                         </h3>
+                        <button 
+                            onClick={scrollToArchive} 
+                            className="text-[10px] font-bold uppercase bg-gray-200 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:text-brand-teal hover:bg-gray-300 dark:hover:bg-gray-700 px-3 py-1.5 rounded-full transition-colors flex items-center gap-1"
+                        >
+                            ⬇ Ir a Archivo
+                        </button>
                     </div>
 
                     <div className="relative">
@@ -1295,12 +1317,17 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                         {(!filteredAdminProjects || filteredAdminProjects.length === 0) && (
                              <p className="text-center py-10 text-gray-500 italic">No se encontraron obras.</p>
                         )}
-                        {filteredAdminProjects.map((p) => {
+                        {filteredAdminProjects.map((p, index) => {
                              const isInactive = p.isFinished || p.isInvoiced;
                              const warningStyle = !isInactive && p.hasWarning ? getWarningStyle(p.warningDate) : '';
+                             const isFirstArchive = index === firstArchiveIndex;
                              
                              return (
-                                 <div key={p.id} className={`bg-white dark:bg-brand-panel p-5 rounded-xl border flex flex-col md:flex-row justify-between items-start md:items-center gap-4 group hover:border-brand-teal/50 transition-all ${isInactive ? 'opacity-60 border-gray-300 dark:border-gray-800 bg-gray-100 dark:bg-gray-900/20' : warningStyle ? warningStyle : 'border-gray-200 dark:border-gray-700'}`}>
+                                 <div 
+                                    key={p.id} 
+                                    ref={isFirstArchive ? archiveRef : null}
+                                    className={`bg-white dark:bg-brand-panel p-5 rounded-xl border flex flex-col md:flex-row justify-between items-start md:items-center gap-4 group hover:border-brand-teal/50 transition-all ${isInactive ? 'opacity-60 border-gray-300 dark:border-gray-800 bg-gray-100 dark:bg-gray-900/20' : warningStyle ? warningStyle : 'border-gray-200 dark:border-gray-700'}`}
+                                 >
                                       <div className="flex-1 w-full">
                                           <div className="flex items-center gap-3 mb-1">
                                               <button 
