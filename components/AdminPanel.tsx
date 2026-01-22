@@ -728,9 +728,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
       </div>
 
       <div className="p-6">
-        {/* ... (Existing tabs: reports, expenses) ... */}
+        {/* TAB CONTENIDO: REPORTS (BASE DE DATOS) */}
         {tab === 'reports' && (
-          /* ... existing reports code ... */
           <div>
             <div className="flex gap-2 mb-4 bg-gray-50 dark:bg-gray-900 p-2 rounded-lg border border-gray-200 dark:border-gray-700 max-w-fit flex-wrap">
                 <button onClick={() => setReportViewMode('list')} className={`px-3 py-1.5 text-xs font-bold rounded flex items-center gap-1 ${reportViewMode === 'list' ? 'bg-brand-teal dark:bg-brand-lime text-white dark:text-brand-dark' : 'text-gray-500 dark:text-gray-400'}`}><FileTextIcon className="w-3 h-3" /> Listado</button>
@@ -745,7 +744,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                  </select>
                  <select value={filterProject} onChange={e => setFilterProject(e.target.value)} className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-sm rounded-lg p-2.5 text-gray-900 dark:text-white outline-none">
                     <option value="">Obras...</option>
-                    {data.projectsDetailed.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                    {data.projectsDetailed.map(p => <option key={p.id} value={p.id}>{p.id} - {p.name}</option>)}
                  </select>
                  <input type="date" value={filterDateStart} onChange={e => setFilterDateStart(e.target.value)} className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-sm rounded-lg p-2.5 text-gray-900 dark:text-white outline-none dark:[color-scheme:dark]" />
                  <input type="date" value={filterDateEnd} onChange={e => setFilterDateEnd(e.target.value)} className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-sm rounded-lg p-2.5 text-gray-900 dark:text-white outline-none dark:[color-scheme:dark]" />
@@ -897,7 +896,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                 </>
             )}
             
-            {/* ... Other report modes (by_project, by_hours) same as original ... */}
             {reportViewMode === 'by_project' && (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {projectsSummary.map(([projectNum, summary]) => (
@@ -967,7 +965,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
 
         {tab === 'techs' && (
             <div className="space-y-4">
-                {/* ... existing techs code ... */}
                 <div className="bg-gray-50 dark:bg-gray-900/50 p-4 rounded-xl border border-gray-200 dark:border-gray-700 flex flex-col sm:flex-row gap-2">
                     <input type="text" placeholder="Nombre" value={newItemName} onChange={e => setNewItemName(e.target.value)} className="flex-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-4 py-2 text-gray-900 dark:text-white" />
                     <input type="password" placeholder="Pass" value={newTechPwd} onChange={e => setNewTechPwd(e.target.value)} className="flex-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-4 py-2 text-gray-900 dark:text-white" />
@@ -1002,7 +999,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
         )}
 
         {tab === 'budgets' && (
-            /* ... existing budgets code ... */
             <div className="space-y-6">
                 <div className="bg-white dark:bg-gray-900/50 p-6 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-xl">
                    <div className="flex justify-between items-center mb-6">
@@ -1082,7 +1078,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                    </button>
                 </div>
 
-                {/* LISTADO DE PRESUPUESTOS */}
                 <div className="space-y-4 pt-4">
                     <h3 className="text-gray-400 font-black mb-3 uppercase text-[11px] tracking-[3px] flex items-center gap-2">
                         <FileTextIcon className="w-4 h-4" /> Listado de Presupuestos
@@ -1173,7 +1168,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                    {/* Form Grid */}
                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
                         
-                        {/* ID Box - styled like the image request */}
+                        {/* ID Box */}
                         <div className={`relative p-6 rounded-2xl border-2 transition-all group ${idMode === 'MANUAL' ? 'border-orange-500/30 bg-orange-50 dark:bg-orange-500/5' : 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50'}`}>
                              <div className="text-center space-y-2">
                                 <label className={`block text-[10px] uppercase font-black tracking-[2px] mb-2 ${idMode === 'MANUAL' ? 'text-orange-500 dark:text-orange-400' : 'text-gray-400 dark:text-gray-500'}`}>
@@ -1199,7 +1194,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                                     <p className="text-[10px] text-gray-500 dark:text-gray-600">Calculado automáticamente según el año en curso</p>
                                 )}
                              </div>
-                             {/* Decorative corner accent if manual */}
                              {idMode === 'MANUAL' && <div className="absolute top-0 right-0 w-16 h-16 bg-gradient-to-bl from-orange-500/10 to-transparent rounded-tr-2xl pointer-events-none"></div>}
                         </div>
 
@@ -1286,7 +1280,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                    </button>
                 </div>
 
-                {/* LISTADO DE OBRAS */}
                 <div className="space-y-4 pt-6">
                     <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-3">
                         <h3 className="text-gray-400 font-black uppercase text-[11px] tracking-[3px] flex items-center gap-2">
@@ -1374,11 +1367,20 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                              );
                         })}
                     </div>
+                    {filteredAdminProjects.length > 0 && (
+                        <div className="flex justify-center pt-4 pb-2">
+                            <button 
+                                onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} 
+                                className="text-[10px] font-bold uppercase bg-gray-200 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:text-brand-teal hover:bg-gray-300 dark:hover:bg-gray-700 px-4 py-2 rounded-full transition-colors flex items-center gap-2 shadow-sm"
+                            >
+                                ⬆ Ir a Inicio
+                            </button>
+                        </div>
+                    )}
                 </div>
             </div>
         )}
 
-        {/* ... (Rest of existing tabs: vehicles, daily, settings) ... */}
         {tab === 'vehicles' && (
             <div className="space-y-4">
                 <div className="bg-gray-50 dark:bg-gray-900/50 p-4 rounded-xl border border-gray-200 dark:border-gray-700 flex flex-col sm:flex-row gap-2">
