@@ -608,7 +608,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
       const fullName = resolveProjectFullName(r.projectNum).replace(/,/g, " -");
       return [r.id, r.date, r.technician, `"${fullName}"`, r.projectNum, r.startTime, r.endTime, r.vehicle, r.isDriver ? 'SI' : 'NO', r.isDriver ? (r.driverTripType || '') : '', `"${cleanDesc}"`, r.expenses.food, r.expenses.gas, r.expenses.parking, r.expenses.others, `"${cleanOtherDesc}"`, r.overtimeHours || 0, r.overtimeType || 'NORMAL'].join(',');
     });
-    const csvContent = "data:text/csv;charset=utf-8," + [headers, ...rows].join('\n');
+    // Agregamos sep=, para que Excel detecte automáticamente la coma como separador
+    const csvContent = "data:text/csv;charset=utf-8," + ["sep=,", headers, ...rows].join('\n');
     const link = document.createElement("a");
     link.setAttribute("href", encodeURI(csvContent));
     link.setAttribute("download", `partes_${new Date().toISOString().split('T')[0]}.csv`);
