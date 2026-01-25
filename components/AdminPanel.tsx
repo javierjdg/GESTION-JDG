@@ -178,6 +178,47 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
       window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  const sendToDailyOrg = (p: ProjectData) => {
+      const jobName = `${p.id} - ${p.name}`;
+      const colors = ['#E63946','#F77F00','#06D6A0','#118AB2','#073B4C','#D62828','#FCA311','#14213D','#00B4D8','#0077B6'];
+      const randomColor = colors[Math.floor(Math.random() * colors.length)];
+
+      let shouldSwitch = true;
+
+      setData(prev => {
+          const currentJobs = prev.dailyOrg?.trabajos || [];
+          
+          // Check if already exists
+          const exists = currentJobs.some(j => j.nombre === jobName);
+          if (exists) {
+             if(!window.confirm(`La obra "${jobName}" ya está en la organización de hoy. ¿Añadir otra vez?`)) {
+                 shouldSwitch = false;
+                 return prev;
+             }
+          }
+
+          const newJob = {
+              id: Date.now(),
+              nombre: jobName,
+              color: randomColor,
+              trabajadores: []
+          };
+
+          return {
+              ...prev,
+              dailyOrg: {
+                  ...prev.dailyOrg,
+                  trabajos: [...currentJobs, newJob]
+              }
+          };
+      });
+
+      if (shouldSwitch) {
+          setTab('daily');
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+  };
+
   const pendingRequests = useMemo(() => {
     return (data.vacationRequests || []).filter(r => r.status === 'pending' || r.status === 'cancel_requested');
   }, [data.vacationRequests]);
@@ -817,7 +858,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                                                                             </td>
                                                                             <td className="px-3 py-3 font-mono text-[11px] text-gray-500 dark:text-gray-400">{report.date}</td>
                                                                             <td className="px-3 py-3 text-xs font-black text-gray-700 dark:text-gray-200">{report.technician}</td>
-                                                                            <td className="px-3 py-3 text-xs font-bold text-brand-teal/80">{report.projectNum}</td>
+                                                                            <td className="px-3 py-3 text-xs font-bold text-brand-teal/80">
+                                                                                {report.projectNum}
+                                                                                {resolveProjectFullName(report.projectNum) !== report.projectNum && (
+                                                                                    <span className="font-normal text-gray-500 dark:text-gray-400 ml-1">
+                                                                                        - {resolveProjectFullName(report.projectNum)}
+                                                                                    </span>
+                                                                                )}
+                                                                            </td>
                                                                             <td className="px-3 py-3 text-[11px] text-gray-500 italic max-w-xs truncate">
                                                                                 {report.description || 'Sin descripción'}
                                                                             </td>
@@ -1332,6 +1380,17 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                                                   {p.id}
                                               </button>
                                               <span className={`font-bold uppercase text-sm truncate ${isInactive ? 'text-gray-500 line-through decoration-brand-teal/50' : 'text-gray-900 dark:text-white'}`}>{p.name}</span>
+                                              
+                                              {!isInactive && (
+                                                  <button 
+                                                      onClick={(e) => { e.stopPropagation(); sendToDailyOrg(p); }}
+                                                      className="ml-2 bg-brand-teal/10 dark:bg-brand-teal/20 hover:bg-brand-teal hover:text-white text-brand-teal dark:text-brand-lime p-1.5 rounded-lg transition-colors shadow-sm"
+                                                      title="Enviar a Organización Diaria"
+                                                  >
+                                                      <CalendarIcon className="w-4 h-4" />
+                                                  </button>
+                                              )}
+
                                               {p.isFinished && <span className="bg-green-100 dark:bg-green-900/40 text-green-600 dark:text-green-400 text-[9px] font-black px-2 py-0.5 rounded uppercase border border-green-200 dark:border-green-800">Terminada</span>}
                                               {p.isInvoiced && <span className="bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 text-[9px] font-black px-2 py-0.5 rounded uppercase border border-blue-200 dark:border-blue-800">Facturada</span>}
                                               {!isInactive && p.hasWarning && getWarningBadge(p.warningDate)}
