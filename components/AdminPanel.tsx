@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { AppData, TechUser, WorkReport, ProjectData, Budget } from '../App';
-import { TrashIcon, PlusIcon, DownloadIcon, UserIcon, TruckIcon, FileTextIcon, FilterIcon, EditIcon, SaveIcon, XIcon, LockIcon, UploadIcon, CloudIcon, CalendarIcon, ChartPieIcon, ClockIcon, EyeIcon, AlertIcon, ChevronDownIcon, BriefcaseIcon, SearchIcon } from './icons';
+import { TrashIcon, PlusIcon, DownloadIcon, UserIcon, TruckIcon, FileTextIcon, FilterIcon, EditIcon, SaveIcon, XIcon, LockIcon, UploadIcon, CloudIcon, CalendarIcon, ChartPieIcon, ClockIcon, EyeIcon, AlertIcon, ChevronDownIcon, BriefcaseIcon, SearchIcon, CheckCircleIcon } from './icons';
 import DailyOrganization from './DailyOrganization';
 
 interface AdminPanelProps {
@@ -217,6 +217,20 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
           setTab('daily');
           window.scrollTo({ top: 0, behavior: 'smooth' });
       }
+  };
+
+  const toggleExpensePayment = (week: string, tech: string) => {
+      const key = `${week}_${tech}`;
+      setData(prev => {
+          const currentStatus = prev.expensesPayments?.[key] || false;
+          return {
+              ...prev,
+              expensesPayments: {
+                  ...(prev.expensesPayments || {}),
+                  [key]: !currentStatus
+              }
+          };
+      });
   };
 
   const pendingRequests = useMemo(() => {
@@ -604,6 +618,31 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
     return months;
   }, [filteredReports]);
 
+  // Estructura agrupada para GASTOS (Mes > Semana > Técnico) para el orden correcto
+  const groupedExpenses = useMemo(() => {
+    const tree: Record<string, Record<string, Record<string, number>>> = {};
+    const dateMap: Record<string, string> = {}; // Mapeo de etiqueta a fecha ISO para ordenamiento
+
+    filteredReports.forEach(r => {
+        const mLabel = getMonthYearLabel(r.date);
+        const wLabel = getWeekRange(r.date);
+        const total = r.expenses.food + r.expenses.gas + r.expenses.parking + r.expenses.others;
+        
+        if (total === 0) return; 
+
+        if (!tree[mLabel]) tree[mLabel] = {};
+        if (!tree[mLabel][wLabel]) tree[mLabel][wLabel] = {};
+        
+        tree[mLabel][wLabel][r.technician] = (tree[mLabel][wLabel][r.technician] || 0) + total;
+
+        // Guardar la fecha más reciente encontrada para esa etiqueta para poder ordenar
+        if (!dateMap[mLabel] || r.date > dateMap[mLabel]) dateMap[mLabel] = r.date;
+        if (!dateMap[wLabel] || r.date > dateMap[wLabel]) dateMap[wLabel] = r.date;
+    });
+    
+    return { tree, dateMap };
+  }, [filteredReports]);
+
   const projectsSummary = useMemo(() => {
     const summary: Record<string, { count: number, food: number, gas: number, parking: number, others: number, ot: number }> = {};
     filteredReports.forEach(r => {
@@ -626,17 +665,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
         if (!summary[week][r.technician]) summary[week][r.technician] = { reg: 0, ot: 0 };
         summary[week][r.technician].reg += calculateDuration(r.startTime, r.endTime);
         summary[week][r.technician].ot += r.overtimeHours || 0;
-    });
-    return Object.entries(summary).sort((a, b) => b[0].localeCompare(a[0]));
-  }, [filteredReports]);
-
-  const weeklyExpensesSummary = useMemo(() => {
-    const summary: Record<string, Record<string, number>> = {};
-    filteredReports.forEach(r => {
-        const week = getWeekRange(r.date);
-        if (!summary[week]) summary[week] = {};
-        const total = r.expenses.food + r.expenses.gas + r.expenses.parking + r.expenses.others;
-        summary[week][r.technician] = (summary[week][r.technician] || 0) + total;
     });
     return Object.entries(summary).sort((a, b) => b[0].localeCompare(a[0]));
   }, [filteredReports]);
@@ -989,26 +1017,82 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
 
         {tab === 'expenses' && (
             <div className="space-y-6">
-                <h3 className="text-lg font-bold text-gray-800 dark:text-white mb-4">Resumen de Gastos por Técnico y Semana</h3>
-                <div className="space-y-8">
-                    {weeklyExpensesSummary.map(([week, techs]) => (
-                        <div key={week} className="bg-gray-50 dark:bg-gray-900/30 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden shadow-lg">
-                            <div className="bg-gray-100 dark:bg-gray-800 p-3 border-b border-gray-200 dark:border-gray-700 flex items-center gap-2">
-                                <ChartPieIcon className="w-4 h-4 text-brand-teal dark:text-brand-lime" />
-                                <span className="text-brand-teal dark:text-brand-lime font-black text-sm uppercase tracking-widest">Semana: {week}</span>
+                <h3 className="text-lg font-bold text-gray-800 dark:text-white mb-4">Control de Gastos</h3>
+                {Object.keys(groupedExpenses.tree).sort((a,b) => groupedExpenses.dateMap[b].localeCompare(groupedExpenses.dateMap[a])).map((month) => {
+                    const weeksInMonth = groupedExpenses.tree[month];
+                    return (
+                        <div key={month} className="space-y-4">
+                            <div className="bg-brand-teal/10 dark:bg-brand-teal/20 border-l-4 border-brand-teal px-4 py-3 flex items-center gap-3">
+                                <h4 className="text-brand-teal dark:text-brand-teal font-black text-xl tracking-widest">{month}</h4>
                             </div>
-                            <div className="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                                {Object.entries(techs).map(([tech, total]) => (
-                                    <div key={tech} className="bg-white dark:bg-gray-950 p-4 rounded-xl border border-gray-200 dark:border-gray-800 flex flex-col justify-center items-center gap-1 group hover:border-brand-teal transition-all">
-                                        <span className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest">{tech}</span>
-                                        <span className="text-lg font-black text-gray-800 dark:text-white font-mono">{(total as number).toFixed(2)}€</span>
+                            
+                            {Object.keys(weeksInMonth).sort((a,b) => groupedExpenses.dateMap[b].localeCompare(groupedExpenses.dateMap[a])).map((week) => {
+                                const isExpanded = !!expandedWeeks[week];
+                                const techs = weeksInMonth[week];
+                                const totalWeek: number = (Object.values(techs) as number[]).reduce((a, b) => a + b, 0);
+
+                                return (
+                                    <div key={week} className="bg-gray-50 dark:bg-gray-900/30 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden shadow-sm">
+                                        <div 
+                                            onClick={() => toggleWeekExpansion(week)}
+                                            className="bg-gray-100 dark:bg-gray-800 p-3 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+                                        >
+                                            <div className="flex items-center gap-3">
+                                                <ChartPieIcon className="w-4 h-4 text-brand-teal dark:text-brand-lime" />
+                                                <span className="text-brand-teal dark:text-brand-lime font-black text-sm uppercase tracking-widest">Semana: {week}</span>
+                                            </div>
+                                            <div className="flex items-center gap-4">
+                                                <span className="text-xs font-bold text-gray-600 dark:text-gray-300">Total: {totalWeek.toFixed(2)}€</span>
+                                                <ChevronDownIcon className={`w-4 h-4 text-gray-500 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`} />
+                                            </div>
+                                        </div>
+                                        
+                                        {isExpanded && (
+                                            <div className="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 animate-fade-in">
+                                                {Object.entries(techs).map(([tech, rawTotal]) => {
+                                                    const total = Number(rawTotal);
+                                                    const paymentKey = `${week}_${tech}`;
+                                                    const isPaid = data.expensesPayments?.[paymentKey] || false;
+                                                    
+                                                    return (
+                                                        <div 
+                                                            key={tech} 
+                                                            className={`p-4 rounded-xl border transition-all flex flex-col justify-between gap-3 group relative ${
+                                                                isPaid 
+                                                                ? 'bg-green-50 dark:bg-green-900/20 border-green-500 dark:border-green-600' 
+                                                                : 'bg-white dark:bg-gray-950 border-gray-200 dark:border-gray-800 hover:border-brand-teal'
+                                                            }`}
+                                                        >
+                                                            <div className="flex justify-between items-start">
+                                                                <span className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest">{tech}</span>
+                                                                {isPaid && <CheckCircleIcon className="w-4 h-4 text-green-600 dark:text-green-400" />}
+                                                            </div>
+                                                            
+                                                            <div className="flex justify-between items-end">
+                                                                <span className={`text-lg font-black font-mono ${isPaid ? 'text-green-800 dark:text-green-300' : 'text-gray-800 dark:text-white'}`}>{total.toFixed(2)}€</span>
+                                                                
+                                                                <label className="flex items-center gap-2 cursor-pointer">
+                                                                    <input 
+                                                                        type="checkbox" 
+                                                                        checked={isPaid} 
+                                                                        onChange={() => toggleExpensePayment(week, tech)}
+                                                                        className="w-4 h-4 rounded border-gray-300 text-green-600 focus:ring-green-500"
+                                                                    />
+                                                                    <span className="text-[9px] uppercase font-bold text-gray-500 select-none">Pagado</span>
+                                                                </label>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
                                     </div>
-                                ))}
-                            </div>
+                                );
+                            })}
                         </div>
-                    ))}
-                    {weeklyExpensesSummary.length === 0 && <p className="text-center text-gray-500 py-10 italic">No hay registros de gastos actualmente.</p>}
-                </div>
+                    );
+                })}
+                {Object.keys(groupedExpenses.tree).length === 0 && <p className="text-center text-gray-500 py-10 italic">No hay registros de gastos actualmente.</p>}
             </div>
         )}
 

@@ -110,6 +110,7 @@ export interface AppData {
   holidays: string[];
   adminPassword?: string;
   firebaseConfig?: string;
+  expensesPayments?: Record<string, boolean>; // Registro de pagos de gastos { "WeekRange_TechName": true }
 }
 
 const DEFAULT_DAILY_ORG: DailyOrgData = {
@@ -146,7 +147,8 @@ const INITIAL_DATA: AppData = {
   holidays: ['2025-01-01', '2025-01-06', '2025-04-18', '2025-04-21', '2025-05-01', '2025-08-15', '2025-10-12', '2025-11-01', '2025-12-06', '2025-12-08', '2025-12-25'],
   dailyOrg: DEFAULT_DAILY_ORG,
   adminPassword: 'admin',
-  firebaseConfig: JSON.stringify(FIREBASE_CONFIG)
+  firebaseConfig: JSON.stringify(FIREBASE_CONFIG),
+  expensesPayments: {}
 };
 
 const App: React.FC = () => {
