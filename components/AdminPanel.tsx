@@ -91,8 +91,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
     notes: ''
   });
   const [isEditingProject, setIsEditingProject] = useState(false);
-  const [idMode, setIdMode] = useState<'AUTO' | 'MANUAL'>('AUTO'); // Nuevo estado para controlar el modo de ID
-  const [projectSearchTerm, setProjectSearchTerm] = useState(''); // Estado para búsqueda de obras
+  const [idMode, setIdMode] = useState<'AUTO' | 'MANUAL'>('AUTO'); 
+  const [projectSearchTerm, setProjectSearchTerm] = useState(''); 
 
   // Ref para scroll a obras terminadas
   const archiveRef = useRef<HTMLDivElement>(null);
@@ -126,7 +126,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
     const today = new Date().toISOString().split('T')[0];
     const currentWeek = getWeekRange(today);
     setExpandedWeeks(prev => {
-        // Solo inicializamos si el estado está vacío (primera carga)
         if (Object.keys(prev).length === 0) {
             return { [currentWeek]: true };
         }
@@ -165,7 +164,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
   const resolveProjectFullName = (num: string) => {
       const detailed = (data.projectsDetailed || []).find(p => p.id === num);
       if (detailed) return detailed.name;
-      return num; // Fallback al ID si no encuentra nombre
+      return num; 
   };
 
   const viewProjectHistory = (projectId: string) => {
@@ -188,7 +187,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
       setData(prev => {
           const currentJobs = prev.dailyOrg?.trabajos || [];
           
-          // Check if already exists
           const exists = currentJobs.some(j => j.nombre === jobName);
           if (exists) {
              if(!window.confirm(`La obra "${jobName}" ya está en la organización de hoy. ¿Añadir otra vez?`)) {
@@ -237,33 +235,43 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
     return (data.vacationRequests || []).filter(r => r.status === 'pending' || r.status === 'cancel_requested');
   }, [data.vacationRequests]);
 
-  // Lista única de clientes para sugerencias inteligentes
+  // Alerta de Vacaciones Próximas (4 días antes)
+  const upcomingAbsences = useMemo(() => {
+    const today = new Date();
+    today.setHours(0,0,0,0);
+
+    return (data.vacationRequests || [])
+        .filter(r => r.status === 'approved')
+        .map(r => {
+            const [y, m, d] = r.startDate.split('-').map(Number);
+            const start = new Date(y, m - 1, d); // Mes es 0-index
+            const diffTime = start.getTime() - today.getTime();
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            return { ...r, diffDays };
+        })
+        .filter(r => r.diffDays > 0 && r.diffDays <= 4) // Solo 4 días antes, desaparece el día que se va (0)
+        .sort((a, b) => a.diffDays - b.diffDays);
+  }, [data.vacationRequests]);
+
   const uniqueClients = useMemo(() => {
       const clients = new Set((data.projectsDetailed || []).map(p => p.client).filter(Boolean));
-      // Añadir clientes de presupuestos
       (data.budgets || []).forEach(b => { if(b.client) clients.add(b.client); });
       return Array.from(clients).sort();
   }, [data.projectsDetailed, data.budgets]);
 
-  // Listado de obras ordenado: Activas primero (newest ID), luego Terminadas/Facturadas
   const sortedProjects = useMemo(() => {
       return [...(data.projectsDetailed || [])].sort((a, b) => {
           const aDone = a.isFinished || a.isInvoiced;
           const bDone = b.isFinished || b.isInvoiced;
           
-          // 1. Prioridad: Activas antes que (Terminadas O Facturadas)
           if (aDone !== bDone) return aDone ? 1 : -1;
-
-          // 2. Prioridad secundaria: Si tiene AVISO activado, sube arriba dentro de su grupo
           if (a.hasWarning && !b.hasWarning) return -1;
           if (!a.hasWarning && b.hasWarning) return 1;
           
-          // 3. Ordenar por ID descendente (más nuevas primero)
           return b.id.localeCompare(a.id);
       });
   }, [data.projectsDetailed]);
 
-  // Filtrar obras para administración basado en búsqueda
   const filteredAdminProjects = useMemo(() => {
       if (!projectSearchTerm) return sortedProjects;
       const lowerTerm = projectSearchTerm.toLowerCase();
@@ -274,7 +282,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
       );
   }, [sortedProjects, projectSearchTerm]);
 
-  // Encontrar el índice de la primera obra terminada/facturada para el scroll
   const firstArchiveIndex = useMemo(() => {
       return filteredAdminProjects.findIndex(p => p.isFinished || p.isInvoiced);
   }, [filteredAdminProjects]);
@@ -287,7 +294,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
       }
   };
 
-  // Presupuestos ordenados
   const sortedBudgets = useMemo(() => {
       return [...(data.budgets || [])].sort((a, b) => {
           return b.id.localeCompare(a.id);
@@ -318,7 +324,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
           return;
       }
 
-      // Check duplicate only if creating new
       if (!isEditingProject) {
           const exists = data.projectsDetailed.some(p => p.id === projectForm.id);
           if (exists) {
@@ -329,11 +334,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
       
       const finalProject = { ...projectForm };
       
-      // Lógica para fecha de aviso
       if (finalProject.hasWarning && !finalProject.warningDate) {
-          finalProject.warningDate = new Date().toISOString().split('T')[0]; // Guardar fecha de hoy si se activa
+          finalProject.warningDate = new Date().toISOString().split('T')[0];
       } else if (!finalProject.hasWarning) {
-          finalProject.warningDate = ''; // Resetear si se desactiva
+          finalProject.warningDate = '';
       }
 
       setData(prev => {
@@ -378,7 +382,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
 
           let updatedProjects = [...prev.projectsDetailed];
 
-          // Automatic Project Creation
           if (finalBudget.isAccepted) {
               newProjectId = generateNextProjectId();
               const newProject: ProjectData = {
@@ -396,7 +399,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                   notes: `Generado desde presupuesto: ${finalBudget.comments}`
               };
               
-              // Verify ID uniqueness in current state
               while (updatedProjects.some(p => p.id === newProject.id)) {
                   const num = parseInt(newProject.id.slice(2)) + 1;
                   newProject.id = `${newProject.id.slice(0,2)}${num.toString().padStart(3, '0')}`;
@@ -449,7 +451,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
   const editProject = (p: ProjectData) => {
       setProjectForm(p);
       setIsEditingProject(true);
-      setIdMode('AUTO'); // Al editar, por defecto bloqueamos el cambio a manual para no romper referencias, o podríamos dejarlo visual
+      setIdMode('AUTO');
       window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -463,7 +465,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
 
   const resetProjectForm = () => {
       setProjectForm({
-        id: '', // Se recalculará por el useEffect si idMode es AUTO
+        id: '', 
         name: '',
         client: '',
         budgetNum: '',
@@ -477,7 +479,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
         notes: ''
       });
       setIsEditingProject(false);
-      setIdMode('AUTO'); // Resetear a modo automático
+      setIdMode('AUTO'); 
   };
 
   const handleDelete = (type: 'techs' | 'vehicles', index: number) => {
@@ -594,7 +596,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
   const filteredReports = useMemo(() => {
     return data.reports.filter(r => {
         if (filterTech && r.technician !== filterTech) return false;
-        // Filtrar usando el nombre resuelto o el ID
         if (filterProject) {
             const projectFilter = filterProject.toLowerCase();
             const projectFull = resolveProjectFullName(r.projectNum).toLowerCase();
@@ -618,10 +619,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
     return months;
   }, [filteredReports]);
 
-  // Estructura agrupada para GASTOS (Mes > Semana > Técnico) para el orden correcto
   const groupedExpenses = useMemo(() => {
     const tree: Record<string, Record<string, Record<string, number>>> = {};
-    const dateMap: Record<string, string> = {}; // Mapeo de etiqueta a fecha ISO para ordenamiento
+    const dateMap: Record<string, string> = {}; 
 
     filteredReports.forEach(r => {
         const mLabel = getMonthYearLabel(r.date);
@@ -635,7 +635,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
         
         tree[mLabel][wLabel][r.technician] = (tree[mLabel][wLabel][r.technician] || 0) + total;
 
-        // Guardar la fecha más reciente encontrada para esa etiqueta para poder ordenar
         if (!dateMap[mLabel] || r.date > dateMap[mLabel]) dateMap[mLabel] = r.date;
         if (!dateMap[wLabel] || r.date > dateMap[wLabel]) dateMap[wLabel] = r.date;
     });
@@ -677,7 +676,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
       const fullName = resolveProjectFullName(r.projectNum).replace(/,/g, " -");
       return [r.id, r.date, r.technician, `"${fullName}"`, r.projectNum, r.startTime, r.endTime, r.vehicle, r.isDriver ? 'SI' : 'NO', r.isDriver ? (r.driverTripType || '') : '', `"${cleanDesc}"`, r.expenses.food, r.expenses.gas, r.expenses.parking, r.expenses.others, `"${cleanOtherDesc}"`, r.overtimeHours || 0, r.overtimeType || 'NORMAL'].join(',');
     });
-    // Agregamos sep=, para que Excel detecte automáticamente la coma como separador
     const csvContent = "data:text/csv;charset=utf-8," + ["sep=,", headers, ...rows].join('\n');
     const link = document.createElement("a");
     link.setAttribute("href", encodeURI(csvContent));
@@ -694,15 +692,11 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
     }));
   };
 
-  // Helper para obtener clase de color según aviso
   const getWarningStyle = (date?: string) => {
       if (!date) return '';
       const diff = getDaysDiff(date);
-      // 0-2 días: Verde
       if (diff <= 2) return 'bg-green-100 dark:bg-green-900/30 border-green-500 dark:border-green-600';
-      // 3-5 días: Naranja
       if (diff <= 5) return 'bg-orange-100 dark:bg-orange-900/30 border-orange-500 dark:border-orange-600';
-      // +5 días: Rojo
       return 'bg-red-100 dark:bg-red-900/30 border-red-500 dark:border-red-600 animate-pulse-slow';
   };
 
@@ -714,36 +708,27 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
       return <span className="bg-red-200 text-red-800 text-[9px] font-black px-2 py-0.5 rounded animate-pulse">AVISO: {diff} días</span>;
   };
 
-  // Helper para el color de Presupuestos (basado en tiempo de creación si no tiene fecha)
   const getBudgetStyle = (b: Budget) => {
-      // Si está terminado, aceptado o TIENE fecha, color normal
       if (b.isFinished || b.isAccepted || b.deliveryDate) {
           return 'bg-white dark:bg-brand-panel border-gray-200 dark:border-gray-700';
       }
-
-      // Si no tiene fecha, calculamos días desde creación (usando ID como timestamp)
       const created = parseInt(b.id);
       if (isNaN(created)) return 'bg-white dark:bg-brand-panel border-gray-200 dark:border-gray-700';
-
       const diff = Math.floor((Date.now() - created) / (1000 * 60 * 60 * 24));
-
-      if (diff < 2) return 'bg-green-50 dark:bg-green-900/20 border-green-500 dark:border-green-600'; // 0-1 días
-      if (diff < 5) return 'bg-orange-50 dark:bg-orange-900/20 border-orange-500 dark:border-orange-600'; // 2-4 días
-      return 'bg-red-50 dark:bg-red-900/20 border-red-500 dark:border-red-600 animate-pulse-slow'; // 5+ días
+      if (diff < 2) return 'bg-green-50 dark:bg-green-900/20 border-green-500 dark:border-green-600';
+      if (diff < 5) return 'bg-orange-50 dark:bg-orange-900/20 border-orange-500 dark:border-orange-600';
+      return 'bg-red-50 dark:bg-red-900/20 border-red-500 dark:border-red-600 animate-pulse-slow';
   };
 
-  // Helper para badge de días en Presupuestos
   const getBudgetDaysBadge = (b: Budget) => {
       if (b.isFinished || b.isAccepted || b.deliveryDate) return null;
       const created = parseInt(b.id);
       if (isNaN(created)) return null;
       const diff = Math.floor((Date.now() - created) / (1000 * 60 * 60 * 24));
-      
       let colorClass = "bg-gray-100 text-gray-600";
       if (diff < 2) colorClass = "bg-green-100 text-green-700";
       else if (diff < 5) colorClass = "bg-orange-100 text-orange-700";
       else colorClass = "bg-red-100 text-red-700 font-bold animate-pulse";
-
       return <span className={`text-[9px] px-2 py-0.5 rounded ml-2 ${colorClass}`}>Sin fecha: {diff} días</span>;
   };
 
@@ -755,7 +740,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
       const title = encodeURIComponent(`${p.id} - ${p.name}`);
       const details = encodeURIComponent(`Cliente: ${p.client}\nResponsable: ${p.responsibleTech || 'Sin asignar'}`);
       const start = p.startDate.replace(/-/g, '');
-      const end = start; // Mismo día
+      const end = start; 
       const url = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&details=${details}&dates=${start}/${end}`;
       window.open(url, '_blank');
   };
@@ -763,6 +748,34 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
   return (
     <div className="bg-white dark:bg-brand-panel rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 overflow-hidden min-h-[600px] transition-colors duration-300">
       
+      {/* Alertas de Vacaciones Próximas */}
+      {upcomingAbsences.length > 0 && (
+        <div className="flex flex-col">
+            {upcomingAbsences.map(req => {
+                let colorClass = 'bg-green-100 dark:bg-green-900/30 border-green-500 text-green-800 dark:text-green-200';
+                if(req.diffDays <= 2) colorClass = 'bg-orange-100 dark:bg-orange-900/30 border-orange-500 text-orange-800 dark:text-orange-200';
+                if(req.diffDays === 1) colorClass = 'bg-red-100 dark:bg-red-900/30 border-red-500 text-red-800 dark:text-red-200 animate-pulse';
+
+                return (
+                    <div key={req.id} className={`p-4 border-b dark:border-gray-700 flex items-center justify-between gap-4 ${colorClass}`}>
+                        <div className="flex items-center gap-3">
+                            <div className="p-2 rounded-lg bg-white/20"><CalendarIcon className="w-5 h-5" /></div>
+                            <div>
+                                <p className="font-black uppercase text-xs tracking-widest">Aviso de Ausencia</p>
+                                <p className="text-sm font-bold">
+                                    Quedan {req.diffDays} día(s) para que <span className="underline">{req.userName}</span> tenga una ausencia ({req.type === 'vacation' ? 'Vacaciones' : req.type === 'sick' ? 'Baja' : 'A. Propios'}).
+                                </p>
+                            </div>
+                        </div>
+                        <div className="text-xs font-mono bg-white/30 px-2 py-1 rounded">
+                            {formatDateToSpanish(req.startDate)}
+                        </div>
+                    </div>
+                )
+            })}
+        </div>
+      )}
+
       {pendingRequests.length > 0 && (
         <div className="bg-orange-100 dark:bg-orange-600/20 border-b border-orange-200 dark:border-orange-500/50 p-4 flex flex-col sm:flex-row items-center justify-between gap-4 animate-pulse-slow">
             <div className="flex items-center gap-3">
