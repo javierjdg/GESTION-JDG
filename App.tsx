@@ -164,6 +164,7 @@ const App: React.FC = () => {
   const [firebaseError, setFirebaseError] = useState<string | null>(null);
   const [showConfigGuide, setShowConfigGuide] = useState(false);
   const [theme, setTheme] = useState<'light' | 'dark'>('dark');
+  const [lastBackupStatus, setLastBackupStatus] = useState<string>('');
   
   const isInternalUpdate = useRef(false);
   const isSyncingRef = useRef(false);
@@ -238,14 +239,17 @@ const App: React.FC = () => {
         setIsCloudConnected(true);
 
         unsubConfig = db.collection("jdg_teleco").doc("main_db").onSnapshot((snapshot: any) => {
-            if (isSyncingRef.current) return; // Ignorar snapshots mientras el usuario está interactuando
+            if (isSyncingRef.current) return; 
             if (snapshot.exists) {
                 const cloudConfig = snapshot.data();
-                setData(prev => ({
-                    ...prev,
-                    ...cloudConfig,
-                    reports: prev.reports 
-                }));
+                // Verificación de seguridad: si viene vacío, no lo cargamos ciegamente si tenemos datos locales
+                if (Object.keys(cloudConfig).length > 0) {
+                    setData(prev => ({
+                        ...prev,
+                        ...cloudConfig,
+                        reports: prev.reports 
+                    }));
+                }
             }
         }, (error: any) => {
             if (error.code === 'permission-denied') {
@@ -255,7 +259,7 @@ const App: React.FC = () => {
         });
 
         unsubReports = db.collection("jdg_teleco").doc("main_db").collection("reports").onSnapshot((snapshot: any) => {
-            if (isSyncingRef.current) return; // Ignorar snapshots mientras el usuario está interactuando
+            if (isSyncingRef.current) return; 
             const cloudReports: WorkReport[] = [];
             snapshot.forEach((doc: any) => {
                 cloudReports.push(doc.data() as WorkReport);
@@ -289,7 +293,36 @@ const App: React.FC = () => {
     };
   }, [data.firebaseConfig]);
 
-  // OPTIMIZACIÓN: Debounced save to avoid INP/Performance issues
+  // FUNCION BACKUP DIARIO
+  const performDailyBackup = async (currentData: AppData) => {
+    const today = new Date().toISOString().split('T')[0];
+    const lastBackup = localStorage.getItem('last_daily_backup');
+
+    if (lastBackup === today) return; // Ya hecha hoy
+
+    // SAFETY GUARD: No hacer backup si la app parece estar vacía (evitar guardar estados corruptos)
+    if (!currentData.technicians || currentData.technicians.length === 0) {
+        console.warn("Saltando backup: Datos insuficientes para copia de seguridad.");
+        return;
+    }
+
+    try {
+        const fb = (window as any).firebase;
+        if (!fb) return;
+        const db = fb.app().firestore();
+        
+        // Guardar en una colección separada por fecha
+        await db.collection("jdg_teleco_backups").doc(today).set(JSON.parse(JSON.stringify(currentData)));
+        
+        localStorage.setItem('last_daily_backup', today);
+        setLastBackupStatus(`Backup creado: ${today}`);
+        console.log("✅ Copia de seguridad diaria realizada en la nube");
+    } catch (e) {
+        console.error("Error backup diario", e);
+    }
+  };
+
+  // OPTIMIZACIÓN: Debounced save + BACKUP CHECK
   useEffect(() => {
     if (isInitialLoading) return;
 
@@ -300,6 +333,10 @@ const App: React.FC = () => {
 
         // Save Config to Cloud if applicable
         if (isCloudConnected && hasSyncedWithCloud) {
+            
+            // INTENTO DE BACKUP DIARIO
+            performDailyBackup(data);
+
             if (isInternalUpdate.current) {
                 isInternalUpdate.current = false;
                 return;
@@ -310,6 +347,13 @@ const App: React.FC = () => {
                     if (!fb) return;
                     const db = fb.app().firestore();
                     const { reports, ...configOnly } = data;
+
+                    // SAFETY GUARD: PREVENIR BORRADO ACCIDENTAL DE LA BBDD PRINCIPAL
+                    if ((!configOnly.technicians || configOnly.technicians.length === 0) && (!configOnly.projectsDetailed || configOnly.projectsDetailed.length === 0)) {
+                        console.warn("⚠️ PROTECCIÓN ACTIVADA: Se ha evitado guardar una configuración vacía en la nube.");
+                        return;
+                    }
+
                     const cleanConfig = JSON.parse(JSON.stringify(configOnly));
                     await db.collection("jdg_teleco").doc("main_db").set(cleanConfig);
                 } catch (e: any) {
@@ -493,6 +537,7 @@ const App: React.FC = () => {
                     <span className={`flex items-center gap-1 text-[9px] px-2 py-0.5 rounded-full border ${hasSyncedWithCloud ? 'text-green-600 dark:text-green-400 bg-green-100 dark:bg-green-900/30 border-green-200 dark:border-green-800' : 'text-yellow-600 dark:text-yellow-400 bg-yellow-100 dark:bg-yellow-900/30 border-yellow-200 dark:border-yellow-800'}`}>
                         <WifiIcon className="w-2.5 h-2.5" /> {hasSyncedWithCloud ? 'En Línea' : 'Offline'}
                     </span>
+                    {lastBackupStatus && <span className="text-[8px] text-gray-400">({lastBackupStatus})</span>}
                 </div>
               </div>
             </div>
