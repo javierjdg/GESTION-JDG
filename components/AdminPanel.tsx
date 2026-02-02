@@ -2,7 +2,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { AppData, TechUser, WorkReport, ProjectData, Budget } from '../App';
 import { TrashIcon, PlusIcon, DownloadIcon, UserIcon, TruckIcon, FileTextIcon, FilterIcon, EditIcon, SaveIcon, XIcon, LockIcon, UploadIcon, CloudIcon, CalendarIcon, ChartPieIcon, ClockIcon, EyeIcon, AlertIcon, ChevronDownIcon, BriefcaseIcon, SearchIcon, CheckCircleIcon } from './icons';
-import DailyOrganization from './DailyOrganization';
+import DailyOrganization, { DailyOrgData } from './DailyOrganization';
 
 interface AdminPanelProps {
   data: AppData;
@@ -758,6 +758,41 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
       const end = start; // Mismo día
       const url = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&details=${details}&dates=${start}/${end}`;
       window.open(url, '_blank');
+  };
+
+  const handleDailyOrgUpdate = (newOrg: DailyOrgData) => {
+    setData(prev => {
+        const history = { ...(prev.dailyOrgHistory || {}) };
+        if (newOrg && newOrg.fecha) {
+            history[newOrg.fecha] = newOrg;
+        }
+        return {
+            ...prev, 
+            dailyOrg: newOrg,
+            dailyOrgHistory: history
+        };
+    }); 
+  };
+
+  const handleDailyOrgDateChange = (newDate: string) => {
+    setData(prev => {
+        const existingData = prev.dailyOrgHistory?.[newDate];
+        let orgToLoad: DailyOrgData;
+
+        if (existingData) {
+            orgToLoad = existingData;
+        } else {
+            const currentWorkers = prev.dailyOrg?.trabajadores || [];
+            const cleanWorkers = currentWorkers.map(w => ({ ...w, asignado: false }));
+            orgToLoad = {
+                fecha: newDate,
+                trabajos: [],
+                trabajadores: cleanWorkers
+            };
+        }
+
+        return { ...prev, dailyOrg: orgToLoad };
+    });
   };
 
   return (
@@ -1559,7 +1594,15 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
             </div>
         )}
 
-        {tab === 'daily' && (<DailyOrganization isReadOnly={false} data={data.dailyOrg} onUpdate={(newOrg) => setData(prev => ({...prev, dailyOrg: newOrg}))} />)}
+        {tab === 'daily' && (
+            <DailyOrganization 
+                key={data.dailyOrg.fecha}
+                isReadOnly={false} 
+                data={data.dailyOrg} 
+                onUpdate={handleDailyOrgUpdate} 
+                onChangeDate={handleDailyOrgDateChange}
+            />
+        )}
 
         {tab === 'settings' && (
             <div className="max-w-2xl mx-auto space-y-6">
