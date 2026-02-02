@@ -9,6 +9,7 @@ interface AdminPanelProps {
   setData: React.Dispatch<React.SetStateAction<AppData>>;
   onGoToVacations?: () => void;
   onDeleteReport: (id: string) => void;
+  onManualBackup?: () => void;
 }
 
 // Helpers for calculations
@@ -17,12 +18,6 @@ const calculateDuration = (start: string, end: string): number => {
     const [h2, m2] = end.split(':').map(Number);
     const diff = (h2 + m2/60) - (h1 + m1/60);
     return diff > 0 ? diff : 0;
-};
-
-const formatDateToSpanish = (dateStr: string) => {
-    if (!dateStr) return '';
-    const [year, month, day] = dateStr.split('-');
-    return `${day}/${month}/${year}`;
 };
 
 const getWeekRange = (dateStr: string) => {
@@ -53,7 +48,7 @@ const getDaysDiff = (dateStr?: string) => {
     return Math.max(0, Math.floor(diffTime / (1000 * 60 * 60 * 24)));
 };
 
-const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations, onDeleteReport }) => {
+const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations, onDeleteReport, onManualBackup }) => {
   const [tab, setTab] = useState<'techs' | 'projects' | 'budgets' | 'reports' | 'settings' | 'daily' | 'vehicles' | 'expenses'>('reports');
   const [reportViewMode, setReportViewMode] = useState<'list' | 'by_project' | 'by_hours'>('list');
   const [expandedReportId, setExpandedReportId] = useState<string | null>(null);
@@ -77,43 +72,29 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
   
   // Estados para Gestión de Obras
   const [projectForm, setProjectForm] = useState<ProjectData>({
-    id: '',
-    name: '',
-    client: '',
-    budgetNum: '',
-    valuation: 'POR HORAS',
-    responsibleTech: '',
-    startDate: '',
-    isFinished: false,
-    isInvoiced: false,
-    hasWarning: false,
-    warningDate: '',
-    notes: ''
+    id: '', name: '', client: '', budgetNum: '', valuation: 'POR HORAS',
+    responsibleTech: '', startDate: '', isFinished: false, isInvoiced: false,
+    hasWarning: false, warningDate: '', notes: ''
   });
   const [isEditingProject, setIsEditingProject] = useState(false);
-  const [idMode, setIdMode] = useState<'AUTO' | 'MANUAL'>('AUTO'); // Nuevo estado para controlar el modo de ID
-  const [projectSearchTerm, setProjectSearchTerm] = useState(''); // Estado para búsqueda de obras
+  const [idMode, setIdMode] = useState<'AUTO' | 'MANUAL'>('AUTO');
+  const [projectSearchTerm, setProjectSearchTerm] = useState('');
 
-  // Ref para scroll a obras terminadas
   const archiveRef = useRef<HTMLDivElement>(null);
 
   // Estados para Presupuestos
   const [budgetForm, setBudgetForm] = useState<Budget>({
-    id: '',
-    budgetNum: '',
-    name: '',
-    client: '',
-    deliveryDate: '',
-    excelName: '',
-    hasFolderData: false,
-    isFinished: false,
-    isAccepted: false,
-    comments: ''
+    id: '', budgetNum: '', name: '', client: '', deliveryDate: '',
+    excelName: '', hasFolderData: false, isFinished: false, isAccepted: false, comments: ''
   });
   const [isEditingBudget, setIsEditingBudget] = useState(false);
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  // Refs de inputs
   const reportImportInputRef = useRef<HTMLInputElement>(null);
+  const projectsImportRef = useRef<HTMLInputElement>(null);
+  const budgetsImportRef = useRef<HTMLInputElement>(null);
+  const techsImportRef = useRef<HTMLInputElement>(null);
+  const vehiclesImportRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (data.firebaseConfig) {
@@ -121,12 +102,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
     }
   }, [data.firebaseConfig]);
 
-  // Inicializar expansión de la semana actual
   useEffect(() => {
     const today = new Date().toISOString().split('T')[0];
     const currentWeek = getWeekRange(today);
     setExpandedWeeks(prev => {
-        // Solo inicializamos si el estado está vacío (primera carga)
         if (Object.keys(prev).length === 0) {
             return { [currentWeek]: true };
         }
@@ -134,20 +113,17 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
     });
   }, []);
 
-  // Calcular ID de Obra automático
   useEffect(() => {
-    if (tab === 'projects' && !isEditingProject) {
-        if (idMode === 'AUTO') {
-            const yearPrefix = new Date().getFullYear().toString().slice(-2);
-            const existingIds = (data.projectsDetailed || [])
-                .map(p => p.id)
-                .filter(id => id.startsWith(yearPrefix) && !isNaN(Number(id.slice(2))))
-                .map(id => parseInt(id.slice(2)));
-            
-            const nextSeq = existingIds.length > 0 ? Math.max(...existingIds) + 1 : 1;
-            const nextId = `${yearPrefix}${nextSeq.toString().padStart(3, '0')}`;
-            setProjectForm(prev => ({ ...prev, id: nextId }));
-        }
+    if (tab === 'projects' && !isEditingProject && idMode === 'AUTO') {
+        const yearPrefix = new Date().getFullYear().toString().slice(-2);
+        const existingIds = (data.projectsDetailed || [])
+            .map(p => p.id)
+            .filter(id => id.startsWith(yearPrefix) && !isNaN(Number(id.slice(2))))
+            .map(id => parseInt(id.slice(2)));
+        
+        const nextSeq = existingIds.length > 0 ? Math.max(...existingIds) + 1 : 1;
+        const nextId = `${yearPrefix}${nextSeq.toString().padStart(3, '0')}`;
+        setProjectForm(prev => ({ ...prev, id: nextId }));
     }
   }, [tab, data.projectsDetailed, isEditingProject, idMode]);
 
@@ -165,7 +141,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
   const resolveProjectFullName = (num: string) => {
       const detailed = (data.projectsDetailed || []).find(p => p.id === num);
       if (detailed) return detailed.name;
-      return num; // Fallback al ID si no encuentra nombre
+      return num;
   };
 
   const viewProjectHistory = (projectId: string) => {
@@ -187,8 +163,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
 
       setData(prev => {
           const currentJobs = prev.dailyOrg?.trabajos || [];
-          
-          // Check if already exists
           const exists = currentJobs.some(j => j.nombre === jobName);
           if (exists) {
              if(!window.confirm(`La obra "${jobName}" ya está en la organización de hoy. ¿Añadir otra vez?`)) {
@@ -196,21 +170,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                  return prev;
              }
           }
-
-          const newJob = {
-              id: Date.now(),
-              nombre: jobName,
-              color: randomColor,
-              trabajadores: []
-          };
-
-          return {
-              ...prev,
-              dailyOrg: {
-                  ...prev.dailyOrg,
-                  trabajos: [...currentJobs, newJob]
-              }
-          };
+          const newJob = { id: Date.now(), nombre: jobName, color: randomColor, trabajadores: [] };
+          return { ...prev, dailyOrg: { ...prev.dailyOrg, trabajos: [...currentJobs, newJob] } };
       });
 
       if (shouldSwitch) {
@@ -223,13 +184,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
       const key = `${week}_${tech}`;
       setData(prev => {
           const currentStatus = prev.expensesPayments?.[key] || false;
-          return {
-              ...prev,
-              expensesPayments: {
-                  ...(prev.expensesPayments || {}),
-                  [key]: !currentStatus
-              }
-          };
+          return { ...prev, expensesPayments: { ...(prev.expensesPayments || {}), [key]: !currentStatus } };
       });
   };
 
@@ -237,33 +192,23 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
     return (data.vacationRequests || []).filter(r => r.status === 'pending' || r.status === 'cancel_requested');
   }, [data.vacationRequests]);
 
-  // Lista única de clientes para sugerencias inteligentes
   const uniqueClients = useMemo(() => {
       const clients = new Set((data.projectsDetailed || []).map(p => p.client).filter(Boolean));
-      // Añadir clientes de presupuestos
       (data.budgets || []).forEach(b => { if(b.client) clients.add(b.client); });
       return Array.from(clients).sort();
   }, [data.projectsDetailed, data.budgets]);
 
-  // Listado de obras ordenado: Activas primero (newest ID), luego Terminadas/Facturadas
   const sortedProjects = useMemo(() => {
       return [...(data.projectsDetailed || [])].sort((a, b) => {
           const aDone = a.isFinished || a.isInvoiced;
           const bDone = b.isFinished || b.isInvoiced;
-          
-          // 1. Prioridad: Activas antes que (Terminadas O Facturadas)
           if (aDone !== bDone) return aDone ? 1 : -1;
-
-          // 2. Prioridad secundaria: Si tiene AVISO activado, sube arriba dentro de su grupo
           if (a.hasWarning && !b.hasWarning) return -1;
           if (!a.hasWarning && b.hasWarning) return 1;
-          
-          // 3. Ordenar por ID descendente (más nuevas primero)
           return b.id.localeCompare(a.id);
       });
   }, [data.projectsDetailed]);
 
-  // Filtrar obras para administración basado en búsqueda
   const filteredAdminProjects = useMemo(() => {
       if (!projectSearchTerm) return sortedProjects;
       const lowerTerm = projectSearchTerm.toLowerCase();
@@ -274,24 +219,17 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
       );
   }, [sortedProjects, projectSearchTerm]);
 
-  // Encontrar el índice de la primera obra terminada/facturada para el scroll
   const firstArchiveIndex = useMemo(() => {
       return filteredAdminProjects.findIndex(p => p.isFinished || p.isInvoiced);
   }, [filteredAdminProjects]);
 
   const scrollToArchive = () => {
-      if (archiveRef.current) {
-          archiveRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      } else {
-          alert("No hay obras terminadas o facturadas visibles.");
-      }
+      if (archiveRef.current) archiveRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      else alert("No hay obras terminadas o facturadas visibles.");
   };
 
-  // Presupuestos ordenados
   const sortedBudgets = useMemo(() => {
-      return [...(data.budgets || [])].sort((a, b) => {
-          return b.id.localeCompare(a.id);
-      });
+      return [...(data.budgets || [])].sort((a, b) => b.id.localeCompare(a.id));
   }, [data.budgets]);
 
   const handleAdd = (type: 'techs' | 'vehicles') => {
@@ -309,184 +247,79 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
   };
 
   const handleSaveProject = () => {
-      if (!projectForm.name || !projectForm.client) {
-          alert("Faltan datos obligatorios (Nombre, Cliente)");
-          return;
-      }
-      if (!projectForm.id) {
-          alert("El ID de obra es obligatorio.");
-          return;
-      }
+      if (!projectForm.name || !projectForm.client) { alert("Faltan datos obligatorios"); return; }
+      if (!projectForm.id) { alert("El ID de obra es obligatorio."); return; }
 
-      // Check duplicate only if creating new
       if (!isEditingProject) {
           const exists = data.projectsDetailed.some(p => p.id === projectForm.id);
-          if (exists) {
-              alert(`ERROR: El ID de obra ${projectForm.id} ya existe. Por favor utiliza otro número.`);
-              return;
-          }
+          if (exists) { alert(`ERROR: El ID ${projectForm.id} ya existe.`); return; }
       }
       
       const finalProject = { ...projectForm };
-      
-      // Lógica para fecha de aviso
       if (finalProject.hasWarning && !finalProject.warningDate) {
-          finalProject.warningDate = new Date().toISOString().split('T')[0]; // Guardar fecha de hoy si se activa
+          finalProject.warningDate = new Date().toISOString().split('T')[0];
       } else if (!finalProject.hasWarning) {
-          finalProject.warningDate = ''; // Resetear si se desactiva
+          finalProject.warningDate = '';
       }
 
       setData(prev => {
           let updatedDetailed = [...(prev.projectsDetailed || [])];
-
           if (isEditingProject) {
               const idx = updatedDetailed.findIndex(p => p.id === finalProject.id);
               if (idx >= 0) updatedDetailed[idx] = finalProject;
           } else {
               updatedDetailed.push(finalProject);
           }
-
           return { ...prev, projectsDetailed: updatedDetailed };
       });
-      
       resetProjectForm();
   };
 
   const handleSaveBudget = () => {
-      if (!budgetForm.name || !budgetForm.client) {
-          alert("Faltan datos obligatorios (Nombre, Cliente)");
-          return;
-      }
-
-      const finalBudget = { 
-          ...budgetForm, 
-          id: budgetForm.id || Date.now().toString() 
-      };
-
+      if (!budgetForm.name || !budgetForm.client) { alert("Faltan datos obligatorios"); return; }
+      const finalBudget = { ...budgetForm, id: budgetForm.id || Date.now().toString() };
       let newProjectCreated = false;
       let newProjectId = '';
 
       setData(prev => {
           let updatedBudgets = [...(prev.budgets || [])];
           const idx = updatedBudgets.findIndex(b => b.id === finalBudget.id);
-          
-          if (idx >= 0) {
-              updatedBudgets[idx] = finalBudget;
-          } else {
-              updatedBudgets = [finalBudget, ...updatedBudgets];
-          }
+          if (idx >= 0) updatedBudgets[idx] = finalBudget;
+          else updatedBudgets = [finalBudget, ...updatedBudgets];
 
           let updatedProjects = [...prev.projectsDetailed];
-
-          // Automatic Project Creation
           if (finalBudget.isAccepted) {
               newProjectId = generateNextProjectId();
               const newProject: ProjectData = {
-                  id: newProjectId,
-                  name: finalBudget.name,
-                  client: finalBudget.client,
-                  budgetNum: finalBudget.budgetNum,
-                  valuation: 'PRESUPUESTO',
-                  responsibleTech: '',
-                  startDate: new Date().toISOString().split('T')[0],
-                  isFinished: false,
-                  isInvoiced: false,
-                  hasWarning: false,
-                  warningDate: '',
-                  notes: `Generado desde presupuesto: ${finalBudget.comments}`
+                  id: newProjectId, name: finalBudget.name, client: finalBudget.client,
+                  budgetNum: finalBudget.budgetNum, valuation: 'PRESUPUESTO', responsibleTech: '',
+                  startDate: new Date().toISOString().split('T')[0], isFinished: false, isInvoiced: false,
+                  hasWarning: false, warningDate: '', notes: `Generado desde presupuesto: ${finalBudget.comments}`
               };
-              
-              // Verify ID uniqueness in current state
               while (updatedProjects.some(p => p.id === newProject.id)) {
                   const num = parseInt(newProject.id.slice(2)) + 1;
                   newProject.id = `${newProject.id.slice(0,2)}${num.toString().padStart(3, '0')}`;
               }
-
               updatedProjects.push(newProject);
               newProjectCreated = true;
           }
-
           return { ...prev, budgets: updatedBudgets, projectsDetailed: updatedProjects };
       });
 
-      if (newProjectCreated) {
-          alert(`✅ Obra creada automáticamente con ID: ${newProjectId}`);
-      }
-
+      if (newProjectCreated) alert(`✅ Obra creada automáticamente con ID: ${newProjectId}`);
       resetBudgetForm();
   };
 
-  const editBudget = (b: Budget) => {
-      setBudgetForm(b);
-      setIsEditingBudget(true);
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
+  const editBudget = (b: Budget) => { setBudgetForm(b); setIsEditingBudget(true); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+  const deleteBudget = (id: string) => { if (!window.confirm("¿Eliminar presupuesto?")) return; setData(prev => ({ ...prev, budgets: prev.budgets.filter(b => b.id !== id) })); };
+  const resetBudgetForm = () => { setBudgetForm({ id: '', budgetNum: '', name: '', client: '', deliveryDate: '', excelName: '', hasFolderData: false, isFinished: false, isAccepted: false, comments: '' }); setIsEditingBudget(false); };
 
-  const deleteBudget = (id: string) => {
-      if (!window.confirm("¿Eliminar presupuesto?")) return;
-      setData(prev => ({
-          ...prev,
-          budgets: prev.budgets.filter(b => b.id !== id)
-      }));
-  };
-
-  const resetBudgetForm = () => {
-      setBudgetForm({
-        id: '',
-        budgetNum: '',
-        name: '',
-        client: '',
-        deliveryDate: '',
-        excelName: '',
-        hasFolderData: false,
-        isFinished: false,
-        isAccepted: false,
-        comments: ''
-      });
-      setIsEditingBudget(false);
-  };
-
-  const editProject = (p: ProjectData) => {
-      setProjectForm(p);
-      setIsEditingProject(true);
-      setIdMode('AUTO'); // Al editar, por defecto bloqueamos el cambio a manual para no romper referencias, o podríamos dejarlo visual
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-
-  const deleteProject = (id: string) => {
-      if (!window.confirm("¿Eliminar obra? Se mantendrá en el historial de partes pero no aparecerá en la gestión.")) return;
-      setData(prev => ({
-          ...prev,
-          projectsDetailed: prev.projectsDetailed.filter(p => p.id !== id)
-      }));
-  };
-
-  const resetProjectForm = () => {
-      setProjectForm({
-        id: '', // Se recalculará por el useEffect si idMode es AUTO
-        name: '',
-        client: '',
-        budgetNum: '',
-        valuation: 'POR HORAS',
-        responsibleTech: '',
-        startDate: '',
-        isFinished: false,
-        isInvoiced: false,
-        hasWarning: false,
-        warningDate: '',
-        notes: ''
-      });
-      setIsEditingProject(false);
-      setIdMode('AUTO'); // Resetear a modo automático
-  };
+  const editProject = (p: ProjectData) => { setProjectForm(p); setIsEditingProject(true); setIdMode('AUTO'); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+  const deleteProject = (id: string) => { if (!window.confirm("¿Eliminar obra?")) return; setData(prev => ({ ...prev, projectsDetailed: prev.projectsDetailed.filter(p => p.id !== id) })); };
+  const resetProjectForm = () => { setProjectForm({ id: '', name: '', client: '', budgetNum: '', valuation: 'POR HORAS', responsibleTech: '', startDate: '', isFinished: false, isInvoiced: false, hasWarning: false, warningDate: '', notes: '' }); setIsEditingProject(false); setIdMode('AUTO'); };
 
   const handleDelete = (type: 'techs' | 'vehicles', index: number) => {
-    let itemName = "Elemento";
-    if (type === 'techs' && data.technicians[index]) itemName = data.technicians[index].name;
-    else if (type === 'vehicles' && data.vehicles[index]) itemName = data.vehicles[index];
-
-    if (!window.confirm(`¿Eliminar "${itemName}"? Esta acción no se puede deshacer.`)) return;
-
+    if (!window.confirm(`¿Eliminar elemento?`)) return;
     setData(prev => {
       if (type === 'techs') return { ...prev, technicians: prev.technicians.filter((_, i) => i !== index) };
       if (type === 'vehicles') return { ...prev, vehicles: prev.vehicles.filter((_, i) => i !== index) };
@@ -496,20 +329,11 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
 
   const startEditing = (index: number, item: any, type: 'techs' | 'vehicles') => {
     setEditingIndex(index);
-    if (type === 'techs') {
-      const t = item as TechUser;
-      setEditValue(t.name);
-      setEditPwdValue(t.password);
-    } else {
-      setEditValue(item as string);
-    }
+    if (type === 'techs') { const t = item as TechUser; setEditValue(t.name); setEditPwdValue(t.password); }
+    else { setEditValue(item as string); }
   };
 
-  const cancelEditing = () => {
-    setEditingIndex(null);
-    setEditValue('');
-    setEditPwdValue('');
-  };
+  const cancelEditing = () => { setEditingIndex(null); setEditValue(''); setEditPwdValue(''); };
 
   const saveEditing = (type: 'techs' | 'vehicles') => {
     if (!editValue.trim() || editingIndex === null) return;
@@ -550,25 +374,13 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
         if (lines.length < 2) return;
         const newReports: WorkReport[] = [];
         let importedCount = 0;
-        let skippedCount = 0;
         for (let i = 1; i < lines.length; i++) {
             const line = lines[i].trim();
             if (!line) continue;
-            const values: string[] = [];
-            let current = '';
-            let inQuotes = false;
-            for (let charIdx = 0; charIdx < line.length; charIdx++) {
-                const char = line[charIdx];
-                if (char === '"') inQuotes = !inQuotes;
-                else if (char === ',' && !inQuotes) { values.push(current); current = ''; }
-                else { current += char; }
-            }
-            values.push(current);
+            const values = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(v => v.replace(/^"|"$/g, ''));
             const reportId = values[0];
-            if (data.reports.some(r => r.id === reportId) || newReports.some(r => r.id === reportId)) {
-                skippedCount++;
-                continue;
-            }
+            if (data.reports.some(r => r.id === reportId) || newReports.some(r => r.id === reportId)) continue;
+            
             const report: WorkReport = {
                 id: reportId, date: values[1], technician: values[2], projectNum: values[3],
                 startTime: values[4], endTime: values[5], vehicle: values[6], isDriver: values[7] === 'SI',
@@ -591,10 +403,80 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
     reader.readAsText(file);
   };
 
+  const handleExportJSON = (type: 'projects' | 'budgets' | 'techs' | 'vehicles') => {
+      let exportData: any;
+      if(type === 'projects') exportData = data.projectsDetailed;
+      else if(type === 'budgets') exportData = data.budgets;
+      else if(type === 'techs') exportData = data.technicians;
+      else if(type === 'vehicles') exportData = data.vehicles;
+
+      const fileName = `jdg_${type}_${new Date().toISOString().split('T')[0]}.json`;
+      const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+  };
+
+  const handleImportJSON = (e: React.ChangeEvent<HTMLInputElement>, type: 'projects' | 'budgets' | 'techs' | 'vehicles') => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (event) => {
+          try {
+              const json = JSON.parse(event.target?.result as string);
+              if (!Array.isArray(json)) { alert("Lista inválida."); return; }
+              
+              setData(prev => {
+                  let newData = { ...prev };
+                  if (type === 'projects') {
+                      const current = [...(prev.projectsDetailed || [])];
+                      json.forEach((item: ProjectData) => {
+                          if(!item.id) return;
+                          const idx = current.findIndex(p => p.id === item.id);
+                          if (idx >= 0) current[idx] = item; else current.push(item);
+                      });
+                      newData.projectsDetailed = current;
+                  } else if (type === 'budgets') {
+                      const current = [...(prev.budgets || [])];
+                      json.forEach((item: Budget) => {
+                          if(!item.id) return;
+                          const idx = current.findIndex(b => b.id === item.id);
+                          if (idx >= 0) current[idx] = item; else current.push(item);
+                      });
+                      newData.budgets = current;
+                  } else if (type === 'techs') {
+                      // Para técnicos y vehículos reemplazamos o añadimos
+                      const current = [...(prev.technicians || [])];
+                      json.forEach((item: TechUser) => {
+                          if(!item.id) return;
+                          const idx = current.findIndex(t => t.id === item.id);
+                          if (idx >= 0) current[idx] = item; else current.push(item);
+                      });
+                      newData.technicians = current;
+                  } else if (type === 'vehicles') {
+                      const current = [...(prev.vehicles || [])];
+                      json.forEach((item: string) => {
+                          if(!current.includes(item)) current.push(item);
+                      });
+                      newData.vehicles = current;
+                  }
+                  alert(`✅ Datos de ${type} importados correctamente.`);
+                  return newData;
+              });
+          } catch (err) { alert("Error JSON"); }
+          if (e.target) e.target.value = ''; 
+      };
+      reader.readAsText(file);
+  };
+
   const filteredReports = useMemo(() => {
     return data.reports.filter(r => {
         if (filterTech && r.technician !== filterTech) return false;
-        // Filtrar usando el nombre resuelto o el ID
         if (filterProject) {
             const projectFilter = filterProject.toLowerCase();
             const projectFull = resolveProjectFullName(r.projectNum).toLowerCase();
@@ -618,28 +500,20 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
     return months;
   }, [filteredReports]);
 
-  // Estructura agrupada para GASTOS (Mes > Semana > Técnico) para el orden correcto
   const groupedExpenses = useMemo(() => {
     const tree: Record<string, Record<string, Record<string, number>>> = {};
-    const dateMap: Record<string, string> = {}; // Mapeo de etiqueta a fecha ISO para ordenamiento
-
+    const dateMap: Record<string, string> = {}; 
     filteredReports.forEach(r => {
         const mLabel = getMonthYearLabel(r.date);
         const wLabel = getWeekRange(r.date);
         const total = r.expenses.food + r.expenses.gas + r.expenses.parking + r.expenses.others;
-        
         if (total === 0) return; 
-
         if (!tree[mLabel]) tree[mLabel] = {};
         if (!tree[mLabel][wLabel]) tree[mLabel][wLabel] = {};
-        
         tree[mLabel][wLabel][r.technician] = (tree[mLabel][wLabel][r.technician] || 0) + total;
-
-        // Guardar la fecha más reciente encontrada para esa etiqueta para poder ordenar
         if (!dateMap[mLabel] || r.date > dateMap[mLabel]) dateMap[mLabel] = r.date;
         if (!dateMap[wLabel] || r.date > dateMap[wLabel]) dateMap[wLabel] = r.date;
     });
-    
     return { tree, dateMap };
   }, [filteredReports]);
 
@@ -677,7 +551,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
       const fullName = resolveProjectFullName(r.projectNum).replace(/,/g, " -");
       return [r.id, r.date, r.technician, `"${fullName}"`, r.projectNum, r.startTime, r.endTime, r.vehicle, r.isDriver ? 'SI' : 'NO', r.isDriver ? (r.driverTripType || '') : '', `"${cleanDesc}"`, r.expenses.food, r.expenses.gas, r.expenses.parking, r.expenses.others, `"${cleanOtherDesc}"`, r.overtimeHours || 0, r.overtimeType || 'NORMAL'].join(',');
     });
-    // Agregamos sep=, para que Excel detecte automáticamente la coma como separador
     const csvContent = "data:text/csv;charset=utf-8," + ["sep=,", headers, ...rows].join('\n');
     const link = document.createElement("a");
     link.setAttribute("href", encodeURI(csvContent));
@@ -686,26 +559,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
   };
 
   const toggleExpandReport = (id: string) => setExpandedReportId(prev => prev === id ? null : id);
-
-  const toggleWeekExpansion = (week: string) => {
-    setExpandedWeeks(prev => ({
-        ...prev,
-        [week]: !prev[week]
-    }));
-  };
-
-  // Helper para obtener clase de color según aviso
+  const toggleWeekExpansion = (week: string) => setExpandedWeeks(prev => ({ ...prev, [week]: !prev[week] }));
   const getWarningStyle = (date?: string) => {
       if (!date) return '';
       const diff = getDaysDiff(date);
-      // 0-2 días: Verde
       if (diff <= 2) return 'bg-green-100 dark:bg-green-900/30 border-green-500 dark:border-green-600';
-      // 3-5 días: Naranja
       if (diff <= 5) return 'bg-orange-100 dark:bg-orange-900/30 border-orange-500 dark:border-orange-600';
-      // +5 días: Rojo
       return 'bg-red-100 dark:bg-red-900/30 border-red-500 dark:border-red-600 animate-pulse-slow';
   };
-
   const getWarningBadge = (date?: string) => {
       if (!date) return null;
       const diff = getDaysDiff(date);
@@ -713,49 +574,32 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
       if (diff <= 5) return <span className="bg-orange-200 text-orange-800 text-[9px] font-black px-2 py-0.5 rounded">AVISO: {diff} días</span>;
       return <span className="bg-red-200 text-red-800 text-[9px] font-black px-2 py-0.5 rounded animate-pulse">AVISO: {diff} días</span>;
   };
-
-  // Helper para el color de Presupuestos (basado en tiempo de creación si no tiene fecha)
   const getBudgetStyle = (b: Budget) => {
-      // Si está terminado, aceptado o TIENE fecha, color normal
-      if (b.isFinished || b.isAccepted || b.deliveryDate) {
-          return 'bg-white dark:bg-brand-panel border-gray-200 dark:border-gray-700';
-      }
-
-      // Si no tiene fecha, calculamos días desde creación (usando ID como timestamp)
+      if (b.isFinished || b.isAccepted || b.deliveryDate) return 'bg-white dark:bg-brand-panel border-gray-200 dark:border-gray-700';
       const created = parseInt(b.id);
       if (isNaN(created)) return 'bg-white dark:bg-brand-panel border-gray-200 dark:border-gray-700';
-
       const diff = Math.floor((Date.now() - created) / (1000 * 60 * 60 * 24));
-
-      if (diff < 2) return 'bg-green-50 dark:bg-green-900/20 border-green-500 dark:border-green-600'; // 0-1 días
-      if (diff < 5) return 'bg-orange-50 dark:bg-orange-900/20 border-orange-500 dark:border-orange-600'; // 2-4 días
-      return 'bg-red-50 dark:bg-red-900/20 border-red-500 dark:border-red-600 animate-pulse-slow'; // 5+ días
+      if (diff < 2) return 'bg-green-50 dark:bg-green-900/20 border-green-500 dark:border-green-600';
+      if (diff < 5) return 'bg-orange-50 dark:bg-orange-900/20 border-orange-500 dark:border-orange-600';
+      return 'bg-red-50 dark:bg-red-900/20 border-red-500 dark:border-red-600 animate-pulse-slow';
   };
-
-  // Helper para badge de días en Presupuestos
   const getBudgetDaysBadge = (b: Budget) => {
       if (b.isFinished || b.isAccepted || b.deliveryDate) return null;
       const created = parseInt(b.id);
       if (isNaN(created)) return null;
       const diff = Math.floor((Date.now() - created) / (1000 * 60 * 60 * 24));
-      
       let colorClass = "bg-gray-100 text-gray-600";
       if (diff < 2) colorClass = "bg-green-100 text-green-700";
       else if (diff < 5) colorClass = "bg-orange-100 text-orange-700";
       else colorClass = "bg-red-100 text-red-700 font-bold animate-pulse";
-
       return <span className={`text-[9px] px-2 py-0.5 rounded ml-2 ${colorClass}`}>Sin fecha: {diff} días</span>;
   };
-
   const openGoogleCalendar = (p: ProjectData) => {
-      if (!p.startDate) {
-          alert('Por favor selecciona una fecha de inicio primero.');
-          return;
-      }
+      if (!p.startDate) { alert('Por favor selecciona una fecha de inicio primero.'); return; }
       const title = encodeURIComponent(`${p.id} - ${p.name}`);
       const details = encodeURIComponent(`Cliente: ${p.client}\nResponsable: ${p.responsibleTech || 'Sin asignar'}`);
       const start = p.startDate.replace(/-/g, '');
-      const end = start; // Mismo día
+      const end = start;
       const url = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&details=${details}&dates=${start}/${end}`;
       window.open(url, '_blank');
   };
@@ -763,14 +607,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
   const handleDailyOrgUpdate = (newOrg: DailyOrgData) => {
     setData(prev => {
         const history = { ...(prev.dailyOrgHistory || {}) };
-        if (newOrg && newOrg.fecha) {
-            history[newOrg.fecha] = newOrg;
-        }
-        return {
-            ...prev, 
-            dailyOrg: newOrg,
-            dailyOrgHistory: history
-        };
+        if (newOrg && newOrg.fecha) history[newOrg.fecha] = newOrg;
+        return { ...prev, dailyOrg: newOrg, dailyOrgHistory: history };
     }); 
   };
 
@@ -778,19 +616,13 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
     setData(prev => {
         const existingData = prev.dailyOrgHistory?.[newDate];
         let orgToLoad: DailyOrgData;
-
         if (existingData) {
             orgToLoad = existingData;
         } else {
             const currentWorkers = prev.dailyOrg?.trabajadores || [];
             const cleanWorkers = currentWorkers.map(w => ({ ...w, asignado: false }));
-            orgToLoad = {
-                fecha: newDate,
-                trabajos: [],
-                trabajadores: cleanWorkers
-            };
+            orgToLoad = { fecha: newDate, trabajos: [], trabajadores: cleanWorkers };
         }
-
         return { ...prev, dailyOrg: orgToLoad };
     });
   };
@@ -833,7 +665,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
       </div>
 
       <div className="p-6">
-        {/* TAB CONTENIDO: REPORTS (BASE DE DATOS) */}
+        
+        {/* TAB: REPORTS */}
         {tab === 'reports' && (
           <div>
             <div className="flex gap-2 mb-4 bg-gray-50 dark:bg-gray-900 p-2 rounded-lg border border-gray-200 dark:border-gray-700 max-w-fit flex-wrap">
@@ -1050,6 +883,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
           </div>
         )}
 
+        {/* TAB: EXPENSES */}
         {tab === 'expenses' && (
             <div className="space-y-6">
                 <h3 className="text-lg font-bold text-gray-800 dark:text-white mb-4">Control de Gastos</h3>
@@ -1068,10 +902,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
 
                                 return (
                                     <div key={week} className="bg-gray-50 dark:bg-gray-900/30 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden shadow-sm">
-                                        <div 
-                                            onClick={() => toggleWeekExpansion(week)}
-                                            className="bg-gray-100 dark:bg-gray-800 p-3 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-                                        >
+                                        <div onClick={() => toggleWeekExpansion(week)} className="bg-gray-100 dark:bg-gray-800 p-3 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">
                                             <div className="flex items-center gap-3">
                                                 <ChartPieIcon className="w-4 h-4 text-brand-teal dark:text-brand-lime" />
                                                 <span className="text-brand-teal dark:text-brand-lime font-black text-sm uppercase tracking-widest">Semana: {week}</span>
@@ -1090,29 +921,15 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                                                     const isPaid = data.expensesPayments?.[paymentKey] || false;
                                                     
                                                     return (
-                                                        <div 
-                                                            key={tech} 
-                                                            className={`p-4 rounded-xl border transition-all flex flex-col justify-between gap-3 group relative ${
-                                                                isPaid 
-                                                                ? 'bg-green-50 dark:bg-green-900/20 border-green-500 dark:border-green-600' 
-                                                                : 'bg-white dark:bg-gray-950 border-gray-200 dark:border-gray-800 hover:border-brand-teal'
-                                                            }`}
-                                                        >
+                                                        <div key={tech} className={`p-4 rounded-xl border transition-all flex flex-col justify-between gap-3 group relative ${isPaid ? 'bg-green-50 dark:bg-green-900/20 border-green-500 dark:border-green-600' : 'bg-white dark:bg-gray-950 border-gray-200 dark:border-gray-800 hover:border-brand-teal'}`}>
                                                             <div className="flex justify-between items-start">
                                                                 <span className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest">{tech}</span>
                                                                 {isPaid && <CheckCircleIcon className="w-4 h-4 text-green-600 dark:text-green-400" />}
                                                             </div>
-                                                            
                                                             <div className="flex justify-between items-end">
                                                                 <span className={`text-lg font-black font-mono ${isPaid ? 'text-green-800 dark:text-green-300' : 'text-gray-800 dark:text-white'}`}>{total.toFixed(2)}€</span>
-                                                                
                                                                 <label className="flex items-center gap-2 cursor-pointer">
-                                                                    <input 
-                                                                        type="checkbox" 
-                                                                        checked={isPaid} 
-                                                                        onChange={() => toggleExpensePayment(week, tech)}
-                                                                        className="w-4 h-4 rounded border-gray-300 text-green-600 focus:ring-green-500"
-                                                                    />
+                                                                    <input type="checkbox" checked={isPaid} onChange={() => toggleExpensePayment(week, tech)} className="w-4 h-4 rounded border-gray-300 text-green-600 focus:ring-green-500" />
                                                                     <span className="text-[9px] uppercase font-bold text-gray-500 select-none">Pagado</span>
                                                                 </label>
                                                             </div>
@@ -1127,31 +944,46 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                         </div>
                     );
                 })}
-                {Object.keys(groupedExpenses.tree).length === 0 && <p className="text-center text-gray-500 py-10 italic">No hay registros de gastos actualmente.</p>}
             </div>
         )}
 
+        {/* TAB: TECHS */}
         {tab === 'techs' && (
             <div className="space-y-4">
+                <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-gray-400 font-black uppercase text-[11px] tracking-[3px] flex items-center gap-2">
+                        <UserIcon className="w-4 h-4" /> Gestión de Técnicos
+                    </h3>
+                    <div className="flex gap-2">
+                        <button onClick={() => handleExportJSON('techs')} className="text-[10px] font-bold uppercase bg-gray-200 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:text-brand-teal hover:bg-gray-300 dark:hover:bg-gray-700 px-3 py-1.5 rounded-full transition-colors flex items-center gap-1 shadow-sm">
+                            <DownloadIcon className="w-3 h-3" /> Exportar
+                        </button>
+                        <label className="text-[10px] font-bold uppercase bg-brand-teal/10 dark:bg-brand-teal/20 text-brand-teal hover:bg-brand-teal hover:text-white px-3 py-1.5 rounded-full transition-colors flex items-center gap-1 cursor-pointer shadow-sm">
+                            <UploadIcon className="w-3 h-3" /> Importar
+                            <input type="file" ref={techsImportRef} onChange={(e) => handleImportJSON(e, 'techs')} accept=".json" className="hidden" />
+                        </label>
+                    </div>
+                </div>
+
                 <div className="bg-gray-50 dark:bg-gray-900/50 p-4 rounded-xl border border-gray-200 dark:border-gray-700 flex flex-col sm:flex-row gap-2">
                     <input type="text" placeholder="Nombre" value={newItemName} onChange={e => setNewItemName(e.target.value)} className="flex-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-4 py-2 text-gray-900 dark:text-white" />
                     <input type="password" placeholder="Pass" value={newTechPwd} onChange={e => setNewTechPwd(e.target.value)} className="flex-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-4 py-2 text-gray-900 dark:text-white" />
-                    <button onClick={() => handleAdd('techs')} className="bg-brand-teal text-white px-6 py-2 rounded-lg font-bold">Añadir</button>
+                    <button onClick={() => handleAdd('techs')} className="bg-brand-teal text-white px-6 py-2 rounded-lg font-bold shadow-md hover:bg-teal-600 transition-colors">Añadir</button>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {data.technicians.map((t, i) => (
-                    <div key={t.id} className="bg-gray-50 dark:bg-gray-900/30 p-4 rounded-xl border border-gray-200 dark:border-gray-700 flex justify-between items-center group">
+                {(data.technicians || []).map((t, i) => (
+                    <div key={t.id || i} className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 flex justify-between items-center group shadow-sm hover:border-brand-teal/50 transition-all">
                         {editingIndex === i ? (
                             <div className="flex-1 flex gap-2">
-                                <input value={editValue} onChange={e => setEditValue(e.target.value)} className="flex-1 bg-white dark:bg-gray-800 border border-brand-teal rounded px-2 py-1 text-xs text-gray-900 dark:text-white" />
-                                <input value={editPwdValue} onChange={e => setEditPwdValue(e.target.value)} className="flex-1 bg-white dark:bg-gray-800 border border-brand-teal rounded px-2 py-1 text-xs text-gray-900 dark:text-white" />
+                                <input value={editValue} onChange={e => setEditValue(e.target.value)} className="flex-1 bg-gray-50 dark:bg-gray-900 border border-brand-teal rounded px-2 py-1 text-xs text-gray-900 dark:text-white" />
+                                <input value={editPwdValue} onChange={e => setEditPwdValue(e.target.value)} className="flex-1 bg-gray-50 dark:bg-gray-900 border border-brand-teal rounded px-2 py-1 text-xs text-gray-900 dark:text-white" />
                                 <button onClick={() => saveEditing('techs')} className="text-green-500"><SaveIcon className="w-4 h-4" /></button>
                                 <button onClick={cancelEditing} className="text-red-500"><XIcon className="w-4 h-4" /></button>
                             </div>
                         ) : (
                             <>
                                 <div className="flex items-center gap-3">
-                                    <div className="w-8 h-8 bg-brand-teal/20 rounded-full flex items-center justify-center text-brand-teal font-bold">{t.name.charAt(0)}</div>
+                                    <div className="w-8 h-8 bg-brand-teal/10 dark:bg-brand-teal/20 rounded-full flex items-center justify-center text-brand-teal font-bold">{t.name.charAt(0)}</div>
                                     <div><p className="font-bold text-sm text-gray-800 dark:text-gray-200">{t.name}</p></div>
                                 </div>
                                 <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -1162,13 +994,66 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                         )}
                     </div>
                 ))}
+                {(data.technicians || []).length === 0 && <p className="col-span-full text-center py-8 text-gray-500 text-xs italic">No hay técnicos registrados.</p>}
                 </div>
             </div>
         )}
 
+        {/* TAB: VEHICLES */}
+        {tab === 'vehicles' && (
+            <div className="space-y-4">
+                <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-gray-400 font-black uppercase text-[11px] tracking-[3px] flex items-center gap-2">
+                        <TruckIcon className="w-4 h-4" /> Gestión de Vehículos
+                    </h3>
+                    <div className="flex gap-2">
+                        <button onClick={() => handleExportJSON('vehicles')} className="text-[10px] font-bold uppercase bg-gray-200 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:text-brand-teal hover:bg-gray-300 dark:hover:bg-gray-700 px-3 py-1.5 rounded-full transition-colors flex items-center gap-1 shadow-sm">
+                            <DownloadIcon className="w-3 h-3" /> Exportar
+                        </button>
+                        <label className="text-[10px] font-bold uppercase bg-brand-teal/10 dark:bg-brand-teal/20 text-brand-teal hover:bg-brand-teal hover:text-white px-3 py-1.5 rounded-full transition-colors flex items-center gap-1 cursor-pointer shadow-sm">
+                            <UploadIcon className="w-3 h-3" /> Importar
+                            <input type="file" ref={vehiclesImportRef} onChange={(e) => handleImportJSON(e, 'vehicles')} accept=".json" className="hidden" />
+                        </label>
+                    </div>
+                </div>
+
+                <div className="bg-gray-50 dark:bg-gray-900/50 p-4 rounded-xl border border-gray-200 dark:border-gray-700 flex flex-col sm:flex-row gap-2">
+                    <input type="text" placeholder="Nombre/Matrícula del Vehículo" value={newItemName} onChange={e => setNewItemName(e.target.value)} className="flex-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-4 py-2 text-gray-900 dark:text-white" />
+                    <button onClick={() => handleAdd('vehicles')} className="bg-brand-teal text-white px-6 py-2 rounded-lg font-bold shadow-md hover:bg-teal-600 transition-colors">Añadir</button>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {(data.vehicles || []).map((v, i) => (
+                    <div key={i} className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 flex justify-between items-center group shadow-sm hover:border-brand-teal/50 transition-all">
+                        {editingIndex === i ? (
+                            <div className="flex-1 flex gap-2">
+                                <input value={editValue} onChange={e => setEditValue(e.target.value)} className="flex-1 bg-gray-50 dark:bg-gray-900 border border-brand-teal rounded px-2 py-1 text-xs text-gray-900 dark:text-white" />
+                                <button onClick={() => saveEditing('vehicles')} className="text-green-500"><SaveIcon className="w-4 h-4" /></button>
+                                <button onClick={cancelEditing} className="text-red-500"><XIcon className="w-4 h-4" /></button>
+                            </div>
+                        ) : (
+                            <>
+                                <div className="flex items-center gap-3">
+                                    <div className="w-8 h-8 bg-brand-teal/10 dark:bg-brand-teal/20 rounded-full flex items-center justify-center text-brand-teal font-bold"><TruckIcon className="w-4 h-4" /></div>
+                                    <p className="font-bold text-sm text-gray-800 dark:text-gray-200">{v}</p>
+                                </div>
+                                <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <button onClick={() => startEditing(i, v, 'vehicles')} className="text-gray-400 dark:text-gray-500 hover:text-brand-teal"><EditIcon className="w-4 h-4" /></button>
+                                    <button onClick={() => handleDelete('vehicles', i)} className="text-gray-400 dark:text-gray-500 hover:text-red-500"><TrashIcon className="w-4 h-4" /></button>
+                                </div>
+                            </>
+                        )}
+                    </div>
+                ))}
+                {(data.vehicles || []).length === 0 && <p className="col-span-full text-center py-8 text-gray-500 text-xs italic">No hay vehículos registrados.</p>}
+                </div>
+            </div>
+        )}
+
+        {/* TAB: BUDGETS */}
         {tab === 'budgets' && (
             <div className="space-y-6">
                 <div className="bg-white dark:bg-gray-900/50 p-6 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-xl">
+                   {/* Formulario Presupuestos (Igual que antes) */}
                    <div className="flex justify-between items-center mb-6">
                         <h3 className="text-lg font-bold text-gray-800 dark:text-white flex items-center gap-2">
                             <span className="text-brand-teal dark:text-brand-lime">{isEditingBudget ? '✏️' : '+'}</span> 
@@ -1180,7 +1065,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                             </button>
                         )}
                    </div>
-                   
                    <div className="space-y-4">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
@@ -1189,22 +1073,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                             </div>
                             <div>
                                 <label className="block text-[10px] text-gray-500 uppercase font-black mb-1">Cliente</label>
-                                <input 
-                                    type="text" 
-                                    list="client-options-budget"
-                                    placeholder="" 
-                                    value={budgetForm.client} 
-                                    onChange={e => setBudgetForm({...budgetForm, client: e.target.value})} 
-                                    className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg p-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none" 
-                                />
-                                <datalist id="client-options-budget">
-                                    {uniqueClients.map(client => (
-                                        <option key={client} value={client} />
-                                    ))}
-                                </datalist>
+                                <input type="text" list="client-options-budget" placeholder="" value={budgetForm.client} onChange={e => setBudgetForm({...budgetForm, client: e.target.value})} className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg p-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none" />
+                                <datalist id="client-options-budget">{uniqueClients.map(client => (<option key={client} value={client} />))}</datalist>
                             </div>
                         </div>
-
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                             <div>
                                 <label className="block text-[10px] text-gray-500 uppercase font-black mb-1">Número de Presupuesto</label>
@@ -1219,7 +1091,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                                 <input type="text" value={budgetForm.excelName} onChange={e => setBudgetForm({...budgetForm, excelName: e.target.value})} className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg p-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none" />
                             </div>
                         </div>
-
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 py-2">
                              <label className="flex items-center gap-3 cursor-pointer bg-gray-100 dark:bg-gray-800/50 p-2 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-gray-400 dark:hover:border-gray-500 transition-colors">
                                  <input type="checkbox" checked={budgetForm.hasFolderData} onChange={e => setBudgetForm({...budgetForm, hasFolderData: e.target.checked})} className="w-5 h-5 rounded border-gray-400 dark:border-gray-600 text-brand-teal bg-white dark:bg-gray-800 focus:ring-0" />
@@ -1234,26 +1105,32 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                                  <span className="text-xs font-bold uppercase text-gray-700 dark:text-white">Aceptado (Crear Obra)</span>
                              </label>
                         </div>
-
                         <div>
                             <label className="block text-[10px] text-gray-500 uppercase font-black mb-1">Datos / Comentarios</label>
                             <textarea placeholder="Comentarios adicionales..." rows={3} value={budgetForm.comments} onChange={e => setBudgetForm({...budgetForm, comments: e.target.value})} className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg p-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none" />
                         </div>
                    </div>
-
                    <button onClick={handleSaveBudget} className="w-full mt-6 bg-brand-teal hover:bg-teal-600 text-white font-bold py-3 rounded-xl shadow-lg transition-all flex items-center justify-center gap-2">
                        <SaveIcon className="w-5 h-5" /> {isEditingBudget ? 'Actualizar Presupuesto' : 'Crear Presupuesto'}
                    </button>
                 </div>
 
                 <div className="space-y-4 pt-4">
-                    <h3 className="text-gray-400 font-black mb-3 uppercase text-[11px] tracking-[3px] flex items-center gap-2">
-                        <FileTextIcon className="w-4 h-4" /> Listado de Presupuestos
-                    </h3>
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-3">
+                        <h3 className="text-gray-400 font-black uppercase text-[11px] tracking-[3px] flex items-center gap-2">
+                            <FileTextIcon className="w-4 h-4" /> Listado de Presupuestos
+                        </h3>
+                        <div className="flex gap-2">
+                            <button onClick={() => handleExportJSON('budgets')} className="text-[10px] font-bold uppercase bg-gray-200 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:text-brand-teal hover:bg-gray-300 dark:hover:bg-gray-700 px-3 py-1.5 rounded-full transition-colors flex items-center gap-1 shadow-sm">
+                                <DownloadIcon className="w-3 h-3" /> Exportar
+                            </button>
+                            <label className="text-[10px] font-bold uppercase bg-brand-teal/10 dark:bg-brand-teal/20 text-brand-teal hover:bg-brand-teal hover:text-white px-3 py-1.5 rounded-full transition-colors flex items-center gap-1 cursor-pointer shadow-sm">
+                                <UploadIcon className="w-3 h-3" /> Importar
+                                <input type="file" ref={budgetsImportRef} onChange={(e) => handleImportJSON(e, 'budgets')} accept=".json" className="hidden" />
+                            </label>
+                        </div>
+                    </div>
                     <div className="space-y-3">
-                        {(!sortedBudgets || sortedBudgets.length === 0) && (
-                             <p className="text-center py-10 text-gray-500 italic">No hay presupuestos registrados.</p>
-                        )}
                         {sortedBudgets.map((b) => (
                              <div key={b.id} className={`p-5 rounded-xl border flex flex-col md:flex-row justify-between items-start md:items-center gap-4 group hover:border-brand-teal/50 transition-all shadow-sm ${getBudgetStyle(b)}`}>
                                   <div className="flex-1 w-full">
@@ -1266,24 +1143,11 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                                           {getBudgetDaysBadge(b)}
                                       </div>
                                       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-[10px] text-gray-400 uppercase font-medium">
-                                          <div>
-                                              <span className="block text-gray-500 dark:text-gray-600 mb-0.5">Cliente</span>
-                                              <span className="text-gray-700 dark:text-gray-300">{b.client}</span>
-                                          </div>
-                                          <div>
-                                              <span className="block text-gray-500 dark:text-gray-600 mb-0.5">Entrega</span>
-                                              <span className="text-gray-700 dark:text-gray-300">{b.deliveryDate || '-'}</span>
-                                          </div>
-                                          <div className="col-span-2">
-                                              <span className="block text-gray-500 dark:text-gray-600 mb-0.5">Excel</span>
-                                              <span className="text-gray-700 dark:text-gray-300 truncate">{b.excelName || '-'}</span>
-                                          </div>
+                                          <div><span className="block text-gray-500 dark:text-gray-600 mb-0.5">Cliente</span><span className="text-gray-700 dark:text-gray-300">{b.client}</span></div>
+                                          <div><span className="block text-gray-500 dark:text-gray-600 mb-0.5">Entrega</span><span className="text-gray-700 dark:text-gray-300">{b.deliveryDate || '-'}</span></div>
+                                          <div className="col-span-2"><span className="block text-gray-500 dark:text-gray-600 mb-0.5">Excel</span><span className="text-gray-700 dark:text-gray-300 truncate">{b.excelName || '-'}</span></div>
                                       </div>
-                                      {b.comments && (
-                                        <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-800">
-                                            <p className="text-[10px] text-gray-500 italic truncate">{b.comments}</p>
-                                        </div>
-                                      )}
+                                      {b.comments && <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-800"><p className="text-[10px] text-gray-500 italic truncate">{b.comments}</p></div>}
                                   </div>
                                   <div className="flex gap-2 self-end md:self-center">
                                       <button onClick={() => editBudget(b)} className="p-2 text-gray-400 hover:text-brand-teal bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors"><EditIcon className="w-4 h-4" /></button>
@@ -1291,76 +1155,47 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                                   </div>
                              </div>
                         ))}
+                        {sortedBudgets.length === 0 && <p className="text-center py-8 text-gray-500 text-xs italic">No hay presupuestos registrados.</p>}
                     </div>
                 </div>
             </div>
         )}
 
+        {/* TAB: PROJECTS */}
         {tab === 'projects' && (
             <div className="space-y-6">
                 <div className="bg-white dark:bg-gray-900/50 p-6 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-xl">
-                   
                    {/* Header Row */}
                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4 border-b border-gray-200 dark:border-gray-800 pb-4">
                         <h3 className="text-xl font-bold text-gray-800 dark:text-white flex items-center gap-2">
                             <span className="text-brand-teal dark:text-brand-lime">{isEditingProject ? '✏️' : '+'}</span> 
                             {isEditingProject ? 'Editar Obra' : 'Alta de Nueva Obra'}
                         </h3>
-                        
                         <div className="flex items-center gap-3">
                             {!isEditingProject && (
                                 <div className="flex bg-gray-100 dark:bg-gray-950 rounded-lg p-1 border border-gray-200 dark:border-gray-800">
-                                    <button 
-                                        onClick={() => setIdMode('AUTO')} 
-                                        className={`px-4 py-1.5 text-[10px] font-black uppercase rounded-md transition-all tracking-wider ${idMode === 'AUTO' ? 'bg-gray-300 dark:bg-gray-700 text-gray-800 dark:text-gray-200 shadow-md' : 'text-gray-500 dark:text-gray-600 hover:text-gray-700 dark:hover:text-gray-400'}`}
-                                    >
-                                        Automático
-                                    </button>
-                                    <button 
-                                        onClick={() => { setIdMode('MANUAL'); setProjectForm(prev => ({...prev, id: ''})); }} 
-                                        className={`px-4 py-1.5 text-[10px] font-black uppercase rounded-md transition-all tracking-wider ${idMode === 'MANUAL' ? 'bg-orange-500 text-white shadow-md' : 'text-gray-500 dark:text-gray-600 hover:text-gray-700 dark:hover:text-gray-400'}`}
-                                    >
-                                        Manual
-                                    </button>
+                                    <button onClick={() => setIdMode('AUTO')} className={`px-4 py-1.5 text-[10px] font-black uppercase rounded-md transition-all tracking-wider ${idMode === 'AUTO' ? 'bg-gray-300 dark:bg-gray-700 text-gray-800 dark:text-gray-200 shadow-md' : 'text-gray-500 dark:text-gray-600 hover:text-gray-700 dark:hover:text-gray-400'}`}>Automático</button>
+                                    <button onClick={() => { setIdMode('MANUAL'); setProjectForm(prev => ({...prev, id: ''})); }} className={`px-4 py-1.5 text-[10px] font-black uppercase rounded-md transition-all tracking-wider ${idMode === 'MANUAL' ? 'bg-orange-500 text-white shadow-md' : 'text-gray-500 dark:text-gray-600 hover:text-gray-700 dark:hover:text-gray-400'}`}>Manual</button>
                                 </div>
                             )}
-                            
                             {isEditingProject && (
-                                <button onClick={resetProjectForm} className="text-xs bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 px-4 py-2 rounded-lg text-gray-500 dark:text-gray-300 border border-gray-200 dark:border-gray-700">
-                                    Cancelar Edición
-                                </button>
+                                <button onClick={resetProjectForm} className="text-xs bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 px-4 py-2 rounded-lg text-gray-500 dark:text-gray-300 border border-gray-200 dark:border-gray-700">Cancelar Edición</button>
                             )}
                         </div>
                    </div>
                    
                    {/* Form Grid */}
                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
-                        
                         {/* ID Box */}
                         <div className={`relative p-6 rounded-2xl border-2 transition-all group ${idMode === 'MANUAL' ? 'border-orange-500/30 bg-orange-50 dark:bg-orange-500/5' : 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50'}`}>
                              <div className="text-center space-y-2">
-                                <label className={`block text-[10px] uppercase font-black tracking-[2px] mb-2 ${idMode === 'MANUAL' ? 'text-orange-500 dark:text-orange-400' : 'text-gray-400 dark:text-gray-500'}`}>
-                                    {idMode === 'MANUAL' ? 'INTRODUCE Nº OBRA' : 'PRÓXIMO ID AUTOMÁTICO'}
-                                </label>
-                                
+                                <label className={`block text-[10px] uppercase font-black tracking-[2px] mb-2 ${idMode === 'MANUAL' ? 'text-orange-500 dark:text-orange-400' : 'text-gray-400 dark:text-gray-500'}`}>{idMode === 'MANUAL' ? 'INTRODUCE Nº OBRA' : 'PRÓXIMO ID AUTOMÁTICO'}</label>
                                 {idMode === 'AUTO' || isEditingProject ? (
-                                    <div className="text-4xl font-black text-gray-800 dark:text-white tracking-widest font-mono py-2">
-                                        {projectForm.id}
-                                    </div>
+                                    <div className="text-4xl font-black text-gray-800 dark:text-white tracking-widest font-mono py-2">{projectForm.id}</div>
                                 ) : (
-                                     <input 
-                                        type="text" 
-                                        value={projectForm.id} 
-                                        onChange={e => setProjectForm({...projectForm, id: e.target.value})} 
-                                        className="w-full bg-transparent border-b-2 border-orange-500/50 text-3xl font-black text-gray-900 dark:text-white text-center focus:border-orange-500 outline-none py-2 placeholder-gray-400 dark:placeholder-gray-700 font-mono"
-                                        placeholder="Nº OBRA"
-                                        autoFocus
-                                    />
+                                     <input type="text" value={projectForm.id} onChange={e => setProjectForm({...projectForm, id: e.target.value})} className="w-full bg-transparent border-b-2 border-orange-500/50 text-3xl font-black text-gray-900 dark:text-white text-center focus:border-orange-500 outline-none py-2 placeholder-gray-400 dark:placeholder-gray-700 font-mono" placeholder="Nº OBRA" autoFocus />
                                 )}
-                                
-                                {idMode === 'AUTO' && !isEditingProject && (
-                                    <p className="text-[10px] text-gray-500 dark:text-gray-600">Calculado automáticamente según el año en curso</p>
-                                )}
+                                {idMode === 'AUTO' && !isEditingProject && (<p className="text-[10px] text-gray-500 dark:text-gray-600">Calculado automáticamente según el año en curso</p>)}
                              </div>
                              {idMode === 'MANUAL' && <div className="absolute top-0 right-0 w-16 h-16 bg-gradient-to-bl from-orange-500/10 to-transparent rounded-tr-2xl pointer-events-none"></div>}
                         </div>
@@ -1374,19 +1209,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                         <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-3 gap-6">
                             <div>
                                  <label className="block text-[10px] text-gray-500 uppercase font-black mb-2 ml-1">Nombre de Cliente</label>
-                                 <input 
-                                    type="text" 
-                                    list="client-options"
-                                    placeholder="" 
-                                    value={projectForm.client} 
-                                    onChange={e => setProjectForm({...projectForm, client: e.target.value})} 
-                                    className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-xl p-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none" 
-                                 />
-                                 <datalist id="client-options">
-                                    {uniqueClients.map(client => (
-                                        <option key={client} value={client} />
-                                    ))}
-                                 </datalist>
+                                 <input type="text" list="client-options" placeholder="" value={projectForm.client} onChange={e => setProjectForm({...projectForm, client: e.target.value})} className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-xl p-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none" />
+                                 <datalist id="client-options">{uniqueClients.map(client => (<option key={client} value={client} />))}</datalist>
                             </div>
                              <div>
                                  <label className="block text-[10px] text-gray-500 uppercase font-black mb-1">Número Presupuesto</label>
@@ -1411,14 +1235,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                                  <label className="block text-[10px] text-gray-500 uppercase font-black mb-1">Fecha Inicio</label>
                                  <div className="flex gap-2">
                                     <input type="date" value={projectForm.startDate} onChange={e => setProjectForm({...projectForm, startDate: e.target.value})} className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-xl p-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none dark:[color-scheme:dark]" />
-                                    <button 
-                                        type="button" 
-                                        onClick={() => openGoogleCalendar(projectForm)}
-                                        title="Añadir a Google Calendar"
-                                        className="bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 rounded-xl p-3 hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-colors"
-                                    >
-                                        📅
-                                    </button>
+                                    <button type="button" onClick={() => openGoogleCalendar(projectForm)} title="Añadir a Google Calendar" className="bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 rounded-xl p-3 hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-colors">📅</button>
                                  </div>
                             </div>
                             <div className="flex flex-col justify-center gap-3">
@@ -1453,90 +1270,48 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                         <h3 className="text-gray-400 font-black uppercase text-[11px] tracking-[3px] flex items-center gap-2">
                             <BriefcaseIcon className="w-4 h-4" /> Listado de Obras
                         </h3>
-                        <button 
-                            onClick={scrollToArchive} 
-                            className="text-[10px] font-bold uppercase bg-gray-200 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:text-brand-teal hover:bg-gray-300 dark:hover:bg-gray-700 px-3 py-1.5 rounded-full transition-colors flex items-center gap-1"
-                        >
-                            ⬇ Ir a Archivo
-                        </button>
-                    </div>
-
-                    <div className="relative">
-                        <input 
-                            type="text" 
-                            placeholder="🔍 Buscar obra por ID, Nombre o Cliente..." 
-                            value={projectSearchTerm} 
-                            onChange={(e) => setProjectSearchTerm(e.target.value)} 
-                            className="w-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl pl-10 pr-4 py-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none transition-colors shadow-sm" 
-                        />
-                        <div className="absolute left-3 top-3.5 text-gray-400">
-                            <SearchIcon className="w-4 h-4" />
+                        <div className="flex gap-2">
+                            <button onClick={() => handleExportJSON('projects')} className="text-[10px] font-bold uppercase bg-gray-200 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:text-brand-teal hover:bg-gray-300 dark:hover:bg-gray-700 px-3 py-1.5 rounded-full transition-colors flex items-center gap-1 shadow-sm">
+                                <DownloadIcon className="w-3 h-3" /> Exportar
+                            </button>
+                            <label className="text-[10px] font-bold uppercase bg-brand-teal/10 dark:bg-brand-teal/20 text-brand-teal hover:bg-brand-teal hover:text-white px-3 py-1.5 rounded-full transition-colors flex items-center gap-1 cursor-pointer shadow-sm">
+                                <UploadIcon className="w-3 h-3" /> Importar
+                                <input type="file" ref={projectsImportRef} onChange={(e) => handleImportJSON(e, 'projects')} accept=".json" className="hidden" />
+                            </label>
+                            <button onClick={scrollToArchive} className="text-[10px] font-bold uppercase bg-gray-200 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:text-brand-teal hover:bg-gray-300 dark:hover:bg-gray-700 px-3 py-1.5 rounded-full transition-colors flex items-center gap-1 ml-2">⬇ Ir a Archivo</button>
                         </div>
                     </div>
 
+                    <div className="relative">
+                        <input type="text" placeholder="🔍 Buscar obra por ID, Nombre o Cliente..." value={projectSearchTerm} onChange={(e) => setProjectSearchTerm(e.target.value)} className="w-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl pl-10 pr-4 py-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none transition-colors shadow-sm" />
+                        <div className="absolute left-3 top-3.5 text-gray-400"><SearchIcon className="w-4 h-4" /></div>
+                    </div>
+
                     <div className="space-y-3">
-                        {(!filteredAdminProjects || filteredAdminProjects.length === 0) && (
-                             <p className="text-center py-10 text-gray-500 italic">No se encontraron obras.</p>
-                        )}
                         {filteredAdminProjects.map((p, index) => {
                              const isInactive = p.isFinished || p.isInvoiced;
                              const warningStyle = !isInactive && p.hasWarning ? getWarningStyle(p.warningDate) : '';
                              const isFirstArchive = index === firstArchiveIndex;
-                             
                              return (
-                                 <div 
-                                    key={p.id} 
-                                    ref={isFirstArchive ? archiveRef : null}
-                                    className={`bg-white dark:bg-brand-panel p-5 rounded-xl border flex flex-col md:flex-row justify-between items-start md:items-center gap-4 group hover:border-brand-teal/50 transition-all ${isInactive ? 'opacity-60 border-gray-300 dark:border-gray-800 bg-gray-100 dark:bg-gray-900/20' : warningStyle ? warningStyle : 'border-gray-200 dark:border-gray-700'}`}
-                                 >
+                                 <div key={p.id} ref={isFirstArchive ? archiveRef : null} className={`bg-white dark:bg-brand-panel p-5 rounded-xl border flex flex-col md:flex-row justify-between items-start md:items-center gap-4 group hover:border-brand-teal/50 transition-all ${isInactive ? 'opacity-60 border-gray-300 dark:border-gray-800 bg-gray-100 dark:bg-gray-900/20' : warningStyle ? warningStyle : 'border-gray-200 dark:border-gray-700'}`}>
                                       <div className="flex-1 w-full">
                                           <div className="flex items-center gap-3 mb-1">
-                                              <button 
-                                                  onClick={() => viewProjectHistory(p.id)}
-                                                  className={`font-black px-2 py-0.5 rounded text-sm tracking-wider hover:scale-105 transition-transform cursor-pointer ${isInactive ? 'bg-gray-200 dark:bg-gray-800 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300' : 'bg-brand-teal/10 dark:bg-brand-teal/20 text-brand-teal hover:bg-brand-teal hover:text-white'}`}
-                                                  title="Ver historial de partes"
-                                              >
-                                                  {p.id}
-                                              </button>
+                                              <button onClick={() => viewProjectHistory(p.id)} className={`font-black px-2 py-0.5 rounded text-sm tracking-wider hover:scale-105 transition-transform cursor-pointer ${isInactive ? 'bg-gray-200 dark:bg-gray-800 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300' : 'bg-brand-teal/10 dark:bg-brand-teal/20 text-brand-teal hover:bg-brand-teal hover:text-white'}`} title="Ver historial de partes">{p.id}</button>
                                               <span className={`font-bold uppercase text-sm truncate ${isInactive ? 'text-gray-500 line-through decoration-brand-teal/50' : 'text-gray-900 dark:text-white'}`}>{p.name}</span>
-                                              
                                               {!isInactive && (
-                                                  <button 
-                                                      onClick={(e) => { e.stopPropagation(); sendToDailyOrg(p); }}
-                                                      className="ml-2 bg-brand-teal/10 dark:bg-brand-teal/20 hover:bg-brand-teal hover:text-white text-brand-teal dark:text-brand-lime p-1.5 rounded-lg transition-colors shadow-sm"
-                                                      title="Enviar a Organización Diaria"
-                                                  >
-                                                      <CalendarIcon className="w-4 h-4" />
-                                                  </button>
+                                                  <button onClick={(e) => { e.stopPropagation(); sendToDailyOrg(p); }} className="ml-2 bg-brand-teal/10 dark:bg-brand-teal/20 hover:bg-brand-teal hover:text-white text-brand-teal dark:text-brand-lime p-1.5 rounded-lg transition-colors shadow-sm" title="Enviar a Organización Diaria"><CalendarIcon className="w-4 h-4" /></button>
                                               )}
-
                                               {p.isFinished && <span className="bg-green-100 dark:bg-green-900/40 text-green-600 dark:text-green-400 text-[9px] font-black px-2 py-0.5 rounded uppercase border border-green-200 dark:border-green-800">Terminada</span>}
                                               {p.isInvoiced && <span className="bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 text-[9px] font-black px-2 py-0.5 rounded uppercase border border-blue-200 dark:border-blue-800">Facturada</span>}
                                               {!isInactive && p.hasWarning && getWarningBadge(p.warningDate)}
                                           </div>
                                           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-2 text-[10px] text-gray-400 uppercase font-medium">
-                                              <div>
-                                                  <span className="block text-gray-500 dark:text-gray-600 mb-0.5">Cliente</span>
-                                                  <span className="text-gray-700 dark:text-gray-300">{p.client}</span>
-                                              </div>
-                                              <div>
-                                                  <span className="block text-gray-500 dark:text-gray-600 mb-0.5">Responsable</span>
-                                                  <span className="text-gray-700 dark:text-gray-300">{p.responsibleTech || '-'}</span>
-                                              </div>
-                                              <div>
-                                                  <span className="block text-gray-500 dark:text-gray-600 mb-0.5">Valoración</span>
-                                                  <span className="text-gray-700 dark:text-gray-300">{p.valuation}</span>
-                                              </div>
-                                              <div>
-                                                  <span className="block text-gray-500 dark:text-gray-600 mb-0.5">Presupuesto</span>
-                                                  <span className="text-gray-700 dark:text-gray-300">{p.budgetNum || '-'}</span>
-                                              </div>
+                                              <div><span className="block text-gray-500 dark:text-gray-600 mb-0.5">Cliente</span><span className="text-gray-700 dark:text-gray-300">{p.client}</span></div>
+                                              <div><span className="block text-gray-500 dark:text-gray-600 mb-0.5">Responsable</span><span className="text-gray-700 dark:text-gray-300">{p.responsibleTech || '-'}</span></div>
+                                              <div><span className="block text-gray-500 dark:text-gray-600 mb-0.5">Valoración</span><span className="text-gray-700 dark:text-gray-300">{p.valuation}</span></div>
+                                              <div><span className="block text-gray-500 dark:text-gray-600 mb-0.5">Presupuesto</span><span className="text-gray-700 dark:text-gray-300">{p.budgetNum || '-'}</span></div>
                                           </div>
-                                          {p.notes && (
-                                            <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-800">
-                                                <p className="text-[10px] text-gray-500 italic truncate">{p.notes}</p>
-                                            </div>
-                                          )}
+                                          {p.notes && <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-800"><p className="text-[10px] text-gray-500 italic truncate">{p.notes}</p></div>}
                                       </div>
                                       <div className="flex gap-2 self-end md:self-center">
                                           <button onClick={() => editProject(p)} className="p-2 text-gray-400 hover:text-brand-teal bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors"><EditIcon className="w-4 h-4" /></button>
@@ -1545,51 +1320,13 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                                  </div>
                              );
                         })}
-                    </div>
-                    {filteredAdminProjects.length > 0 && (
-                        <div className="flex justify-center pt-4 pb-2">
-                            <button 
-                                onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} 
-                                className="text-[10px] font-bold uppercase bg-gray-200 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:text-brand-teal hover:bg-gray-300 dark:hover:bg-gray-700 px-4 py-2 rounded-full transition-colors flex items-center gap-2 shadow-sm"
-                            >
-                                ⬆ Ir a Inicio
-                            </button>
-                        </div>
-                    )}
-                </div>
-            </div>
-        )}
-
-        {tab === 'vehicles' && (
-            <div className="space-y-4">
-                <div className="bg-gray-50 dark:bg-gray-900/50 p-4 rounded-xl border border-gray-200 dark:border-gray-700 flex flex-col sm:flex-row gap-2">
-                    <input type="text" placeholder="Nombre/Matrícula del Vehículo" value={newItemName} onChange={e => setNewItemName(e.target.value)} className="flex-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-4 py-2 text-gray-900 dark:text-white" />
-                    <button onClick={() => handleAdd('vehicles')} className="bg-brand-teal text-white px-6 py-2 rounded-lg font-bold">Añadir</button>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {data.vehicles.map((v, i) => (
-                    <div key={i} className="bg-gray-50 dark:bg-gray-900/30 p-4 rounded-xl border border-gray-200 dark:border-gray-700 flex justify-between items-center group">
-                        {editingIndex === i ? (
-                            <div className="flex-1 flex gap-2">
-                                <input value={editValue} onChange={e => setEditValue(e.target.value)} className="flex-1 bg-white dark:bg-gray-800 border border-brand-teal rounded px-2 py-1 text-xs text-gray-900 dark:text-white" />
-                                <button onClick={() => saveEditing('vehicles')} className="text-green-500"><SaveIcon className="w-4 h-4" /></button>
-                                <button onClick={cancelEditing} className="text-red-500"><XIcon className="w-4 h-4" /></button>
+                        {filteredAdminProjects.length === 0 && <p className="text-center py-10 text-gray-500 italic">No se encontraron obras.</p>}
+                        {filteredAdminProjects.length > 0 && (
+                            <div className="flex justify-center pt-4 pb-2">
+                                <button onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} className="text-[10px] font-bold uppercase bg-gray-200 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:text-brand-teal hover:bg-gray-300 dark:hover:bg-gray-700 px-4 py-2 rounded-full transition-colors flex items-center gap-2 shadow-sm">⬆ Ir a Inicio</button>
                             </div>
-                        ) : (
-                            <>
-                                <div className="flex items-center gap-3">
-                                    <div className="w-8 h-8 bg-brand-teal/20 rounded-full flex items-center justify-center text-brand-teal font-bold"><TruckIcon className="w-4 h-4" /></div>
-                                    <p className="font-bold text-sm text-gray-800 dark:text-gray-200">{v}</p>
-                                </div>
-                                <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <button onClick={() => startEditing(i, v, 'vehicles')} className="text-gray-400 dark:text-gray-500 hover:text-brand-teal"><EditIcon className="w-4 h-4" /></button>
-                                    <button onClick={() => handleDelete('vehicles', i)} className="text-gray-400 dark:text-gray-500 hover:text-red-500"><TrashIcon className="w-4 h-4" /></button>
-                                </div>
-                            </>
                         )}
                     </div>
-                ))}
-                {data.vehicles.length === 0 && <p className="col-span-full text-center py-10 text-gray-500 italic">No hay vehículos registrados.</p>}
                 </div>
             </div>
         )}
@@ -1617,8 +1354,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                             <label className="block text-xs text-gray-500 uppercase mb-1">Firebase Config</label>
                             <textarea value={firebaseConfigInput} onChange={e => setFirebaseConfigInput(e.target.value)} className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg p-2 text-gray-900 dark:text-white font-mono text-[9px]" rows={5} />
                         </div>
-                        <button onClick={savePasswords} className="w-full bg-brand-teal text-white font-bold py-3 rounded-xl">Guardar</button>
+                        <button onClick={savePasswords} className="w-full bg-brand-teal text-white font-bold py-3 rounded-xl">Guardar Configuración</button>
                         {pwdMsg && <p className="text-center text-xs text-green-500">{pwdMsg}</p>}
+                        
+                        <div className="mt-8 pt-8 border-t border-gray-200 dark:border-gray-700">
+                            <button onClick={onManualBackup} className="w-full bg-gray-200 dark:bg-gray-800 text-gray-700 dark:text-gray-300 font-bold py-3 rounded-xl flex items-center justify-center gap-2 hover:bg-gray-300 dark:hover:bg-gray-700">
+                                <CloudIcon className="w-5 h-5" /> Crear Copia de Seguridad Manual
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
