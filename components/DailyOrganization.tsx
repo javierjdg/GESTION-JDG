@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { TrashIcon, CalendarIcon, SaveIcon, CheckCircleIcon } from './icons';
+import { TrashIcon, CalendarIcon } from './icons';
 
 // Exported types for App.tsx usage
 export interface WorkerOrg {
@@ -27,17 +27,10 @@ interface DailyOrganizationProps {
   isReadOnly?: boolean;
   onBack?: () => void;
   data: DailyOrgData;
-  // onUpdate ahora se usa SOLO al pulsar Guardar
   onUpdate: (newData: DailyOrgData) => void;
-  // Nueva prop para cambiar fecha sin guardar
-  onChangeDate: (newDate: string) => void;
 }
 
-const DailyOrganization: React.FC<DailyOrganizationProps> = ({ isReadOnly = false, onBack, data, onUpdate, onChangeDate }) => {
-  // ESTADO LOCAL para edición
-  const [localData, setLocalData] = useState<DailyOrgData>(data);
-  const [isDirty, setIsDirty] = useState(false); // Para saber si hay cambios sin guardar
-
+const DailyOrganization: React.FC<DailyOrganizationProps> = ({ isReadOnly = false, onBack, data, onUpdate }) => {
   const [colorIdx, setColorIdx] = useState(14);
   const [nuevo, setNuevo] = useState('');
   const [nuevoT, setNuevoT] = useState('');
@@ -45,42 +38,19 @@ const DailyOrganization: React.FC<DailyOrganizationProps> = ({ isReadOnly = fals
   const [editandoId, setEditandoId] = useState<number | null>(null);
   const [nombreEdit, setNombreEdit] = useState('');
 
-  // Sincronizar estado local cuando cambia la prop data (ej: cambio de fecha desde fuera)
-  useEffect(() => {
-      setLocalData(data);
-      setIsDirty(false); // Al cargar nueva fecha, reset flag
-  }, [data]);
-
-  const updateLocal = (newData: DailyOrgData) => {
-      setLocalData(newData);
-      setIsDirty(true); // Marcar como modificado
-  };
-
-  const handleSave = () => {
-      if (window.confirm(`¿Guardar organización para el día ${localData.fecha}?`)) {
-          onUpdate(localData);
-          setIsDirty(false);
-          alert("✅ Cambios guardados correctamente.");
-      }
-  };
-
-  const handleDateChangeInput = (e: React.ChangeEvent<HTMLInputElement>) => {
-      if (isDirty) {
-          if (!window.confirm("⚠️ Tienes cambios SIN GUARDAR en este día.\n\nSi cambias de fecha sin guardar, perderás los cambios actuales.\n\n¿Continuar sin guardar?")) {
-              return;
-          }
-      }
-      onChangeDate(e.target.value);
-  };
+  // Seguridades para evitar errores de renderizado si data no es correcta
+  const trabajos = data?.trabajos || [];
+  const trabajadores = data?.trabajadores || [];
+  const fecha = data?.fecha || new Date().toISOString().split('T')[0];
 
   const colors = ['#E63946','#F77F00','#06D6A0','#118AB2','#073B4C','#D62828','#FCA311','#14213D','#00B4D8','#0077B6'];
   
   const addTrabajo = () => {
     if (nuevo.trim()) {
       const newJob: JobOrg = { id: Date.now(), nombre: nuevo, color: colors[colorIdx % colors.length], trabajadores: [] };
-      updateLocal({
-        ...localData,
-        trabajos: [...localData.trabajos, newJob]
+      onUpdate({
+        ...data,
+        trabajos: [...trabajos, newJob]
       });
       setColorIdx(colorIdx + 1);
       setNuevo('');
@@ -90,9 +60,9 @@ const DailyOrganization: React.FC<DailyOrganizationProps> = ({ isReadOnly = fals
   const addTrabajador = () => {
     if (nuevoT.trim()) {
       const newWorker: WorkerOrg = { id: Date.now(), nombre: nuevoT, color: colors[colorIdx % colors.length], asignado: false };
-      updateLocal({
-        ...localData,
-        trabajadores: [...localData.trabajadores, newWorker]
+      onUpdate({
+        ...data,
+        trabajadores: [...trabajadores, newWorker]
       });
       setColorIdx(colorIdx + 1);
       setNuevoT('');
@@ -100,35 +70,35 @@ const DailyOrganization: React.FC<DailyOrganizationProps> = ({ isReadOnly = fals
   };
 
   const delTrabajo = (id: number) => {
-    const t = localData.trabajos.find(x => x.id === id);
+    const t = trabajos.find(x => x.id === id);
     if (t) {
-        const newWorkers = localData.trabajadores.map(x => t.trabajadores.some(y => y.id === x.id) ? { ...x, asignado: false } : x);
-        const newJobs = localData.trabajos.filter(x => x.id !== id);
-        updateLocal({ ...localData, trabajos: newJobs, trabajadores: newWorkers });
+        const newWorkers = trabajadores.map(x => t.trabajadores.some(y => y.id === x.id) ? { ...x, asignado: false } : x);
+        const newJobs = trabajos.filter(x => x.id !== id);
+        onUpdate({ ...data, trabajos: newJobs, trabajadores: newWorkers });
     }
   };
 
   const delTrabajador = (id: number) => {
-    const newJobs = localData.trabajos.map(t => ({ ...t, trabajadores: t.trabajadores.filter(x => x.id !== id) }));
-    const newWorkers = localData.trabajadores.filter(x => x.id !== id);
-    updateLocal({ ...localData, trabajos: newJobs, trabajadores: newWorkers });
+    const newJobs = trabajos.map(t => ({ ...t, trabajadores: t.trabajadores.filter(x => x.id !== id) }));
+    const newWorkers = trabajadores.filter(x => x.id !== id);
+    onUpdate({ ...data, trabajos: newJobs, trabajadores: newWorkers });
   };
 
   const drop = (e: React.DragEvent, trabajo: JobOrg) => {
     e.preventDefault();
     if (isReadOnly) return;
     if (dragged && !dragged.asignado) {
-      const newJobs = localData.trabajos.map(t => t.id === trabajo.id ? { ...t, trabajadores: [...t.trabajadores, dragged] } : t);
-      const newWorkers = localData.trabajadores.map(t => t.id === dragged.id ? { ...t, asignado: true } : t);
-      updateLocal({ ...localData, trabajos: newJobs, trabajadores: newWorkers });
+      const newJobs = trabajos.map(t => t.id === trabajo.id ? { ...t, trabajadores: [...t.trabajadores, dragged] } : t);
+      const newWorkers = trabajadores.map(t => t.id === dragged.id ? { ...t, asignado: true } : t);
+      onUpdate({ ...data, trabajos: newJobs, trabajadores: newWorkers });
     }
     setDragged(null);
   };
 
   const remove = (tId: number, trId: number) => {
-    const newJobs = localData.trabajos.map(t => t.id === tId ? { ...t, trabajadores: t.trabajadores.filter(x => x.id !== trId) } : t);
-    const newWorkers = localData.trabajadores.map(t => t.id === trId ? { ...t, asignado: false } : t);
-    updateLocal({ ...localData, trabajos: newJobs, trabajadores: newWorkers });
+    const newJobs = trabajos.map(t => t.id === tId ? { ...t, trabajadores: t.trabajadores.filter(x => x.id !== trId) } : t);
+    const newWorkers = trabajadores.map(t => t.id === trId ? { ...t, asignado: false } : t);
+    onUpdate({ ...data, trabajos: newJobs, trabajadores: newWorkers });
   };
 
   const iniciarEdicion = (id: number, nombreActual: string) => {
@@ -139,10 +109,10 @@ const DailyOrganization: React.FC<DailyOrganizationProps> = ({ isReadOnly = fals
 
   const guardarEdicion = () => {
     if (nombreEdit.trim() && editandoId) {
-      const newJobs = localData.trabajos.map(t => 
+      const newJobs = trabajos.map(t => 
         t.id === editandoId ? { ...t, nombre: nombreEdit.trim() } : t
       );
-      updateLocal({ ...localData, trabajos: newJobs });
+      onUpdate({ ...data, trabajos: newJobs });
     }
     setEditandoId(null);
     setNombreEdit('');
@@ -154,11 +124,11 @@ const DailyOrganization: React.FC<DailyOrganizationProps> = ({ isReadOnly = fals
   };
 
   const exportar = () => {
-    const blob = new Blob([JSON.stringify(localData, null, 2)], { type: 'application/json' });
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `asignaciones-${localData.fecha}.json`;
+    a.download = `asignaciones-${fecha}.json`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -171,12 +141,12 @@ const DailyOrganization: React.FC<DailyOrganizationProps> = ({ isReadOnly = fals
         try {
           const d = JSON.parse(ev.target?.result as string);
           if (Array.isArray(d.trabajos) && Array.isArray(d.trabajadores)) {
-             updateLocal({
+             onUpdate({
                  trabajos: d.trabajos,
                  trabajadores: d.trabajadores,
-                 fecha: d.fecha || localData.fecha
+                 fecha: d.fecha || fecha
              });
-             alert('✓ Importado correctamente (Recuerda GUARDAR)');
+             alert('✓ Importado correctamente');
           } else {
              alert('Formato de archivo incorrecto');
           }
@@ -187,16 +157,16 @@ const DailyOrganization: React.FC<DailyOrganizationProps> = ({ isReadOnly = fals
   };
 
   const reset = () => {
-    if (window.confirm('¿Borrar toda la organización diaria actual?')) {
-        updateLocal({
+    if (window.confirm('¿Borrar toda la organización diaria?')) {
+        onUpdate({
             trabajos: [],
             trabajadores: [],
-            fecha: localData.fecha 
+            fecha: new Date().toISOString().split('T')[0]
         });
     }
   };
 
-  const disponibles = localData.trabajadores.filter(t => !t.asignado);
+  const disponibles = trabajadores.filter(t => !t.asignado);
 
   return (
     <div className="text-gray-900 dark:text-gray-200 animate-fade-in">
@@ -211,58 +181,28 @@ const DailyOrganization: React.FC<DailyOrganizationProps> = ({ isReadOnly = fals
 
         <div className="bg-white dark:bg-gray-900/50 rounded-xl border border-gray-200 dark:border-gray-700 p-6 mb-6 shadow-md">
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
-            <div className="flex-1">
+            <div>
               <h1 className="text-2xl font-bold text-brand-teal dark:text-brand-lime flex items-center gap-2">
                  <CalendarIcon className="w-8 h-8" />
                  Organización Diaria
               </h1>
-              {isReadOnly ? (
-                  <p className="text-xs text-brand-teal mt-1 flex items-center gap-1">👁️ Modo Lectura - Historial</p>
-              ) : (
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Arrastra trabajadores a las obras</p>
-              )}
+              {isReadOnly && <p className="text-xs text-brand-teal mt-1 flex items-center gap-1">👁️ Modo Lectura (Sincronizado)</p>}
             </div>
-            
-            <div className="flex flex-col md:flex-row gap-4 items-end md:items-center w-full md:w-auto">
-              {/* Selector de Fecha */}
-              <div className="relative">
-                  <label className="block text-[10px] uppercase font-bold text-gray-500 mb-1">Fecha Visualizada</label>
-                  <input 
-                    type="date" 
-                    value={localData.fecha} 
-                    onChange={handleDateChangeInput} 
-                    className={`px-4 py-2 bg-gray-50 dark:bg-gray-800 border-2 ${isDirty ? 'border-orange-400' : 'border-gray-300 dark:border-gray-600'} rounded-lg text-gray-900 dark:text-white font-bold cursor-pointer hover:border-brand-teal transition-colors shadow-sm`} 
-                  />
-              </div>
-
-              {/* Botón Guardar - SOLO ADMIN */}
-              {!isReadOnly && (
-                  <button 
-                    onClick={handleSave}
-                    disabled={!isDirty}
-                    className={`px-6 py-3 rounded-xl font-black text-sm flex items-center gap-2 shadow-lg transition-all transform active:scale-95 ${
-                        isDirty 
-                        ? 'bg-green-600 hover:bg-green-500 text-white animate-pulse-slow' 
-                        : 'bg-gray-200 dark:bg-gray-800 text-gray-400 cursor-not-allowed'
-                    }`}
-                  >
-                    <SaveIcon className="w-5 h-5" />
-                    {isDirty ? 'GUARDAR CAMBIOS' : 'GUARDADO'}
-                  </button>
-              )}
+            <div className="flex gap-2 items-center">
+              <input 
+                type="date" 
+                value={fecha} 
+                onChange={(e) => !isReadOnly && onUpdate({...data, fecha: e.target.value})} 
+                disabled={isReadOnly}
+                className={`px-3 py-2 bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white ${isReadOnly ? 'opacity-70 cursor-not-allowed' : ''}`} 
+              />
             </div>
           </div>
 
           {!isReadOnly && (
             <>
-              {isDirty && (
-                  <div className="mb-4 bg-orange-100 dark:bg-orange-900/30 text-orange-800 dark:text-orange-200 p-3 rounded-lg border border-orange-200 dark:border-orange-800 flex items-center justify-center gap-2 text-sm font-bold animate-pulse">
-                      ⚠️ Tienes cambios sin guardar. Pulsa "GUARDAR CAMBIOS" para confirmar.
-                  </div>
-              )}
-
               <div className="flex gap-2 mb-6 p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg flex-wrap border border-gray-200 dark:border-gray-700">
-                <button onClick={exportar} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-500 text-sm shadow-sm">📥 Exportar</button>
+                <button onClick={exportar} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-500 text-sm shadow-sm">📥 Exportar</button>
                 <label className="px-4 py-2 bg-brand-teal text-white rounded-lg hover:bg-teal-600 cursor-pointer text-sm shadow-sm">
                   📤 Importar
                   <input type="file" accept=".json" onChange={importar} className="hidden" />
@@ -332,7 +272,7 @@ const DailyOrganization: React.FC<DailyOrganizationProps> = ({ isReadOnly = fals
           </div>
 
           <div className="lg:col-span-3 grid md:grid-cols-2 xl:grid-cols-3 gap-6">
-            {localData.trabajos.map(trabajo => (
+            {trabajos.map(trabajo => (
               <div 
                 key={trabajo.id} 
                 onDragOver={(e) => e.preventDefault()} 
@@ -380,7 +320,7 @@ const DailyOrganization: React.FC<DailyOrganizationProps> = ({ isReadOnly = fals
                         </button>
                     )}
                   </div>
-                  <div className="text-xs text-center border-t border-white border-opacity-30 pt-2 text-white/90">📅 {new Date(localData.fecha).toLocaleDateString('es-ES')}</div>
+                  <div className="text-xs text-center border-t border-white border-opacity-30 pt-2 text-white/90">📅 {new Date(fecha).toLocaleDateString('es-ES')}</div>
                 </div>
                 <div className="p-4 flex-1 bg-gray-50 dark:bg-gray-900/30">
                   <div className="flex justify-between items-center mb-3">

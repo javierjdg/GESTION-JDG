@@ -106,7 +106,6 @@ export interface AppData {
   vehicles: string[];
   reports: WorkReport[];
   dailyOrg: DailyOrgData;
-  dailyOrgHistory?: Record<string, DailyOrgData>; // Historial de organizaciones por fecha
   vacationRequests: VacationRequest[];
   holidays: string[];
   adminPassword?: string;
@@ -147,7 +146,6 @@ const INITIAL_DATA: AppData = {
   vacationRequests: [],
   holidays: ['2025-01-01', '2025-01-06', '2025-04-18', '2025-04-21', '2025-05-01', '2025-08-15', '2025-10-12', '2025-11-01', '2025-12-06', '2025-12-08', '2025-12-25'],
   dailyOrg: DEFAULT_DAILY_ORG,
-  dailyOrgHistory: {},
   adminPassword: 'admin',
   firebaseConfig: JSON.stringify(FIREBASE_CONFIG),
   expensesPayments: {}
@@ -166,7 +164,6 @@ const App: React.FC = () => {
   const [firebaseError, setFirebaseError] = useState<string | null>(null);
   const [showConfigGuide, setShowConfigGuide] = useState(false);
   const [theme, setTheme] = useState<'light' | 'dark'>('dark');
-  const [lastBackupStatus, setLastBackupStatus] = useState<string>('');
   
   const isInternalUpdate = useRef(false);
   const isSyncingRef = useRef(false);
@@ -241,17 +238,14 @@ const App: React.FC = () => {
         setIsCloudConnected(true);
 
         unsubConfig = db.collection("jdg_teleco").doc("main_db").onSnapshot((snapshot: any) => {
-            if (isSyncingRef.current) return; 
+            if (isSyncingRef.current) return; // Ignorar snapshots mientras el usuario está interactuando
             if (snapshot.exists) {
                 const cloudConfig = snapshot.data();
-                // Verificación de seguridad: si viene vacío, no lo cargamos ciegamente si tenemos datos locales
-                if (Object.keys(cloudConfig).length > 0) {
-                    setData(prev => ({
-                        ...prev,
-                        ...cloudConfig,
-                        reports: prev.reports 
-                    }));
-                }
+                setData(prev => ({
+                    ...prev,
+                    ...cloudConfig,
+                    reports: prev.reports 
+                }));
             }
         }, (error: any) => {
             if (error.code === 'permission-denied') {
@@ -261,7 +255,7 @@ const App: React.FC = () => {
         });
 
         unsubReports = db.collection("jdg_teleco").doc("main_db").collection("reports").onSnapshot((snapshot: any) => {
-            if (isSyncingRef.current) return; 
+            if (isSyncingRef.current) return; // Ignorar snapshots mientras el usuario está interactuando
             const cloudReports: WorkReport[] = [];
             snapshot.forEach((doc: any) => {
                 cloudReports.push(doc.data() as WorkReport);
@@ -295,105 +289,7 @@ const App: React.FC = () => {
     };
   }, [data.firebaseConfig]);
 
-  // HELPER: Guardado Seguro en Fragmentos (Chunking) para superar limite 1MB
-  const saveBackupToFirestore = async (db: any, collectionName: string, docId: string, dataToSave: AppData) => {
-      // Separamos los datos pesados (Reports y History) de la configuración ligera
-      const { reports, dailyOrgHistory, ...coreData } = dataToSave;
-      
-      const batch = db.batch();
-      const rootRef = db.collection(collectionName).doc(docId);
-      
-      // 1. Guardar documento raíz (configuración, techs, projects, etc.)
-      batch.set(rootRef, coreData);
-
-      // 2. Guardar Reports en subcolección 'shards' (Chunking)
-      // Agrupamos en bloques de 10 reportes para asegurar que no excedan 1MB incluso con fotos
-      const CHUNK_SIZE_REPORTS = 10;
-      const reportsRef = rootRef.collection('reports_shards');
-      
-      for (let i = 0; i < reports.length; i += CHUNK_SIZE_REPORTS) {
-          const chunk = reports.slice(i, i + CHUNK_SIZE_REPORTS);
-          // Usamos el índice como ID para orden fácil si fuera necesario recuperar
-          const chunkRef = reportsRef.doc(`chunk_${Math.floor(i / CHUNK_SIZE_REPORTS)}`);
-          batch.set(chunkRef, { items: chunk });
-      }
-
-      // 3. Guardar Historial en subcolección 'history_shards'
-      if (dailyOrgHistory) {
-          const historyKeys = Object.keys(dailyOrgHistory);
-          const CHUNK_SIZE_HISTORY = 5; // 5 días por documento para seguridad
-          const historyRef = rootRef.collection('history_shards');
-          
-          for (let i = 0; i < historyKeys.length; i += CHUNK_SIZE_HISTORY) {
-              const keysChunk = historyKeys.slice(i, i + CHUNK_SIZE_HISTORY);
-              const chunkObj: any = {};
-              keysChunk.forEach(k => chunkObj[k] = dailyOrgHistory[k]);
-              
-              const chunkRef = historyRef.doc(`chunk_${Math.floor(i / CHUNK_SIZE_HISTORY)}`);
-              batch.set(chunkRef, { items: chunkObj });
-          }
-      }
-
-      await batch.commit();
-  };
-
-  // FUNCION BACKUP DIARIO (AUTOMATICO)
-  const performDailyBackup = async (currentData: AppData) => {
-    const today = new Date().toISOString().split('T')[0];
-    const lastBackup = localStorage.getItem('last_daily_backup');
-
-    if (lastBackup === today) return; // Ya hecha hoy
-
-    // SAFETY GUARD
-    if (!currentData.technicians || currentData.technicians.length === 0) {
-        return;
-    }
-
-    try {
-        const fb = (window as any).firebase;
-        if (!fb) return;
-        const db = fb.app().firestore();
-        
-        // Usamos la función helper con chunking
-        await saveBackupToFirestore(db, "jdg_teleco_backups", today, JSON.parse(JSON.stringify(currentData)));
-        
-        localStorage.setItem('last_daily_backup', today);
-        setLastBackupStatus(`Backup automático: ${today}`);
-    } catch (e) {
-        console.error("Error backup diario", e);
-    }
-  };
-
-  // FUNCION BACKUP MANUAL
-  const performManualBackup = async () => {
-    if (!isCloudConnected) {
-        alert("⚠️ No hay conexión con la nube. No se puede realizar el backup.");
-        return;
-    }
-    const today = new Date().toISOString().split('T')[0];
-    const timestamp = new Date().toLocaleTimeString().replace(/:/g, '-');
-    const backupId = `MANUAL_${today}_${timestamp}`;
-    
-    try {
-        const fb = (window as any).firebase;
-        const db = fb.app().firestore();
-        
-        // Usamos la función helper con chunking
-        await saveBackupToFirestore(db, "jdg_teleco_backups", backupId, JSON.parse(JSON.stringify(data)));
-
-        alert(`✅ Copia de seguridad manual creada exitosamente.\n\nID: ${backupId}\nUbicación: Firestore > jdg_teleco_backups\n(Los datos se han fragmentado para optimización)`);
-        setLastBackupStatus(`Backup Manual: ${today} ${timestamp}`);
-    } catch (e: any) {
-        console.error(e);
-        if (e.code === 'permission-denied') {
-            alert("❌ ERROR DE PERMISOS: No se pudo crear el backup.\n\nAsegúrate de que las reglas de Firestore permiten escribir en 'jdg_teleco_backups'.");
-        } else {
-            alert("❌ Error al crear copia de seguridad: " + e.message);
-        }
-    }
-  };
-
-  // OPTIMIZACIÓN: Debounced save + BACKUP CHECK
+  // OPTIMIZACIÓN: Debounced save to avoid INP/Performance issues
   useEffect(() => {
     if (isInitialLoading) return;
 
@@ -404,10 +300,6 @@ const App: React.FC = () => {
 
         // Save Config to Cloud if applicable
         if (isCloudConnected && hasSyncedWithCloud) {
-            
-            // INTENTO DE BACKUP DIARIO
-            performDailyBackup(data);
-
             if (isInternalUpdate.current) {
                 isInternalUpdate.current = false;
                 return;
@@ -418,12 +310,6 @@ const App: React.FC = () => {
                     if (!fb) return;
                     const db = fb.app().firestore();
                     const { reports, ...configOnly } = data;
-
-                    // SAFETY GUARD
-                    if ((!configOnly.technicians || configOnly.technicians.length === 0) && (!configOnly.projectsDetailed || configOnly.projectsDetailed.length === 0)) {
-                        return;
-                    }
-
                     const cleanConfig = JSON.parse(JSON.stringify(configOnly));
                     await db.collection("jdg_teleco").doc("main_db").set(cleanConfig);
                 } catch (e: any) {
@@ -458,13 +344,16 @@ const App: React.FC = () => {
   const deleteReport = async (reportId: string) => {
     if (!window.confirm('¿Eliminar este parte permanentemente?')) return;
 
+    // Bloquear snapshots entrantes para evitar que el registro reaparezca
     isSyncingRef.current = true;
 
+    // 1. Borrado local inmediato para feedback visual
     setData(prev => ({
         ...prev,
         reports: prev.reports.filter(r => r.id !== reportId)
     }));
 
+    // 2. Borrado en la nube
     if (isCloudConnected) {
         try {
             const fb = (window as any).firebase;
@@ -475,6 +364,7 @@ const App: React.FC = () => {
         }
     }
 
+    // Desbloquear tras un breve periodo para asegurar que el snapshot del borrado haya sido procesado
     setTimeout(() => {
         isSyncingRef.current = false;
     }, 1500);
@@ -493,6 +383,7 @@ const App: React.FC = () => {
 
     const finalReport = { ...report, technician: currentUser };
     
+    // Bloquear snapshots durante la subida
     isSyncingRef.current = true;
 
     if (finalReport.tickets && finalReport.tickets.length > 0) {
@@ -549,46 +440,6 @@ const App: React.FC = () => {
     setView('dashboard');
   };
 
-  // Manejo de actualización de Daily Organization (GUARDADO MANUAL)
-  const handleDailyOrgUpdate = (newOrg: DailyOrgData) => {
-      isInternalUpdate.current = false; 
-      setData(prev => {
-          const history = { ...(prev.dailyOrgHistory || {}) };
-          // Guardamos explícitamente en el historial la organización que nos llega
-          if (newOrg && newOrg.fecha) {
-              history[newOrg.fecha] = newOrg;
-          }
-          return {
-              ...prev, 
-              dailyOrg: newOrg,
-              dailyOrgHistory: history
-          };
-      }); 
-  };
-
-  // Manejo de cambio de fecha en Daily Organization (CARGA DE DATOS)
-  const handleDailyOrgDateChange = (newDate: string) => {
-      // Al cambiar fecha, cargamos del historial o creamos nuevo, PERO NO GUARDAMOS la anterior automáticamente
-      // para respetar el "Guardado Manual".
-      const existingData = data.dailyOrgHistory?.[newDate];
-      let orgToLoad: DailyOrgData;
-
-      if (existingData) {
-          orgToLoad = existingData;
-      } else {
-          // Nueva fecha: mantenemos trabajadores limpios
-          const cleanWorkers = data.dailyOrg.trabajadores.map(w => ({ ...w, asignado: false }));
-          orgToLoad = {
-              fecha: newDate,
-              trabajos: [],
-              trabajadores: cleanWorkers
-          };
-      }
-
-      // Solo actualizamos la vista (dailyOrg), no tocamos el historial aún
-      setData(prev => ({ ...prev, dailyOrg: orgToLoad }));
-  };
-
   return (
     <div className="min-h-screen bg-gray-100 dark:bg-brand-dark text-gray-900 dark:text-gray-100 font-sans pb-20 transition-colors duration-300">
       
@@ -642,7 +493,6 @@ const App: React.FC = () => {
                     <span className={`flex items-center gap-1 text-[9px] px-2 py-0.5 rounded-full border ${hasSyncedWithCloud ? 'text-green-600 dark:text-green-400 bg-green-100 dark:bg-green-900/30 border-green-200 dark:border-green-800' : 'text-yellow-600 dark:text-yellow-400 bg-yellow-100 dark:bg-yellow-900/30 border-yellow-200 dark:border-yellow-800'}`}>
                         <WifiIcon className="w-2.5 h-2.5" /> {hasSyncedWithCloud ? 'En Línea' : 'Offline'}
                     </span>
-                    {lastBackupStatus && <span className="text-[8px] text-gray-400">({lastBackupStatus})</span>}
                 </div>
               </div>
             </div>
@@ -673,19 +523,9 @@ const App: React.FC = () => {
         {view === 'login' && <UserLogin onLogin={handleLogin} technicians={data.technicians} adminPwd={data.adminPassword || 'admin'} onViewDailyOrg={() => setView('daily_org')} toggleTheme={toggleTheme} isDark={theme === 'dark'} />}
         {view === 'dashboard' && <TechDashboard reports={data.reports.filter(r => r.technician === currentUser)} projects={data.projectsDetailed} onNewReport={() => setView('form')} onEditReport={(r) => { setEditingReport(r); setView('form'); }} onViewDailyOrg={() => setView('daily_org')} onDeleteReport={deleteReport} />}
         {view === 'vacations' && <VacationManager role={userRole || 'tech'} currentUser={currentUser} currentUserId={currentUserId} data={data} onUpdate={(newData) => { isInternalUpdate.current = false; setData(newData); }} onBack={() => setView(userRole === 'admin' ? 'admin' : 'dashboard')} />}
-        
-        {view === 'daily_org' && (
-            <DailyOrganization 
-                isReadOnly={userRole !== 'admin'} 
-                data={data.dailyOrg} 
-                onUpdate={handleDailyOrgUpdate}
-                onChangeDate={handleDailyOrgDateChange}
-                onBack={() => setView(userRole ? (userRole === 'admin' ? 'admin' : 'dashboard') : 'login')} 
-            />
-        )}
-        
+        {view === 'daily_org' && <DailyOrganization isReadOnly={userRole !== 'admin'} data={data.dailyOrg} onUpdate={(newOrg) => { isInternalUpdate.current = false; setData(prev => ({...prev, dailyOrg: newOrg})); }} onBack={() => setView(userRole ? (userRole === 'admin' ? 'admin' : 'dashboard') : 'login')} />}
         {view === 'form' && <ReportForm projects={data.projectsDetailed} vehicles={data.vehicles} initialData={editingReport} onSave={saveReport} onCancel={() => setView('dashboard')} />}
-        {view === 'admin' && <AdminPanel data={data} setData={(updater) => { isSyncingRef.current = true; setData(updater); setTimeout(() => {isSyncingRef.current = false;}, 2000); }} onGoToVacations={() => setView('vacations')} onDeleteReport={deleteReport} onManualBackup={performManualBackup} />}
+        {view === 'admin' && <AdminPanel data={data} setData={(updater) => { isSyncingRef.current = true; setData(updater); setTimeout(() => {isSyncingRef.current = false;}, 2000); }} onGoToVacations={() => setView('vacations')} onDeleteReport={deleteReport} />}
       </main>
     </div>
   );
