@@ -52,10 +52,8 @@ const TechDashboard: React.FC<TechDashboardProps> = ({ reports, projects, onNewR
     return found ? found.name : num;
   };
 
-  // Cálculos para las nuevas tarjetas
+  // Cálculos para las tarjetas
   const now = new Date();
-  const currentMonth = now.getMonth();
-  const currentYear = now.getFullYear();
   
   const getStartOfWeek = (d: Date) => {
     const date = new Date(d);
@@ -67,38 +65,19 @@ const TechDashboard: React.FC<TechDashboardProps> = ({ reports, projects, onNewR
 
   const stats = useMemo(() => {
     let currentWeekExpenses = 0;
-    let monthExtraNormal = 0;
-    let monthExtraNocturna = 0;
-    let monthExtraFinde = 0;
 
     reports.forEach(r => {
         const rDate = new Date(r.date);
-        
         // Gasto semana actual
         if (rDate.getTime() >= startOfCurrentWeek) {
             currentWeekExpenses += r.expenses.food + r.expenses.gas + r.expenses.parking + r.expenses.others;
         }
-
-        // Horas extra mes actual
-        if (rDate.getMonth() === currentMonth && rDate.getFullYear() === currentYear) {
-            const ot = r.overtimeHours || 0;
-            if (r.overtimeType === 'NORMAL') monthExtraNormal += ot;
-            else if (r.overtimeType === 'NOCTURNA') monthExtraNocturna += ot;
-            else if (r.overtimeType === 'FINDE SEMANA') monthExtraFinde += ot;
-        }
     });
 
-    return {
-        currentWeekExpenses,
-        monthExtra: {
-            total: monthExtraNormal + monthExtraNocturna + monthExtraFinde,
-            norm: monthExtraNormal,
-            noct: monthExtraNocturna,
-            finde: monthExtraFinde
-        }
-    };
-  }, [reports, startOfCurrentWeek, currentMonth, currentYear]);
+    return { currentWeekExpenses };
+  }, [reports, startOfCurrentWeek]);
 
+  // Agrupación por SEMANAS (Para gastos y horas normales)
   const summariesByWeek = useMemo(() => {
     const groups: Record<string, { regHours: number, otNorm: number, otNoct: number, otFinde: number, totalExpenses: number }> = {};
     reports.forEach(r => {
@@ -113,6 +92,30 @@ const TechDashboard: React.FC<TechDashboardProps> = ({ reports, projects, onNewR
         groups[week].totalExpenses += r.expenses.food + r.expenses.gas + r.expenses.parking + r.expenses.others;
     });
     return Object.entries(groups).sort((a, b) => b[0].localeCompare(a[0]));
+  }, [reports]);
+
+  // Agrupación por MESES (Para historial de horas extra)
+  const summariesByMonth = useMemo(() => {
+      const groups: Record<string, { label: string, total: number, norm: number, noct: number, finde: number }> = {};
+      
+      reports.forEach(r => {
+          if (!r.overtimeHours || r.overtimeHours === 0) return;
+
+          const date = new Date(r.date);
+          const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`; // YYYY-MM para ordenar
+          const label = getMonthYearLabel(r.date);
+
+          if (!groups[key]) groups[key] = { label, total: 0, norm: 0, noct: 0, finde: 0 };
+
+          const ot = r.overtimeHours;
+          groups[key].total += ot;
+          
+          if (r.overtimeType === 'NORMAL') groups[key].norm += ot;
+          else if (r.overtimeType === 'NOCTURNA') groups[key].noct += ot;
+          else if (r.overtimeType === 'FINDE SEMANA') groups[key].finde += ot;
+      });
+
+      return Object.entries(groups).sort((a, b) => b[0].localeCompare(a[0]));
   }, [reports]);
 
   const filteredReports = useMemo(() => {
@@ -154,6 +157,7 @@ const TechDashboard: React.FC<TechDashboardProps> = ({ reports, projects, onNewR
 
       {/* Tarjetas de Estadísticas Principales */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Tarjeta Gasto Semanal */}
         <div className="bg-white dark:bg-brand-panel border border-gray-200 dark:border-gray-700 rounded-3xl p-6 shadow-xl relative overflow-hidden group">
             <div className="flex items-center gap-2 mb-2">
                 <CalendarIcon className="w-5 h-5 text-brand-teal dark:text-brand-lime" />
@@ -167,30 +171,27 @@ const TechDashboard: React.FC<TechDashboardProps> = ({ reports, projects, onNewR
             <CalendarIcon className="absolute -right-4 -bottom-4 w-24 h-24 text-gray-200 dark:text-gray-800/20 pointer-events-none group-hover:scale-110 transition-transform" />
         </div>
 
-        <div className="bg-white dark:bg-brand-panel border border-gray-200 dark:border-gray-700/50 rounded-3xl p-6 shadow-xl relative overflow-hidden group">
-            <div className="flex items-center gap-2 mb-2">
-                <ClockIcon className="w-5 h-5 text-yellow-600 dark:text-yellow-500" />
-                <h4 className="text-[10px] font-black text-yellow-600 dark:text-yellow-500 uppercase tracking-widest">Horas Extra Mes</h4>
+        {/* Tarjeta Historial Horas Extra Mensuales (Lista Scroll) */}
+        <div className="bg-white dark:bg-brand-panel border border-gray-200 dark:border-gray-800 rounded-3xl p-6 shadow-lg">
+            <h4 className="text-[11px] font-black text-yellow-600 dark:text-yellow-500 flex items-center gap-2 mb-5 uppercase tracking-widest">
+                <ClockIcon className="w-4 h-4" /> Historial Horas Extra
+            </h4>
+            <div className="space-y-3 max-h-[150px] overflow-y-auto pr-2 custom-scrollbar">
+                {summariesByMonth.map(([key, data]) => (
+                    <div key={`ot-${key}`} className="bg-gray-50 dark:bg-gray-950/80 px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-800 group hover:border-yellow-500/50 transition-all">
+                        <div className="flex justify-between items-center mb-1">
+                            <span className="text-xs text-gray-600 dark:text-gray-300 font-black uppercase">{data.label}</span>
+                            <span className="text-lg font-black text-yellow-600 dark:text-yellow-500">{data.total}h</span>
+                        </div>
+                        <div className="flex justify-between text-[9px] text-gray-400 font-mono uppercase">
+                            <span>Norm: <b className="text-gray-600 dark:text-gray-400">{data.norm}</b></span>
+                            <span>Noc: <b className="text-gray-600 dark:text-gray-400">{data.noct}</b></span>
+                            <span>Fin: <b className="text-gray-600 dark:text-gray-400">{data.finde}</b></span>
+                        </div>
+                    </div>
+                ))}
+                {summariesByMonth.length === 0 && <p className="text-center text-xs text-gray-400 py-4 italic">Sin horas extra registradas.</p>}
             </div>
-            <div className="flex items-baseline gap-2">
-                <span className="text-5xl font-black text-gray-900 dark:text-white">{stats.monthExtra.total}</span>
-                <span className="text-3xl font-black text-gray-900 dark:text-white">h</span>
-            </div>
-            <div className="mt-4 grid grid-cols-3 gap-2 border-t border-gray-100 dark:border-gray-800 pt-3">
-                <div className="text-center">
-                    <p className="text-[9px] text-gray-500 font-bold uppercase">Norm.</p>
-                    <p className="text-sm font-bold text-gray-900 dark:text-white">{stats.monthExtra.norm}h</p>
-                </div>
-                <div className="text-center">
-                    <p className="text-[9px] text-gray-500 font-bold uppercase">Noct.</p>
-                    <p className="text-sm font-bold text-gray-900 dark:text-white">{stats.monthExtra.noct}h</p>
-                </div>
-                <div className="text-center">
-                    <p className="text-[9px] text-gray-500 font-bold uppercase">Finde</p>
-                    <p className="text-sm font-bold text-gray-900 dark:text-white">{stats.monthExtra.finde}h</p>
-                </div>
-            </div>
-            <ClockIcon className="absolute -right-6 -top-6 w-32 h-32 text-gray-200 dark:text-gray-800/10 pointer-events-none group-hover:scale-105 transition-transform" />
         </div>
       </div>
 
