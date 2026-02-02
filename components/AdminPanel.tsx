@@ -20,6 +20,12 @@ const calculateDuration = (start: string, end: string): number => {
     return diff > 0 ? diff : 0;
 };
 
+const formatDateToSpanish = (dateStr: string) => {
+    if (!dateStr) return '';
+    const [year, month, day] = dateStr.split('-');
+    return `${day}/${month}/${year}`;
+};
+
 const getWeekRange = (dateStr: string) => {
     const d = new Date(dateStr);
     const day = d.getDay(); 
@@ -190,6 +196,23 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
 
   const pendingRequests = useMemo(() => {
     return (data.vacationRequests || []).filter(r => r.status === 'pending' || r.status === 'cancel_requested');
+  }, [data.vacationRequests]);
+
+  const upcomingAbsences = useMemo(() => {
+    const today = new Date();
+    today.setHours(0,0,0,0);
+    
+    return (data.vacationRequests || []).filter(r => {
+        if (r.status !== 'approved') return false;
+        
+        const [y, m, d] = r.startDate.split('-').map(Number);
+        const start = new Date(y, m-1, d);
+        
+        const diffTime = start.getTime() - today.getTime();
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        
+        return diffDays > 0 && diffDays <= 4; 
+    }).sort((a, b) => a.startDate.localeCompare(b.startDate));
   }, [data.vacationRequests]);
 
   const uniqueClients = useMemo(() => {
@@ -630,6 +653,37 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
   return (
     <div className="bg-white dark:bg-brand-panel rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 overflow-hidden min-h-[600px] transition-colors duration-300">
       
+      {/* VACATION ALERTS */}
+      {upcomingAbsences.length > 0 && (
+        <div className="bg-blue-50 dark:bg-blue-900/20 border-b border-blue-100 dark:border-blue-800 p-3">
+            <div className="flex items-center gap-2 mb-2">
+                <CalendarIcon className="w-4 h-4 text-brand-teal" />
+                <span className="text-[10px] font-black uppercase tracking-widest text-brand-teal dark:text-brand-lime">Próximas Ausencias (4 días)</span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+                {upcomingAbsences.map(r => {
+                    const [y, m, d] = r.startDate.split('-').map(Number);
+                    const start = new Date(y, m-1, d);
+                    const today = new Date(); today.setHours(0,0,0,0);
+                    const diff = Math.ceil((start.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+                    
+                    let colorClass = "bg-green-100 text-green-800 border-green-200";
+                    if (diff <= 2) colorClass = "bg-orange-100 text-orange-800 border-orange-200";
+                    if (diff <= 1) colorClass = "bg-red-100 text-red-800 border-red-200 animate-pulse";
+
+                    return (
+                        <div key={r.id} className={`px-3 py-1.5 rounded-lg border text-xs font-bold flex items-center gap-2 shadow-sm ${colorClass}`}>
+                            <span className="uppercase">{r.userName}</span>
+                            <span>➜</span>
+                            <span>{diff === 1 ? 'MAÑANA' : `en ${diff} días`}</span>
+                            <span className="opacity-60 font-mono">({formatDateToSpanish(r.startDate)})</span>
+                        </div>
+                    );
+                })}
+            </div>
+        </div>
+      )}
+
       {pendingRequests.length > 0 && (
         <div className="bg-orange-100 dark:bg-orange-600/20 border-b border-orange-200 dark:border-orange-500/50 p-4 flex flex-col sm:flex-row items-center justify-between gap-4 animate-pulse-slow">
             <div className="flex items-center gap-3">
