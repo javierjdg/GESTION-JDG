@@ -10,6 +10,7 @@ interface TechDashboardProps {
   onEditReport: (report: WorkReport) => void;
   onViewDailyOrg: () => void;
   onDeleteReport: (id: string) => void;
+  hasUnreadOrg?: boolean;
 }
 
 // Helpers for calculations
@@ -43,7 +44,7 @@ const getMonthYearLabel = (dateStr: string) => {
     return d.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' }).toUpperCase();
 };
 
-const TechDashboard: React.FC<TechDashboardProps> = ({ reports, projects, onNewReport, onEditReport, onViewDailyOrg, onDeleteReport }) => {
+const TechDashboard: React.FC<TechDashboardProps> = ({ reports, projects, onNewReport, onEditReport, onViewDailyOrg, onDeleteReport, hasUnreadOrg }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [searchDate, setSearchDate] = useState('');
 
@@ -149,7 +150,10 @@ const TechDashboard: React.FC<TechDashboardProps> = ({ reports, projects, onNewR
             <PlusIcon className="w-10 h-10 text-brand-lime" />
             <span className="text-xl font-bold">Nuevo Parte de Trabajo</span>
         </button>
-        <button onClick={onViewDailyOrg} className="bg-white dark:bg-brand-panel hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-900 dark:text-white p-8 rounded-2xl shadow-lg transform transition active:scale-95 flex flex-col items-center justify-center gap-3 border border-gray-200 dark:border-gray-700">
+        <button onClick={onViewDailyOrg} className="relative bg-white dark:bg-brand-panel hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-900 dark:text-white p-8 rounded-2xl shadow-lg transform transition active:scale-95 flex flex-col items-center justify-center gap-3 border border-gray-200 dark:border-gray-700">
+            {hasUnreadOrg && (
+                <span className="absolute top-4 right-4 w-4 h-4 bg-red-600 rounded-full border-2 border-white dark:border-brand-panel animate-pulse shadow-md"></span>
+            )}
             <CalendarIcon className="w-10 h-10 text-brand-teal dark:text-brand-lime" />
             <span className="text-xl font-bold">Ver Organización Diaria</span>
         </button>

@@ -21,6 +21,7 @@ export interface DailyOrgData {
   trabajos: JobOrg[];
   trabajadores: WorkerOrg[];
   fecha: string;
+  lastUpdated?: number; // Timestamp para notificaciones
 }
 
 interface DailyOrganizationProps {
@@ -29,12 +30,13 @@ interface DailyOrganizationProps {
   data: DailyOrgData;
   onUpdate: (newData: DailyOrgData) => void;
   onChangeDate: (newDate: string) => void;
+  onMarkSeen?: () => void; // Prop para limpiar notificación
 }
 
-const DailyOrganization: React.FC<DailyOrganizationProps> = ({ isReadOnly = false, onBack, data, onUpdate, onChangeDate }) => {
+const DailyOrganization: React.FC<DailyOrganizationProps> = ({ isReadOnly = false, onBack, data, onUpdate, onChangeDate, onMarkSeen }) => {
   // ESTADO LOCAL para edición
   const [localData, setLocalData] = useState<DailyOrgData>(data);
-  const [isDirty, setIsDirty] = useState(false); // Para saber si hay cambios sin guardar
+  const [isDirty, setIsDirty] = useState(false); // Para saber hay cambios sin guardar
 
   const [colorIdx, setColorIdx] = useState(14);
   const [nuevo, setNuevo] = useState('');
@@ -43,6 +45,18 @@ const DailyOrganization: React.FC<DailyOrganizationProps> = ({ isReadOnly = fals
   const [editandoId, setEditandoId] = useState<number | null>(null);
   const [nombreEdit, setNombreEdit] = useState('');
 
+  // Cuando se monta el componente en modo lectura (Técnico), marcar como visto
+  useEffect(() => {
+      if (isReadOnly && onMarkSeen) {
+          onMarkSeen();
+      }
+  }, [isReadOnly, onMarkSeen]);
+
+  // Sincronizar data externa si cambia
+  useEffect(() => {
+      setLocalData(data);
+  }, [data]);
+
   const updateLocal = (newData: DailyOrgData) => {
       setLocalData(newData);
       setIsDirty(true); // Marcar como modificado
@@ -50,7 +64,12 @@ const DailyOrganization: React.FC<DailyOrganizationProps> = ({ isReadOnly = fals
 
   const handleSave = () => {
       if (window.confirm(`¿Guardar organización para el día ${localData.fecha}?`)) {
-          onUpdate(localData);
+          // Actualizamos el timestamp para disparar notificaciones a los técnicos
+          const dataToSave = {
+              ...localData,
+              lastUpdated: Date.now()
+          };
+          onUpdate(dataToSave);
           setIsDirty(false);
           alert("✅ Cambios guardados correctamente.");
       }

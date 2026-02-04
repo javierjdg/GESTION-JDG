@@ -135,7 +135,8 @@ const DEFAULT_DAILY_ORG: DailyOrgData = {
         { id: 12, nombre: 'RDL1', color: '#003049', asignado: false },
         { id: 13, nombre: 'KIKO', color: '#073B4C', asignado: false }
     ],
-    fecha: new Date().toISOString().split('T')[0]
+    fecha: new Date().toISOString().split('T')[0],
+    lastUpdated: Date.now() // Timestamp inicial
 };
 
 const INITIAL_DATA: AppData = {
@@ -167,6 +168,9 @@ const App: React.FC = () => {
   const [showConfigGuide, setShowConfigGuide] = useState(false);
   const [theme, setTheme] = useState<'light' | 'dark'>('dark');
   const [lastBackupStatus, setLastBackupStatus] = useState<string>('');
+  
+  // Estado para notificaciones
+  const [hasUnseenDailyOrg, setHasUnseenDailyOrg] = useState(false);
   
   const isInternalUpdate = useRef(false);
   const isSyncingRef = useRef(false);
@@ -205,6 +209,53 @@ const App: React.FC = () => {
       }
       localStorage.setItem('app_theme', theme);
   }, [theme]);
+
+  // Request Notification Permission on Mount
+  useEffect(() => {
+    if ('Notification' in window && Notification.permission !== 'granted' && Notification.permission !== 'denied') {
+      Notification.requestPermission();
+    }
+  }, []);
+
+  // Check for updates in Daily Org to trigger notifications
+  useEffect(() => {
+    if (userRole === 'admin') return; // Admin doesn't need notifications about their own changes
+
+    const lastSeenTs = localStorage.getItem('lastSeenDailyOrgTs');
+    const currentTs = data.dailyOrg.lastUpdated || 0;
+
+    if (!lastSeenTs || Number(lastSeenTs) < currentTs) {
+        setHasUnseenDailyOrg(true);
+        
+        // 1. Try to set App Badge (Standard PWA / Median)
+        if ('setAppBadge' in navigator) {
+            navigator.setAppBadge(1).catch(() => {});
+        }
+
+        // 2. Send System Notification (if updated recently - e.g., within last hour to avoid notify on stale load)
+        const isRecentUpdate = (Date.now() - currentTs) < 3600000; // 1 hour
+        if (isRecentUpdate && 'Notification' in window && Notification.permission === 'granted' && !document.hasFocus()) {
+             new Notification('JDG Teleco', {
+                 body: '📋 La organización diaria ha sido actualizada.',
+                 icon: '/vite.svg', // Fallback icon
+                 tag: 'daily-org-update'
+             });
+        }
+    } else {
+        setHasUnseenDailyOrg(false);
+        if ('clearAppBadge' in navigator) {
+            navigator.clearAppBadge().catch(() => {});
+        }
+    }
+  }, [data.dailyOrg.lastUpdated, userRole]);
+
+  const markDailyOrgAsSeen = () => {
+      setHasUnseenDailyOrg(false);
+      localStorage.setItem('lastSeenDailyOrgTs', (data.dailyOrg.lastUpdated || Date.now()).toString());
+      if ('clearAppBadge' in navigator) {
+          navigator.clearAppBadge().catch(() => {});
+      }
+  };
 
   const toggleTheme = () => {
       setTheme(prev => prev === 'dark' ? 'light' : 'dark');
@@ -577,7 +628,8 @@ const App: React.FC = () => {
           orgToLoad = {
               fecha: newDate,
               trabajos: [],
-              trabajadores: cleanWorkers
+              trabajadores: cleanWorkers,
+              lastUpdated: Date.now()
           };
       }
 
@@ -666,8 +718,8 @@ const App: React.FC = () => {
       )}
 
       <main className={`container mx-auto p-4 ${view === 'admin' || view === 'vacations' ? 'max-w-6xl' : 'md:max-w-3xl'}`}>
-        {view === 'login' && <UserLogin onLogin={handleLogin} technicians={data.technicians} adminPwd={data.adminPassword || 'admin'} onViewDailyOrg={() => setView('daily_org')} toggleTheme={toggleTheme} isDark={theme === 'dark'} />}
-        {view === 'dashboard' && <TechDashboard reports={data.reports.filter(r => r.technician === currentUser)} projects={data.projectsDetailed} onNewReport={() => setView('form')} onEditReport={(r) => { setEditingReport(r); setView('form'); }} onViewDailyOrg={() => setView('daily_org')} onDeleteReport={deleteReport} />}
+        {view === 'login' && <UserLogin onLogin={handleLogin} technicians={data.technicians} adminPwd={data.adminPassword || 'admin'} onViewDailyOrg={() => setView('daily_org')} toggleTheme={toggleTheme} isDark={theme === 'dark'} hasUnreadOrg={hasUnseenDailyOrg} />}
+        {view === 'dashboard' && <TechDashboard reports={data.reports.filter(r => r.technician === currentUser)} projects={data.projectsDetailed} onNewReport={() => setView('form')} onEditReport={(r) => { setEditingReport(r); setView('form'); }} onViewDailyOrg={() => setView('daily_org')} onDeleteReport={deleteReport} hasUnreadOrg={hasUnseenDailyOrg} />}
         {view === 'vacations' && <VacationManager role={userRole || 'tech'} currentUser={currentUser} currentUserId={currentUserId} data={data} onUpdate={(newData) => { isInternalUpdate.current = false; setData(newData); }} onBack={() => setView(userRole === 'admin' ? 'admin' : 'dashboard')} />}
         
         {view === 'daily_org' && (
@@ -677,7 +729,8 @@ const App: React.FC = () => {
                 data={data.dailyOrg} 
                 onUpdate={handleDailyOrgUpdate}
                 onChangeDate={handleDailyOrgDateChange}
-                onBack={() => setView(userRole ? (userRole === 'admin' ? 'admin' : 'dashboard') : 'login')} 
+                onBack={() => setView(userRole ? (userRole === 'admin' ? 'admin' : 'dashboard') : 'login')}
+                onMarkSeen={markDailyOrgAsSeen} // Pass function to clear badge
             />
         )}
         

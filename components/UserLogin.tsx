@@ -11,9 +11,10 @@ interface LoginProps {
   onViewDailyOrg: () => void;
   toggleTheme: () => void;
   isDark: boolean;
+  hasUnreadOrg?: boolean;
 }
 
-const UserLogin: React.FC<LoginProps> = ({ onLogin, technicians, adminPwd = 'admin', onViewDailyOrg, toggleTheme, isDark }) => {
+const UserLogin: React.FC<LoginProps> = ({ onLogin, technicians, adminPwd = 'admin', onViewDailyOrg, toggleTheme, isDark, hasUnreadOrg }) => {
   const [step, setStep] = useState<'role' | 'password' | 'tech-select'>('role');
   const [selectedRole, setSelectedRole] = useState<'admin' | 'tech' | null>(null);
   const [password, setPassword] = useState('');
@@ -92,8 +93,11 @@ const UserLogin: React.FC<LoginProps> = ({ onLogin, technicians, adminPwd = 'adm
             
             <button 
                 onClick={onViewDailyOrg}
-                className="w-full bg-gray-100 dark:bg-gray-900 hover:bg-gray-200 dark:hover:bg-gray-800 p-4 rounded-xl flex items-center justify-center gap-3 transition-all border border-gray-200 dark:border-gray-700 hover:border-brand-teal dark:hover:border-brand-lime/50 group"
+                className="relative w-full bg-gray-100 dark:bg-gray-900 hover:bg-gray-200 dark:hover:bg-gray-800 p-4 rounded-xl flex items-center justify-center gap-3 transition-all border border-gray-200 dark:border-gray-700 hover:border-brand-teal dark:hover:border-brand-lime/50 group"
             >
+                {hasUnreadOrg && (
+                    <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-600 rounded-full border-2 border-white dark:border-brand-panel animate-pulse shadow-md"></span>
+                )}
                 <CalendarIcon className="w-6 h-6 text-brand-teal dark:text-brand-lime" />
                 <span className="font-bold text-gray-600 dark:text-gray-300 group-hover:text-brand-teal dark:group-hover:text-white">📅 Ver Organización Diaria</span>
             </button>
@@ -181,7 +185,7 @@ const UserLogin: React.FC<LoginProps> = ({ onLogin, technicians, adminPwd = 'adm
         )}
         
         <div className="mt-8 pt-6 border-t border-gray-200 dark:border-gray-700 text-center">
-           <p className="text-[10px] text-gray-500 dark:text-gray-600 uppercase tracking-[2px]">JDG Teleco v3.5 Cloud</p>
+           <p className="text-[10px] text-gray-500 dark:text-gray-600 uppercase tracking-[2px]">JDG Teleco v3.6 Cloud</p>
         </div>
       </div>
     </div>
