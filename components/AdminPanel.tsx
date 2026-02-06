@@ -94,6 +94,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
     excelName: '', hasFolderData: false, isFinished: false, isAccepted: false, comments: ''
   });
   const [isEditingBudget, setIsEditingBudget] = useState(false);
+  const [budgetSearchTerm, setBudgetSearchTerm] = useState('');
 
   // Refs de inputs
   const reportImportInputRef = useRef<HTMLInputElement>(null);
@@ -252,8 +253,25 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
   };
 
   const sortedBudgets = useMemo(() => {
-      return [...(data.budgets || [])].sort((a, b) => b.id.localeCompare(a.id));
-  }, [data.budgets]);
+      let result = [...(data.budgets || [])];
+
+      if (budgetSearchTerm) {
+          const lowerTerm = budgetSearchTerm.toLowerCase();
+          result = result.filter(b => 
+              b.name.toLowerCase().includes(lowerTerm) ||
+              (b.client && b.client.toLowerCase().includes(lowerTerm)) ||
+              (b.budgetNum && b.budgetNum.includes(lowerTerm)) ||
+              (b.excelName && b.excelName.toLowerCase().includes(lowerTerm))
+          );
+      }
+
+      return result.sort((a, b) => {
+          // 1. Terminados al final
+          if (a.isFinished !== b.isFinished) return a.isFinished ? 1 : -1;
+          // 2. Orden cronológico inverso (más nuevos primero)
+          return b.id.localeCompare(a.id);
+      });
+  }, [data.budgets, budgetSearchTerm]);
 
   const handleAdd = (type: 'techs' | 'vehicles') => {
     if (!newItemName.trim()) return;
@@ -1184,6 +1202,18 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                             </label>
                         </div>
                     </div>
+
+                    <div className="relative">
+                        <input 
+                            type="text" 
+                            placeholder="🔍 Buscar presupuesto por Nombre, Cliente, Nº..." 
+                            value={budgetSearchTerm} 
+                            onChange={(e) => setBudgetSearchTerm(e.target.value)} 
+                            className="w-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl pl-10 pr-4 py-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none transition-colors shadow-sm" 
+                        />
+                        <div className="absolute left-3 top-3.5 text-gray-400"><SearchIcon className="w-4 h-4" /></div>
+                    </div>
+
                     <div className="space-y-3">
                         {sortedBudgets.map((b) => (
                              <div key={b.id} className={`p-5 rounded-xl border flex flex-col md:flex-row justify-between items-start md:items-center gap-4 group hover:border-brand-teal/50 transition-all shadow-sm ${getBudgetStyle(b)}`}>
