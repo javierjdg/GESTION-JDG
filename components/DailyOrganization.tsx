@@ -77,6 +77,8 @@ const DailyOrganization: React.FC<DailyOrganizationProps> = ({ isReadOnly = fals
 
   const handleDateChangeInput = (e: React.ChangeEvent<HTMLInputElement>) => {
       const newVal = e.target.value;
+      if (!newVal) return; // Previene fecha vacía si el navegador fuerza el borrado
+
       if (isDirty) {
           if (!window.confirm("⚠️ Tienes cambios SIN GUARDAR en este día.\n\nSi cambias de fecha sin guardar, perderás los cambios actuales.\n\n¿Continuar sin guardar?")) {
               e.preventDefault();
@@ -213,6 +215,16 @@ const DailyOrganization: React.FC<DailyOrganizationProps> = ({ isReadOnly = fals
 
   return (
     <div className="text-gray-900 dark:text-gray-200 animate-fade-in">
+        <style>
+            {`
+                input[type="date"]::-webkit-clear-button {
+                    display: none;
+                }
+                input[type="date"]::-webkit-inner-spin-button {
+                    display: none;
+                }
+            `}
+        </style>
         {onBack && (
             <button 
                 onClick={onBack}
@@ -242,6 +254,7 @@ const DailyOrganization: React.FC<DailyOrganizationProps> = ({ isReadOnly = fals
                   <label className="block text-[10px] uppercase font-bold text-gray-500 mb-1">Fecha Visualizada</label>
                   <input 
                     type="date" 
+                    required
                     value={localData.fecha} 
                     onChange={handleDateChangeInput} 
                     className={`px-4 py-2 bg-gray-50 dark:bg-gray-800 border-2 ${isDirty ? 'border-orange-400' : 'border-gray-300 dark:border-gray-600'} rounded-lg text-gray-900 dark:text-white font-bold cursor-pointer hover:border-brand-teal transition-colors shadow-sm`} 
