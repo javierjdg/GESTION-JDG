@@ -85,6 +85,11 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
   const [isEditingProject, setIsEditingProject] = useState(false);
   const [idMode, setIdMode] = useState<'AUTO' | 'MANUAL'>('AUTO');
   const [projectSearchTerm, setProjectSearchTerm] = useState('');
+  
+  // Estado para las secciones desplegables de Obras
+  const [expandedProjectSections, setExpandedProjectSections] = useState<Record<string, boolean>>({
+      green: true, orange: true, red: true, blue: true, finished: false, invoiced: false
+  });
 
   const archiveRef = useRef<HTMLDivElement>(null);
 
@@ -222,34 +227,49 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
       return Array.from(clients).sort();
   }, [data.projectsDetailed, data.budgets]);
 
-  const sortedProjects = useMemo(() => {
-      return [...(data.projectsDetailed || [])].sort((a, b) => {
-          const aDone = a.isFinished || a.isInvoiced;
-          const bDone = b.isFinished || b.isInvoiced;
-          if (aDone !== bDone) return aDone ? 1 : -1;
-          if (a.hasWarning && !b.hasWarning) return -1;
-          if (!a.hasWarning && b.hasWarning) return 1;
-          return b.id.localeCompare(a.id);
-      });
-  }, [data.projectsDetailed]);
+  // CATEGORIZACION DE OBRAS EN 6 GRUPOS
+  const categorizedProjects = useMemo(() => {
+      const groups = {
+          green: [] as ProjectData[],
+          orange: [] as ProjectData[],
+          red: [] as ProjectData[],
+          blue: [] as ProjectData[],
+          finished: [] as ProjectData[],
+          invoiced: [] as ProjectData[]
+      };
 
-  const filteredAdminProjects = useMemo(() => {
-      if (!projectSearchTerm) return sortedProjects;
       const lowerTerm = projectSearchTerm.toLowerCase();
-      return sortedProjects.filter(p => 
+      const filtered = (data.projectsDetailed || []).filter(p => 
           p.id.toLowerCase().includes(lowerTerm) || 
           p.name.toLowerCase().includes(lowerTerm) ||
           (p.client && p.client.toLowerCase().includes(lowerTerm))
       );
-  }, [sortedProjects, projectSearchTerm]);
 
-  const firstArchiveIndex = useMemo(() => {
-      return filteredAdminProjects.findIndex(p => p.isFinished || p.isInvoiced);
-  }, [filteredAdminProjects]);
+      filtered.forEach(p => {
+          if (p.isInvoiced) {
+              groups.invoiced.push(p);
+          } else if (p.isFinished) {
+              groups.finished.push(p);
+          } else if (p.hasWarning) {
+              const diff = getDaysDiff(p.warningDate);
+              if (diff <= 2) groups.green.push(p);
+              else if (diff <= 5) groups.orange.push(p);
+              else groups.red.push(p);
+          } else {
+              groups.blue.push(p);
+          }
+      });
 
-  const scrollToArchive = () => {
-      if (archiveRef.current) archiveRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      else alert("No hay obras terminadas o facturadas visibles.");
+      // Ordenar cada grupo por ID descendente
+      Object.keys(groups).forEach(key => {
+          (groups as any)[key].sort((a: ProjectData, b: ProjectData) => b.id.localeCompare(a.id));
+      });
+
+      return groups;
+  }, [data.projectsDetailed, projectSearchTerm]);
+
+  const toggleProjectSection = (section: string) => {
+      setExpandedProjectSections(prev => ({ ...prev, [section]: !prev[section] }));
   };
 
   const sortedBudgets = useMemo(() => {
@@ -601,6 +621,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
 
   const toggleExpandReport = (id: string) => setExpandedReportId(prev => prev === id ? null : id);
   const toggleWeekExpansion = (week: string) => setExpandedWeeks(prev => ({ ...prev, [week]: !prev[week] }));
+  
   const getWarningStyle = (date?: string) => {
       if (!date) return '';
       const diff = getDaysDiff(date);
@@ -615,6 +636,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
       if (diff <= 5) return <span className="bg-orange-200 text-orange-800 text-[9px] font-black px-2 py-0.5 rounded">AVISO: {diff} días</span>;
       return <span className="bg-red-200 text-red-800 text-[9px] font-black px-2 py-0.5 rounded animate-pulse">AVISO: {diff} días</span>;
   };
+
   const getBudgetStyle = (b: Budget) => {
       if (b.isFinished || b.isAccepted || b.deliveryDate) return 'bg-white dark:bg-brand-panel border-gray-200 dark:border-gray-700';
       const created = parseInt(b.id);
@@ -624,17 +646,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
       if (diff < 5) return 'bg-orange-50 dark:bg-orange-900/20 border-orange-500 dark:border-orange-600';
       return 'bg-red-50 dark:bg-red-900/20 border-red-500 dark:border-red-600 animate-pulse-slow';
   };
-  const getBudgetDaysBadge = (b: Budget) => {
-      if (b.isFinished || b.isAccepted || b.deliveryDate) return null;
-      const created = parseInt(b.id);
-      if (isNaN(created)) return null;
-      const diff = Math.floor((Date.now() - created) / (1000 * 60 * 60 * 24));
-      let colorClass = "bg-gray-100 text-gray-600";
-      if (diff < 2) colorClass = "bg-green-100 text-green-700";
-      else if (diff < 5) colorClass = "bg-orange-100 text-orange-700";
-      else colorClass = "bg-red-100 text-red-700 font-bold animate-pulse";
-      return <span className={`text-[9px] px-2 py-0.5 rounded ml-2 ${colorClass}`}>Sin fecha: {diff} días</span>;
-  };
+
   const openGoogleCalendar = (p: ProjectData) => {
       if (!p.startDate) { alert('Por favor selecciona una fecha de inicio primero.'); return; }
       const title = encodeURIComponent(`${p.id} - ${p.name}`);
@@ -666,6 +678,40 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
         }
         return { ...prev, dailyOrg: orgToLoad };
     });
+  };
+
+  // RENDER DE FILA DE OBRA
+  const renderProjectRow = (p: ProjectData) => {
+      const isInactive = p.isFinished || p.isInvoiced;
+      const warningStyle = !isInactive && p.hasWarning ? getWarningStyle(p.warningDate) : '';
+      
+      return (
+          <div key={p.id} className={`bg-white dark:bg-brand-panel p-5 rounded-xl border flex flex-col md:flex-row justify-between items-start md:items-center gap-4 group hover:border-brand-teal/50 transition-all ${isInactive ? 'opacity-60 border-gray-300 dark:border-gray-800 bg-gray-100 dark:bg-gray-900/20' : warningStyle ? warningStyle : 'border-gray-200 dark:border-gray-700'}`}>
+              <div className="flex-1 w-full">
+                  <div className="flex items-center gap-3 mb-1">
+                      <button onClick={() => viewProjectHistory(p.id)} className={`font-black px-2 py-0.5 rounded text-sm tracking-wider hover:scale-105 transition-transform cursor-pointer ${isInactive ? 'bg-gray-200 dark:bg-gray-800 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300' : 'bg-brand-teal/10 dark:bg-brand-teal/20 text-brand-teal hover:bg-brand-teal hover:text-white'}`} title="Ver historial de partes">{p.id}</button>
+                      <span className={`font-bold uppercase text-sm truncate ${isInactive ? 'text-gray-500 line-through decoration-brand-teal/50' : 'text-gray-900 dark:text-white'}`}>{p.name}</span>
+                      {!isInactive && (
+                          <button onClick={(e) => { e.stopPropagation(); sendToDailyOrg(p); }} className="ml-2 bg-brand-teal/10 dark:bg-brand-teal/20 hover:bg-brand-teal hover:text-white text-brand-teal dark:text-brand-lime p-1.5 rounded-lg transition-colors shadow-sm" title="Enviar a Organización Diaria"><CalendarIcon className="w-4 h-4" /></button>
+                      )}
+                      {p.isFinished && <span className="bg-green-100 dark:bg-green-900/40 text-green-600 dark:text-green-400 text-[9px] font-black px-2 py-0.5 rounded uppercase border border-green-200 dark:border-green-800">Terminada</span>}
+                      {p.isInvoiced && <span className="bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 text-[9px] font-black px-2 py-0.5 rounded uppercase border border-blue-200 dark:border-blue-800">Facturada</span>}
+                      {!isInactive && p.hasWarning && getWarningBadge(p.warningDate)}
+                  </div>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-2 text-[10px] text-gray-400 uppercase font-medium">
+                      <div><span className="block text-gray-500 dark:text-gray-600 mb-0.5">Cliente</span><span className="text-gray-700 dark:text-gray-300">{p.client}</span></div>
+                      <div><span className="block text-gray-500 dark:text-gray-600 mb-0.5">Responsable</span><span className="text-gray-700 dark:text-gray-300">{p.responsibleTech || '-'}</span></div>
+                      <div><span className="block text-gray-500 dark:text-gray-600 mb-0.5">Valoración</span><span className="text-gray-700 dark:text-gray-300">{p.valuation}</span></div>
+                      <div><span className="block text-gray-500 dark:text-gray-600 mb-0.5">Presupuesto</span><span className="text-gray-700 dark:text-gray-300">{p.budgetNum || '-'}</span></div>
+                  </div>
+                  {p.notes && <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-800"><p className="text-[10px] text-gray-500 italic truncate">{p.notes}</p></div>}
+              </div>
+              <div className="flex gap-2 self-end md:self-center">
+                  <button onClick={() => editProject(p)} className="p-2 text-gray-400 hover:text-brand-teal bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors"><EditIcon className="w-4 h-4" /></button>
+                  <button onClick={() => deleteProject(p.id)} className="p-2 text-gray-400 hover:text-red-500 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors"><TrashIcon className="w-4 h-4" /></button>
+              </div>
+          </div>
+      );
   };
 
   return (
@@ -1125,7 +1171,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
         {tab === 'budgets' && (
             <div className="space-y-6">
                 <div className="bg-white dark:bg-gray-900/50 p-6 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-xl">
-                   {/* Formulario Presupuestos (Igual que antes) */}
+                   {/* Formulario Presupuestos */}
                    <div className="flex justify-between items-center mb-6">
                         <h3 className="text-lg font-bold text-gray-800 dark:text-white flex items-center gap-2">
                             <span className="text-brand-teal dark:text-brand-lime">{isEditingBudget ? '✏️' : '+'}</span> 
@@ -1224,7 +1270,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                                           {b.isAccepted && <span className="bg-green-100 dark:bg-green-900/40 text-green-600 dark:text-green-400 text-[9px] font-black px-2 py-0.5 rounded uppercase border border-green-200 dark:border-green-800">Aceptado</span>}
                                           {b.isFinished && <span className="bg-teal-100 dark:bg-teal-900/40 text-teal-600 dark:text-teal-400 text-[9px] font-black px-2 py-0.5 rounded uppercase border border-teal-200 dark:border-teal-800">Terminado</span>}
                                           {b.hasFolderData && <span className="bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 text-[9px] font-black px-2 py-0.5 rounded uppercase border border-blue-200 dark:border-blue-800">Datos Carpeta</span>}
-                                          {getBudgetDaysBadge(b)}
+                                          {getBudgetStyle(b).includes('red') && <span className="text-[9px] px-2 py-0.5 rounded ml-2 bg-red-100 text-red-700 font-bold animate-pulse">Sin fecha</span>}
                                       </div>
                                       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-[10px] text-gray-400 uppercase font-medium">
                                           <div><span className="block text-gray-500 dark:text-gray-600 mb-0.5">Cliente</span><span className="text-gray-700 dark:text-gray-300">{b.client}</span></div>
@@ -1249,7 +1295,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
         {tab === 'projects' && (
             <div className="space-y-6">
                 <div className="bg-white dark:bg-gray-900/50 p-6 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-xl">
-                   {/* Header Row */}
                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4 border-b border-gray-200 dark:border-gray-800 pb-4">
                         <h3 className="text-xl font-bold text-gray-800 dark:text-white flex items-center gap-2">
                             <span className="text-brand-teal dark:text-brand-lime">{isEditingProject ? '✏️' : '+'}</span> 
@@ -1268,9 +1313,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                         </div>
                    </div>
                    
-                   {/* Form Grid */}
                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
-                        {/* ID Box */}
                         <div className={`relative p-6 rounded-2xl border-2 transition-all group ${idMode === 'MANUAL' ? 'border-orange-500/30 bg-orange-50 dark:bg-orange-500/5' : 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50'}`}>
                              <div className="text-center space-y-2">
                                 <label className={`block text-[10px] uppercase font-black tracking-[2px] mb-2 ${idMode === 'MANUAL' ? 'text-orange-500 dark:text-orange-400' : 'text-gray-400 dark:text-gray-500'}`}>{idMode === 'MANUAL' ? 'INTRODUCE Nº OBRA' : 'PRÓXIMO ID AUTOMÁTICO'}</label>
@@ -1279,12 +1322,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                                 ) : (
                                      <input type="text" value={projectForm.id} onChange={e => setProjectForm({...projectForm, id: e.target.value})} className="w-full bg-transparent border-b-2 border-orange-500/50 text-3xl font-black text-gray-900 dark:text-white text-center focus:border-orange-500 outline-none py-2 placeholder-gray-400 dark:placeholder-gray-700 font-mono" placeholder="Nº OBRA" autoFocus />
                                 )}
-                                {idMode === 'AUTO' && !isEditingProject && (<p className="text-[10px] text-gray-500 dark:text-gray-600">Calculado automáticamente según el año en curso</p>)}
                              </div>
-                             {idMode === 'MANUAL' && <div className="absolute top-0 right-0 w-16 h-16 bg-gradient-to-bl from-orange-500/10 to-transparent rounded-tr-2xl pointer-events-none"></div>}
                         </div>
 
-                        {/* Name Field */}
                         <div>
                              <label className="block text-[10px] text-gray-500 uppercase font-black mb-2 ml-1">Nombre de Obra</label>
                              <input type="text" placeholder="Ej: REFORMA HOSPITAL..." value={projectForm.name} onChange={e => setProjectForm({...projectForm, name: e.target.value})} className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-xl p-4 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none transition-colors shadow-sm" />
@@ -1362,7 +1402,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                                 <UploadIcon className="w-3 h-3" /> Importar
                                 <input type="file" ref={projectsImportRef} onChange={(e) => handleImportJSON(e, 'projects')} accept=".json" className="hidden" />
                             </label>
-                            <button onClick={scrollToArchive} className="text-[10px] font-bold uppercase bg-gray-200 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:text-brand-teal hover:bg-gray-300 dark:hover:bg-gray-700 px-3 py-1.5 rounded-full transition-colors flex items-center gap-1 ml-2">⬇ Ir a Archivo</button>
                         </div>
                     </div>
 
@@ -1371,45 +1410,114 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                         <div className="absolute left-3 top-3.5 text-gray-400"><SearchIcon className="w-4 h-4" /></div>
                     </div>
 
-                    <div className="space-y-3">
-                        {filteredAdminProjects.map((p, index) => {
-                             const isInactive = p.isFinished || p.isInvoiced;
-                             const warningStyle = !isInactive && p.hasWarning ? getWarningStyle(p.warningDate) : '';
-                             const isFirstArchive = index === firstArchiveIndex;
-                             return (
-                                 <div key={p.id} ref={isFirstArchive ? archiveRef : null} className={`bg-white dark:bg-brand-panel p-5 rounded-xl border flex flex-col md:flex-row justify-between items-start md:items-center gap-4 group hover:border-brand-teal/50 transition-all ${isInactive ? 'opacity-60 border-gray-300 dark:border-gray-800 bg-gray-100 dark:bg-gray-900/20' : warningStyle ? warningStyle : 'border-gray-200 dark:border-gray-700'}`}>
-                                      <div className="flex-1 w-full">
-                                          <div className="flex items-center gap-3 mb-1">
-                                              <button onClick={() => viewProjectHistory(p.id)} className={`font-black px-2 py-0.5 rounded text-sm tracking-wider hover:scale-105 transition-transform cursor-pointer ${isInactive ? 'bg-gray-200 dark:bg-gray-800 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300' : 'bg-brand-teal/10 dark:bg-brand-teal/20 text-brand-teal hover:bg-brand-teal hover:text-white'}`} title="Ver historial de partes">{p.id}</button>
-                                              <span className={`font-bold uppercase text-sm truncate ${isInactive ? 'text-gray-500 line-through decoration-brand-teal/50' : 'text-gray-900 dark:text-white'}`}>{p.name}</span>
-                                              {!isInactive && (
-                                                  <button onClick={(e) => { e.stopPropagation(); sendToDailyOrg(p); }} className="ml-2 bg-brand-teal/10 dark:bg-brand-teal/20 hover:bg-brand-teal hover:text-white text-brand-teal dark:text-brand-lime p-1.5 rounded-lg transition-colors shadow-sm" title="Enviar a Organización Diaria"><CalendarIcon className="w-4 h-4" /></button>
-                                              )}
-                                              {p.isFinished && <span className="bg-green-100 dark:bg-green-900/40 text-green-600 dark:text-green-400 text-[9px] font-black px-2 py-0.5 rounded uppercase border border-green-200 dark:border-green-800">Terminada</span>}
-                                              {p.isInvoiced && <span className="bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 text-[9px] font-black px-2 py-0.5 rounded uppercase border border-blue-200 dark:border-blue-800">Facturada</span>}
-                                              {!isInactive && p.hasWarning && getWarningBadge(p.warningDate)}
-                                          </div>
-                                          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-2 text-[10px] text-gray-400 uppercase font-medium">
-                                              <div><span className="block text-gray-500 dark:text-gray-600 mb-0.5">Cliente</span><span className="text-gray-700 dark:text-gray-300">{p.client}</span></div>
-                                              <div><span className="block text-gray-500 dark:text-gray-600 mb-0.5">Responsable</span><span className="text-gray-700 dark:text-gray-300">{p.responsibleTech || '-'}</span></div>
-                                              <div><span className="block text-gray-500 dark:text-gray-600 mb-0.5">Valoración</span><span className="text-gray-700 dark:text-gray-300">{p.valuation}</span></div>
-                                              <div><span className="block text-gray-500 dark:text-gray-600 mb-0.5">Presupuesto</span><span className="text-gray-700 dark:text-gray-300">{p.budgetNum || '-'}</span></div>
-                                          </div>
-                                          {p.notes && <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-800"><p className="text-[10px] text-gray-500 italic truncate">{p.notes}</p></div>}
-                                      </div>
-                                      <div className="flex gap-2 self-end md:self-center">
-                                          <button onClick={() => editProject(p)} className="p-2 text-gray-400 hover:text-brand-teal bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors"><EditIcon className="w-4 h-4" /></button>
-                                          <button onClick={() => deleteProject(p.id)} className="p-2 text-gray-400 hover:text-red-500 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors"><TrashIcon className="w-4 h-4" /></button>
-                                      </div>
-                                 </div>
-                             );
-                        })}
-                        {filteredAdminProjects.length === 0 && <p className="text-center py-10 text-gray-500 italic">No se encontraron obras.</p>}
-                        {filteredAdminProjects.length > 0 && (
-                            <div className="flex justify-center pt-4 pb-2">
-                                <button onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} className="text-[10px] font-bold uppercase bg-gray-200 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:text-brand-teal hover:bg-gray-300 dark:hover:bg-gray-700 px-4 py-2 rounded-full transition-colors flex items-center gap-2 shadow-sm">⬆ Ir a Inicio</button>
-                            </div>
-                        )}
+                    <div className="space-y-4">
+                        {/* 1. AVISOS EN TIEMPO (VERDE) */}
+                        <div className="rounded-xl border border-green-200 dark:border-green-800/30 overflow-hidden shadow-sm">
+                            <button onClick={() => toggleProjectSection('green')} className="w-full flex items-center justify-between p-4 bg-green-50 dark:bg-green-900/20 hover:bg-green-100 dark:hover:bg-green-900/30 transition-colors">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-3 h-3 rounded-full bg-green-500"></div>
+                                    <span className="text-sm font-black text-green-700 dark:text-green-400 uppercase tracking-widest">Avisos en Tiempo</span>
+                                    <span className="bg-green-200 dark:bg-green-800 text-green-800 dark:text-green-200 text-[10px] font-bold px-2 py-0.5 rounded-full">{categorizedProjects.green.length}</span>
+                                </div>
+                                <ChevronDownIcon className={`w-5 h-5 text-green-600 transition-transform ${expandedProjectSections.green ? 'rotate-180' : ''}`} />
+                            </button>
+                            {expandedProjectSections.green && (
+                                <div className="p-3 space-y-3 bg-white dark:bg-brand-dark/20">
+                                    {categorizedProjects.green.map(renderProjectRow)}
+                                    {categorizedProjects.green.length === 0 && <p className="text-center py-4 text-xs text-gray-400 italic">No hay avisos recientes</p>}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* 2. AVISOS CON MENOS DE 5 DIAS (NARANJA) */}
+                        <div className="rounded-xl border border-orange-200 dark:border-orange-800/30 overflow-hidden shadow-sm">
+                            <button onClick={() => toggleProjectSection('orange')} className="w-full flex items-center justify-between p-4 bg-orange-50 dark:bg-orange-900/20 hover:bg-orange-100 dark:hover:bg-orange-900/30 transition-colors">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-3 h-3 rounded-full bg-orange-500"></div>
+                                    <span className="text-sm font-black text-orange-700 dark:text-orange-400 uppercase tracking-widest">Avisos menos de 5 días</span>
+                                    <span className="bg-orange-200 dark:bg-orange-800 text-orange-800 dark:text-orange-200 text-[10px] font-bold px-2 py-0.5 rounded-full">{categorizedProjects.orange.length}</span>
+                                </div>
+                                <ChevronDownIcon className={`w-5 h-5 text-orange-600 transition-transform ${expandedProjectSections.orange ? 'rotate-180' : ''}`} />
+                            </button>
+                            {expandedProjectSections.orange && (
+                                <div className="p-3 space-y-3 bg-white dark:bg-brand-dark/20">
+                                    {categorizedProjects.orange.map(renderProjectRow)}
+                                    {categorizedProjects.orange.length === 0 && <p className="text-center py-4 text-xs text-gray-400 italic">No hay avisos intermedios</p>}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* 3. AVISOS CON MAS DE 5 DIAS (ROJO) */}
+                        <div className="rounded-xl border border-red-200 dark:border-red-800/30 overflow-hidden shadow-sm">
+                            <button onClick={() => toggleProjectSection('red')} className="w-full flex items-center justify-between p-4 bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-3 h-3 rounded-full bg-red-500 animate-pulse"></div>
+                                    <span className="text-sm font-black text-red-700 dark:text-red-400 uppercase tracking-widest">Avisos más de 5 días</span>
+                                    <span className="bg-red-200 dark:bg-red-800 text-red-800 dark:text-red-200 text-[10px] font-bold px-2 py-0.5 rounded-full">{categorizedProjects.red.length}</span>
+                                </div>
+                                <ChevronDownIcon className={`w-5 h-5 text-red-600 transition-transform ${expandedProjectSections.red ? 'rotate-180' : ''}`} />
+                            </button>
+                            {expandedProjectSections.red && (
+                                <div className="p-3 space-y-3 bg-white dark:bg-brand-dark/20">
+                                    {categorizedProjects.red.map(renderProjectRow)}
+                                    {categorizedProjects.red.length === 0 && <p className="text-center py-4 text-xs text-gray-400 italic">Sin avisos críticos</p>}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* 4. OBRAS DE LARGA DURACION (AZUL) */}
+                        <div className="rounded-xl border border-blue-200 dark:border-blue-800/30 overflow-hidden shadow-sm">
+                            <button onClick={() => toggleProjectSection('blue')} className="w-full flex items-center justify-between p-4 bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-3 h-3 rounded-full bg-blue-500"></div>
+                                    <span className="text-sm font-black text-blue-700 dark:text-blue-400 uppercase tracking-widest">Obras Larga Duración</span>
+                                    <span className="bg-blue-200 dark:bg-blue-800 text-blue-800 dark:text-blue-200 text-[10px] font-bold px-2 py-0.5 rounded-full">{categorizedProjects.blue.length}</span>
+                                </div>
+                                <ChevronDownIcon className={`w-5 h-5 text-blue-600 transition-transform ${expandedProjectSections.blue ? 'rotate-180' : ''}`} />
+                            </button>
+                            {expandedProjectSections.blue && (
+                                <div className="p-3 space-y-3 bg-white dark:bg-brand-dark/20">
+                                    {categorizedProjects.blue.map(renderProjectRow)}
+                                    {categorizedProjects.blue.length === 0 && <p className="text-center py-4 text-xs text-gray-400 italic">No hay obras activas sin aviso</p>}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* 5. OBRAS TERMINADAS */}
+                        <div className="rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden shadow-sm">
+                            <button onClick={() => toggleProjectSection('finished')} className="w-full flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-900 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+                                <div className="flex items-center gap-3">
+                                    <CheckCircleIcon className="w-4 h-4 text-gray-500" />
+                                    <span className="text-sm font-black text-gray-600 dark:text-gray-400 uppercase tracking-widest">Obras Terminadas</span>
+                                    <span className="bg-gray-200 dark:bg-gray-800 text-gray-800 dark:text-gray-200 text-[10px] font-bold px-2 py-0.5 rounded-full">{categorizedProjects.finished.length}</span>
+                                </div>
+                                <ChevronDownIcon className={`w-5 h-5 text-gray-500 transition-transform ${expandedProjectSections.finished ? 'rotate-180' : ''}`} />
+                            </button>
+                            {expandedProjectSections.finished && (
+                                <div className="p-3 space-y-3 bg-gray-50/50 dark:bg-brand-dark/20">
+                                    {categorizedProjects.finished.map(renderProjectRow)}
+                                    {categorizedProjects.finished.length === 0 && <p className="text-center py-4 text-xs text-gray-400 italic">No hay obras terminadas pendientes</p>}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* 6. OBRAS/AVISOS FACTURADOS */}
+                        <div className="rounded-xl border border-gray-300 dark:border-gray-800 overflow-hidden shadow-sm opacity-80">
+                            <button onClick={() => toggleProjectSection('invoiced')} className="w-full flex items-center justify-between p-4 bg-gray-200 dark:bg-black/40 hover:bg-gray-300 dark:hover:bg-black/60 transition-colors">
+                                <div className="flex items-center gap-3">
+                                    <FileTextIcon className="w-4 h-4 text-gray-600" />
+                                    <span className="text-sm font-black text-gray-700 dark:text-gray-500 uppercase tracking-widest">Obras Facturadas</span>
+                                    <span className="bg-gray-300 dark:bg-gray-800 text-gray-800 dark:text-gray-200 text-[10px] font-bold px-2 py-0.5 rounded-full">{categorizedProjects.invoiced.length}</span>
+                                </div>
+                                <ChevronDownIcon className={`w-5 h-5 text-gray-600 transition-transform ${expandedProjectSections.invoiced ? 'rotate-180' : ''}`} />
+                            </button>
+                            {expandedProjectSections.invoiced && (
+                                <div className="p-3 space-y-3 bg-gray-200/50 dark:bg-brand-dark/20">
+                                    {categorizedProjects.invoiced.map(renderProjectRow)}
+                                    {categorizedProjects.invoiced.length === 0 && <p className="text-center py-4 text-xs text-gray-400 italic">No hay registros facturados</p>}
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </div>
             </div>
