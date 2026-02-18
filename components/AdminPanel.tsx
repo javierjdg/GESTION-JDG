@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { AppData, TechUser, WorkReport, ProjectData, Budget } from '../App';
 import { TrashIcon, PlusIcon, DownloadIcon, UserIcon, TruckIcon, FileTextIcon, FilterIcon, EditIcon, SaveIcon, XIcon, LockIcon, UploadIcon, CloudIcon, CalendarIcon, ChartPieIcon, ClockIcon, EyeIcon, AlertIcon, ChevronDownIcon, BriefcaseIcon, SearchIcon, CheckCircleIcon } from './icons';
@@ -545,16 +544,24 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
           const fb = (window as any).firebase;
           if (!fb) return;
           const db = fb.app().firestore();
-          const snapshot = await db.collection('jdg_teleco_backups').orderBy('__name__', 'desc').limit(15).get();
+          // Removing orderBy just to be safe against index errors for now, client side sort is fine for 15 items
+          const snapshot = await db.collection('jdg_teleco_backups').limit(20).get();
           
           const list: any[] = [];
           snapshot.forEach((doc: any) => {
               list.push({ id: doc.id, ...doc.data() });
           });
+          // Sort client side
+          list.sort((a, b) => b.id.localeCompare(a.id));
+          
           setBackupsList(list);
-      } catch (e) {
+      } catch (e: any) {
           console.error("Error fetching backups", e);
-          alert("Error al cargar copias de seguridad. Verifica tu conexión.");
+          if (e.code === 'permission-denied') {
+              alert("⛔ BLOQUEO DE SEGURIDAD DETECTADO\n\nFirebase ha impedido leer las copias de seguridad.\n\nSOLUCIÓN:\n1. Ve a Firebase Console > Firestore Database > Reglas.\n2. Añade esta línea:\n\nmatch /jdg_teleco_backups/{document=**} { allow read, write: if true; }\n\n3. Pulsa Publicar.");
+          } else {
+              alert("Error al cargar copias de seguridad: " + e.message);
+          }
       } finally {
           setIsLoadingBackups(false);
       }
@@ -854,19 +861,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
 
       <div className="p-6">
         
-        {/* ... (TABS REPORTS, EXPENSES, TECHS, VEHICLES, BUDGETS, PROJECTS, DAILY - SIN CAMBIOS) ... */}
         {tab === 'reports' && (
-          /* ... Contenido Reports existente ... */
           <div>
             <div className="flex gap-2 mb-4 bg-gray-50 dark:bg-gray-900 p-2 rounded-lg border border-gray-200 dark:border-gray-700 max-w-fit flex-wrap">
                 <button onClick={() => setReportViewMode('list')} className={`px-3 py-1.5 text-xs font-bold rounded flex items-center gap-1 ${reportViewMode === 'list' ? 'bg-brand-teal dark:bg-brand-lime text-white dark:text-brand-dark' : 'text-gray-500 dark:text-gray-400'}`}><FileTextIcon className="w-3 h-3" /> Listado</button>
                 <button onClick={() => setReportViewMode('by_project')} className={`px-3 py-1.5 text-xs font-bold rounded flex items-center gap-1 ${reportViewMode === 'by_project' ? 'bg-brand-teal text-white' : 'text-gray-500 dark:text-gray-400'}`}><ChartPieIcon className="w-3 h-3" /> Por Obra</button>
                 <button onClick={() => setReportViewMode('by_hours')} className={`px-3 py-1.5 text-xs font-bold rounded flex items-center gap-1 ${reportViewMode === 'by_hours' ? 'bg-brand-teal text-white' : 'text-gray-500 dark:text-gray-400'}`}><ClockIcon className="w-3 h-3" /> Horas</button>
             </div>
-            {/* ... Resto de Reports ... */}
-            {/* OMITIDO PARA BREVEDAD: Mantener todo el código de Reports tal cual estaba */}
-            {/* ... Fin Reports ... */}
-            {/* RE-INSERTANDO BLOQUE REPORTS PARA NO ROMPER XML (Simplificado) */}
+            
             <div className="bg-gray-50 dark:bg-gray-900/50 p-4 rounded-lg border border-gray-200 dark:border-gray-700 mb-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                  <select value={filterTech} onChange={e => setFilterTech(e.target.value)} className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-sm rounded-lg p-2.5 text-gray-900 dark:text-white outline-none">
                     <option value="">Técnicos...</option>
@@ -891,8 +893,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                             </label>
                         </div>
                     </div>
-                    {/* ... Lista de reports ... */}
-                    {/* ... (Manteniendo lógica de renderizado existente) ... */}
+                    
                     <div className="space-y-12">
                         {Object.entries(groupedReports).map(([monthLabel, weeks]) => (
                             <div key={monthLabel} className="space-y-6">
@@ -1041,34 +1042,54 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
         )}
 
         {tab === 'expenses' && (
-            /* ... Contenido Expenses existente ... */
             <div className="space-y-6">
                 <h3 className="text-lg font-bold text-gray-800 dark:text-white mb-4">Control de Gastos</h3>
                 {Object.keys(groupedExpenses.tree).sort((a,b) => groupedExpenses.dateMap[b].localeCompare(groupedExpenses.dateMap[a])).map((month) => {
-                    /* ... */
+                    const weeksInMonth = groupedExpenses.tree[month];
                     return (
                         <div key={month} className="space-y-4">
-                            <div className="bg-brand-teal/10 dark:bg-brand-teal/20 border-l-4 border-brand-teal px-4 py-3 flex items-center gap-3"><h4 className="text-brand-teal dark:text-brand-teal font-black text-xl tracking-widest">{month}</h4></div>
-                            {Object.keys(groupedExpenses.tree[month]).sort((a,b) => groupedExpenses.dateMap[b].localeCompare(groupedExpenses.dateMap[a])).map((week) => {
+                            <div className="bg-brand-teal/10 dark:bg-brand-teal/20 border-l-4 border-brand-teal px-4 py-3 flex items-center gap-3">
+                                <h4 className="text-brand-teal dark:text-brand-teal font-black text-xl tracking-widest">{month}</h4>
+                            </div>
+                            
+                            {Object.keys(weeksInMonth).sort((a,b) => groupedExpenses.dateMap[b].localeCompare(groupedExpenses.dateMap[a])).map((week) => {
                                 const isExpanded = !!expandedWeeks[week];
-                                const techs = groupedExpenses.tree[month][week];
+                                const techs = weeksInMonth[week];
                                 const totalWeek: number = (Object.values(techs) as number[]).reduce((a, b) => a + b, 0);
+
                                 return (
                                     <div key={week} className="bg-gray-50 dark:bg-gray-900/30 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden shadow-sm">
                                         <div onClick={() => toggleWeekExpansion(week)} className="bg-gray-100 dark:bg-gray-800 p-3 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">
-                                            <div className="flex items-center gap-3"><ChartPieIcon className="w-4 h-4 text-brand-teal dark:text-brand-lime" /><span className="text-brand-teal dark:text-brand-lime font-black text-sm uppercase tracking-widest">Semana: {week}</span></div>
-                                            <div className="flex items-center gap-4"><span className="text-xs font-bold text-gray-600 dark:text-gray-300">Total: {totalWeek.toFixed(2)}€</span><ChevronDownIcon className={`w-4 h-4 text-gray-500 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`} /></div>
+                                            <div className="flex items-center gap-3">
+                                                <ChartPieIcon className="w-4 h-4 text-brand-teal dark:text-brand-lime" />
+                                                <span className="text-brand-teal dark:text-brand-lime font-black text-sm uppercase tracking-widest">Semana: {week}</span>
+                                            </div>
+                                            <div className="flex items-center gap-4">
+                                                <span className="text-xs font-bold text-gray-600 dark:text-gray-300">Total: {totalWeek.toFixed(2)}€</span>
+                                                <ChevronDownIcon className={`w-4 h-4 text-gray-500 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`} />
+                                            </div>
                                         </div>
+                                        
                                         {isExpanded && (
                                             <div className="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 animate-fade-in">
                                                 {Object.entries(techs).map(([tech, rawTotal]) => {
                                                     const total = Number(rawTotal);
                                                     const paymentKey = `${week}_${tech}`;
                                                     const isPaid = data.expensesPayments?.[paymentKey] || false;
+                                                    
                                                     return (
                                                         <div key={tech} className={`p-4 rounded-xl border transition-all flex flex-col justify-between gap-3 group relative ${isPaid ? 'bg-green-50 dark:bg-green-900/20 border-green-500 dark:border-green-600' : 'bg-white dark:bg-gray-950 border-gray-200 dark:border-gray-800 hover:border-brand-teal'}`}>
-                                                            <div className="flex justify-between items-start"><span className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest">{tech}</span>{isPaid && <CheckCircleIcon className="w-4 h-4 text-green-600 dark:text-green-400" />}</div>
-                                                            <div className="flex justify-between items-end"><span className={`text-lg font-black font-mono ${isPaid ? 'text-green-800 dark:text-green-300' : 'text-gray-800 dark:text-white'}`}>{total.toFixed(2)}€</span><label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={isPaid} onChange={() => toggleExpensePayment(week, tech)} className="w-4 h-4 rounded border-gray-300 text-green-600 focus:ring-green-500" /><span className="text-[9px] uppercase font-bold text-gray-500 select-none">Pagado</span></label></div>
+                                                            <div className="flex justify-between items-start">
+                                                                <span className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest">{tech}</span>
+                                                                {isPaid && <CheckCircleIcon className="w-4 h-4 text-green-600 dark:text-green-400" />}
+                                                            </div>
+                                                            <div className="flex justify-between items-end">
+                                                                <span className={`text-lg font-black font-mono ${isPaid ? 'text-green-800 dark:text-green-300' : 'text-gray-800 dark:text-white'}`}>{total.toFixed(2)}€</span>
+                                                                <label className="flex items-center gap-2 cursor-pointer">
+                                                                    <input type="checkbox" checked={isPaid} onChange={() => toggleExpensePayment(week, tech)} className="w-4 h-4 rounded border-gray-300 text-green-600 focus:ring-green-500" />
+                                                                    <span className="text-[9px] uppercase font-bold text-gray-500 select-none">Pagado</span>
+                                                                </label>
+                                                            </div>
                                                         </div>
                                                     );
                                                 })}
@@ -1083,10 +1104,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
             </div>
         )}
 
-        {/* ... (TECH, VEHICLES, BUDGETS, PROJECTS, DAILY TABS) ... MANTENIDOS IGUAL */}
-        {/* Simplemente renderizo los mismos componentes que antes para no borrar nada */}
         {tab === 'techs' && (
-            /* ... Mismo contenido que archivo original ... */
             <div className="space-y-4">
                 <div className="flex justify-between items-center mb-4">
                     <h3 className="text-gray-400 font-black uppercase text-[11px] tracking-[3px] flex items-center gap-2">
@@ -1138,18 +1156,22 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
         )}
 
         {tab === 'vehicles' && (
-            /* ... Mismo contenido que archivo original ... */
             <div className="space-y-4">
-                {/* ... (Copy from original) ... */}
                 <div className="flex justify-between items-center mb-4">
                     <h3 className="text-gray-400 font-black uppercase text-[11px] tracking-[3px] flex items-center gap-2">
                         <TruckIcon className="w-4 h-4" /> Gestión de Vehículos
                     </h3>
                     <div className="flex gap-2">
-                        <button onClick={() => handleExportJSON('vehicles')} className="text-[10px] font-bold uppercase bg-gray-200 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:text-brand-teal hover:bg-gray-300 dark:hover:bg-gray-700 px-3 py-1.5 rounded-full transition-colors flex items-center gap-1 shadow-sm"><DownloadIcon className="w-3 h-3" /> Exportar</button>
-                        <label className="text-[10px] font-bold uppercase bg-brand-teal/10 dark:bg-brand-teal/20 text-brand-teal hover:bg-brand-teal hover:text-white px-3 py-1.5 rounded-full transition-colors flex items-center gap-1 cursor-pointer shadow-sm"><UploadIcon className="w-3 h-3" /> Importar<input type="file" ref={vehiclesImportRef} onChange={(e) => handleImportJSON(e, 'vehicles')} accept=".json" className="hidden" /></label>
+                        <button onClick={() => handleExportJSON('vehicles')} className="text-[10px] font-bold uppercase bg-gray-200 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:text-brand-teal hover:bg-gray-300 dark:hover:bg-gray-700 px-3 py-1.5 rounded-full transition-colors flex items-center gap-1 shadow-sm">
+                            <DownloadIcon className="w-3 h-3" /> Exportar
+                        </button>
+                        <label className="text-[10px] font-bold uppercase bg-brand-teal/10 dark:bg-brand-teal/20 text-brand-teal hover:bg-brand-teal hover:text-white px-3 py-1.5 rounded-full transition-colors flex items-center gap-1 cursor-pointer shadow-sm">
+                            <UploadIcon className="w-3 h-3" /> Importar
+                            <input type="file" ref={vehiclesImportRef} onChange={(e) => handleImportJSON(e, 'vehicles')} accept=".json" className="hidden" />
+                        </label>
                     </div>
                 </div>
+
                 <div className="bg-gray-50 dark:bg-gray-900/50 p-4 rounded-xl border border-gray-200 dark:border-gray-700 flex flex-col sm:flex-row gap-2">
                     <input type="text" placeholder="Nombre/Matrícula del Vehículo" value={newItemName} onChange={e => setNewItemName(e.target.value)} className="flex-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-4 py-2 text-gray-900 dark:text-white" />
                     <button onClick={() => handleAdd('vehicles')} className="bg-brand-teal text-white px-6 py-2 rounded-lg font-bold shadow-md hover:bg-teal-600 transition-colors">Añadir</button>
@@ -1165,7 +1187,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                             </div>
                         ) : (
                             <>
-                                <div className="flex items-center gap-3"><div className="w-8 h-8 bg-brand-teal/10 dark:bg-brand-teal/20 rounded-full flex items-center justify-center text-brand-teal font-bold"><TruckIcon className="w-4 h-4" /></div><p className="font-bold text-sm text-gray-800 dark:text-gray-200">{v}</p></div>
+                                <div className="flex items-center gap-3">
+                                    <div className="w-8 h-8 bg-brand-teal/10 dark:bg-brand-teal/20 rounded-full flex items-center justify-center text-brand-teal font-bold"><TruckIcon className="w-4 h-4" /></div>
+                                    <p className="font-bold text-sm text-gray-800 dark:text-gray-200">{v}</p>
+                                </div>
                                 <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                                     <button onClick={() => startEditing(i, v, 'vehicles')} className="text-gray-400 dark:text-gray-500 hover:text-brand-teal"><EditIcon className="w-4 h-4" /></button>
                                     <button onClick={() => handleDelete('vehicles', i)} className="text-gray-400 dark:text-gray-500 hover:text-red-500"><TrashIcon className="w-4 h-4" /></button>
@@ -1180,43 +1205,97 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
         )}
 
         {tab === 'budgets' && (
-            /* ... Mismo contenido que archivo original ... */
             <div className="space-y-6">
-                {/* ... (Manteniendo todo el código de Budgets) ... */}
                 <div className="bg-white dark:bg-gray-900/50 p-6 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-xl">
-                   {/* Formulario Presupuestos */}
                    <div className="flex justify-between items-center mb-6">
-                        <h3 className="text-lg font-bold text-gray-800 dark:text-white flex items-center gap-2"><span className="text-brand-teal dark:text-brand-lime">{isEditingBudget ? '✏️' : '+'}</span> {isEditingBudget ? 'Editar Presupuesto' : 'Nuevo Presupuesto'}</h3>
-                        {isEditingBudget && (<button onClick={resetBudgetForm} className="text-xs bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 px-3 py-1.5 rounded text-gray-500 dark:text-gray-300">Cancelar</button>)}
+                        <h3 className="text-lg font-bold text-gray-800 dark:text-white flex items-center gap-2">
+                            <span className="text-brand-teal dark:text-brand-lime">{isEditingBudget ? '✏️' : '+'}</span> 
+                            {isEditingBudget ? 'Editar Presupuesto' : 'Nuevo Presupuesto'}
+                        </h3>
+                        {isEditingBudget && (
+                            <button onClick={resetBudgetForm} className="text-xs bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 px-3 py-1.5 rounded text-gray-500 dark:text-gray-300">
+                                Cancelar
+                            </button>
+                        )}
                    </div>
+                   {/* ... (Budget form content) ... */}
                    <div className="space-y-4">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div><label className="block text-[10px] text-gray-500 uppercase font-black mb-1">Nombre del Presupuesto (Descripción)</label><input type="text" placeholder="Descripción breve..." value={budgetForm.name} onChange={e => setBudgetForm({...budgetForm, name: e.target.value})} className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg p-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none" /></div>
-                            <div><label className="block text-[10px] text-gray-500 uppercase font-black mb-1">Cliente</label><input type="text" list="client-options-budget" placeholder="" value={budgetForm.client} onChange={e => setBudgetForm({...budgetForm, client: e.target.value})} className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg p-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none" /><datalist id="client-options-budget">{uniqueClients.map(client => (<option key={client} value={client} />))}</datalist></div>
+                            <div>
+                                <label className="block text-[10px] text-gray-500 uppercase font-black mb-1">Nombre del Presupuesto (Descripción)</label>
+                                <input type="text" placeholder="Descripción breve..." value={budgetForm.name} onChange={e => setBudgetForm({...budgetForm, name: e.target.value})} className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg p-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none" />
+                            </div>
+                            <div>
+                                <label className="block text-[10px] text-gray-500 uppercase font-black mb-1">Cliente</label>
+                                <input type="text" list="client-options-budget" placeholder="" value={budgetForm.client} onChange={e => setBudgetForm({...budgetForm, client: e.target.value})} className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg p-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none" />
+                                <datalist id="client-options-budget">{uniqueClients.map(client => (<option key={client} value={client} />))}</datalist>
+                            </div>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            <div><label className="block text-[10px] text-gray-500 uppercase font-black mb-1">Número de Presupuesto</label><input type="text" placeholder="5 cifras" value={budgetForm.budgetNum} onChange={e => setBudgetForm({...budgetForm, budgetNum: e.target.value})} className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg p-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none" /></div>
-                            <div><label className="block text-[10px] text-gray-500 uppercase font-black mb-1">Fecha de Entrega</label><input type="date" value={budgetForm.deliveryDate} onChange={e => setBudgetForm({...budgetForm, deliveryDate: e.target.value})} className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg p-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none dark:[color-scheme:dark]" /></div>
-                            <div><label className="block text-[10px] text-gray-500 uppercase font-black mb-1">Nombre de la Excel</label><input type="text" value={budgetForm.excelName} onChange={e => setBudgetForm({...budgetForm, excelName: e.target.value})} className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg p-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none" /></div>
+                            <div>
+                                <label className="block text-[10px] text-gray-500 uppercase font-black mb-1">Número de Presupuesto</label>
+                                <input type="text" placeholder="5 cifras" value={budgetForm.budgetNum} onChange={e => setBudgetForm({...budgetForm, budgetNum: e.target.value})} className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg p-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none" />
+                            </div>
+                            <div>
+                                <label className="block text-[10px] text-gray-500 uppercase font-black mb-1">Fecha de Entrega</label>
+                                <input type="date" value={budgetForm.deliveryDate} onChange={e => setBudgetForm({...budgetForm, deliveryDate: e.target.value})} className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg p-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none dark:[color-scheme:dark]" />
+                            </div>
+                            <div>
+                                <label className="block text-[10px] text-gray-500 uppercase font-black mb-1">Nombre de la Excel</label>
+                                <input type="text" value={budgetForm.excelName} onChange={e => setBudgetForm({...budgetForm, excelName: e.target.value})} className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg p-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none" />
+                            </div>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 py-2">
-                             <label className="flex items-center gap-3 cursor-pointer bg-gray-100 dark:bg-gray-800/50 p-2 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-gray-400 dark:hover:border-gray-500 transition-colors"><input type="checkbox" checked={budgetForm.hasFolderData} onChange={e => setBudgetForm({...budgetForm, hasFolderData: e.target.checked})} className="w-5 h-5 rounded border-gray-400 dark:border-gray-600 text-brand-teal bg-white dark:bg-gray-800 focus:ring-0" /><span className="text-xs font-bold uppercase text-gray-700 dark:text-white">Datos Carpeta</span></label>
-                             <label className="flex items-center gap-3 cursor-pointer bg-gray-100 dark:bg-gray-800/50 p-2 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-gray-400 dark:hover:border-gray-500 transition-colors"><input type="checkbox" checked={budgetForm.isFinished} onChange={e => setBudgetForm({...budgetForm, isFinished: e.target.checked})} className="w-5 h-5 rounded border-gray-400 dark:border-gray-600 text-brand-teal bg-white dark:bg-gray-800 focus:ring-0" /><span className="text-xs font-bold uppercase text-gray-700 dark:text-white">Terminado</span></label>
-                             <label className="flex items-center gap-3 cursor-pointer bg-gray-100 dark:bg-gray-800/50 p-2 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-gray-400 dark:hover:border-gray-500 transition-colors"><input type="checkbox" checked={budgetForm.isAccepted} onChange={e => setBudgetForm({...budgetForm, isAccepted: e.target.checked})} className="w-5 h-5 rounded border-gray-400 dark:border-gray-600 text-brand-teal bg-white dark:bg-gray-800 focus:ring-0" /><span className="text-xs font-bold uppercase text-gray-700 dark:text-white">Aceptado (Crear Obra)</span></label>
+                             <label className="flex items-center gap-3 cursor-pointer bg-gray-100 dark:bg-gray-800/50 p-2 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-gray-400 dark:hover:border-gray-500 transition-colors">
+                                 <input type="checkbox" checked={budgetForm.hasFolderData} onChange={e => setBudgetForm({...budgetForm, hasFolderData: e.target.checked})} className="w-5 h-5 rounded border-gray-400 dark:border-gray-600 text-brand-teal bg-white dark:bg-gray-800 focus:ring-0" />
+                                 <span className="text-xs font-bold uppercase text-gray-700 dark:text-white">Datos Carpeta</span>
+                             </label>
+                             <label className="flex items-center gap-3 cursor-pointer bg-gray-100 dark:bg-gray-800/50 p-2 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-gray-400 dark:hover:border-gray-500 transition-colors">
+                                 <input type="checkbox" checked={budgetForm.isFinished} onChange={e => setBudgetForm({...budgetForm, isFinished: e.target.checked})} className="w-5 h-5 rounded border-gray-400 dark:border-gray-600 text-brand-teal bg-white dark:bg-gray-800 focus:ring-0" />
+                                 <span className="text-xs font-bold uppercase text-gray-700 dark:text-white">Terminado</span>
+                             </label>
+                             <label className="flex items-center gap-3 cursor-pointer bg-gray-100 dark:bg-gray-800/50 p-2 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-gray-400 dark:hover:border-gray-500 transition-colors">
+                                 <input type="checkbox" checked={budgetForm.isAccepted} onChange={e => setBudgetForm({...budgetForm, isAccepted: e.target.checked})} className="w-5 h-5 rounded border-gray-400 dark:border-gray-600 text-brand-teal bg-white dark:bg-gray-800 focus:ring-0" />
+                                 <span className="text-xs font-bold uppercase text-gray-700 dark:text-white">Aceptado (Crear Obra)</span>
+                             </label>
                         </div>
-                        <div><label className="block text-[10px] text-gray-500 uppercase font-black mb-1">Datos / Comentarios</label><textarea placeholder="Comentarios adicionales..." rows={3} value={budgetForm.comments} onChange={e => setBudgetForm({...budgetForm, comments: e.target.value})} className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg p-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none" /></div>
+                        <div>
+                            <label className="block text-[10px] text-gray-500 uppercase font-black mb-1">Datos / Comentarios</label>
+                            <textarea placeholder="Comentarios adicionales..." rows={3} value={budgetForm.comments} onChange={e => setBudgetForm({...budgetForm, comments: e.target.value})} className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg p-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none" />
+                        </div>
                    </div>
-                   <button onClick={handleSaveBudget} className="w-full mt-6 bg-brand-teal hover:bg-teal-600 text-white font-bold py-3 rounded-xl shadow-lg transition-all flex items-center justify-center gap-2"><SaveIcon className="w-5 h-5" /> {isEditingBudget ? 'Actualizar Presupuesto' : 'Crear Presupuesto'}</button>
+                   <button onClick={handleSaveBudget} className="w-full mt-6 bg-brand-teal hover:bg-teal-600 text-white font-bold py-3 rounded-xl shadow-lg transition-all flex items-center justify-center gap-2">
+                       <SaveIcon className="w-5 h-5" /> {isEditingBudget ? 'Actualizar Presupuesto' : 'Crear Presupuesto'}
+                   </button>
                 </div>
+
                 <div className="space-y-4 pt-4">
                     <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-3">
-                        <h3 className="text-gray-400 font-black uppercase text-[11px] tracking-[3px] flex items-center gap-2"><FileTextIcon className="w-4 h-4" /> Listado de Presupuestos</h3>
+                        <h3 className="text-gray-400 font-black uppercase text-[11px] tracking-[3px] flex items-center gap-2">
+                            <FileTextIcon className="w-4 h-4" /> Listado de Presupuestos
+                        </h3>
                         <div className="flex gap-2">
-                            <button onClick={() => handleExportJSON('budgets')} className="text-[10px] font-bold uppercase bg-gray-200 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:text-brand-teal hover:bg-gray-300 dark:hover:bg-gray-700 px-3 py-1.5 rounded-full transition-colors flex items-center gap-1 shadow-sm"><DownloadIcon className="w-3 h-3" /> Exportar</button>
-                            <label className="text-[10px] font-bold uppercase bg-brand-teal/10 dark:bg-brand-teal/20 text-brand-teal hover:bg-brand-teal hover:text-white px-3 py-1.5 rounded-full transition-colors flex items-center gap-1 cursor-pointer shadow-sm"><UploadIcon className="w-3 h-3" /> Importar<input type="file" ref={budgetsImportRef} onChange={(e) => handleImportJSON(e, 'budgets')} accept=".json" className="hidden" /></label>
+                            <button onClick={() => handleExportJSON('budgets')} className="text-[10px] font-bold uppercase bg-gray-200 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:text-brand-teal hover:bg-gray-300 dark:hover:bg-gray-700 px-3 py-1.5 rounded-full transition-colors flex items-center gap-1 shadow-sm">
+                                <DownloadIcon className="w-3 h-3" /> Exportar
+                            </button>
+                            <label className="text-[10px] font-bold uppercase bg-brand-teal/10 dark:bg-brand-teal/20 text-brand-teal hover:bg-brand-teal hover:text-white px-3 py-1.5 rounded-full transition-colors flex items-center gap-1 cursor-pointer shadow-sm">
+                                <UploadIcon className="w-3 h-3" /> Importar
+                                <input type="file" ref={budgetsImportRef} onChange={(e) => handleImportJSON(e, 'budgets')} accept=".json" className="hidden" />
+                            </label>
                         </div>
                     </div>
-                    <div className="relative"><input type="text" placeholder="🔍 Buscar presupuesto por Nombre, Cliente, Nº..." value={budgetSearchTerm} onChange={(e) => setBudgetSearchTerm(e.target.value)} className="w-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl pl-10 pr-4 py-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none transition-colors shadow-sm" /><div className="absolute left-3 top-3.5 text-gray-400"><SearchIcon className="w-4 h-4" /></div></div>
+
+                    <div className="relative">
+                        <input 
+                            type="text" 
+                            placeholder="🔍 Buscar presupuesto por Nombre, Cliente, Nº..." 
+                            value={budgetSearchTerm} 
+                            onChange={(e) => setBudgetSearchTerm(e.target.value)} 
+                            className="w-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl pl-10 pr-4 py-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none transition-colors shadow-sm" 
+                        />
+                        <div className="absolute left-3 top-3.5 text-gray-400"><SearchIcon className="w-4 h-4" /></div>
+                    </div>
+
                     <div className="space-y-3">
                         {sortedBudgets.map((b) => (
                              <div key={b.id} className={`p-5 rounded-xl border flex flex-col md:flex-row justify-between items-start md:items-center gap-4 group hover:border-brand-teal/50 transition-all shadow-sm ${getBudgetStyle(b)}`}>
@@ -1249,9 +1328,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
         )}
 
         {tab === 'projects' && (
-            /* ... Mismo contenido que archivo original ... */
             <div className="space-y-6">
-                {/* ... (Manteniendo todo el código de Projects) ... */}
                 <div className="bg-white dark:bg-gray-900/50 p-6 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-xl">
                    {/* ... Formulario Project ... */}
                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4 border-b border-gray-200 dark:border-gray-800 pb-4">
@@ -1310,251 +1387,148 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                              <div>
                                  <label className="block text-[10px] text-gray-500 uppercase font-black mb-1">Técnico Responsable</label>
                                  <select value={projectForm.responsibleTech} onChange={e => setProjectForm({...projectForm, responsibleTech: e.target.value})} className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-xl p-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none">
-                                     <option value="">Seleccionar responsable...</option>
+                                     <option value="">Sin Asignar</option>
                                      {data.technicians.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
                                  </select>
                             </div>
-                            <div>
-                                 <label className="block text-[10px] text-gray-500 uppercase font-black mb-1">Fecha Inicio</label>
-                                 <div className="flex gap-2">
-                                    <input type="date" value={projectForm.startDate} onChange={e => setProjectForm({...projectForm, startDate: e.target.value})} className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-xl p-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none dark:[color-scheme:dark]" />
-                                    <button type="button" onClick={() => openGoogleCalendar(projectForm)} title="Añadir a Google Calendar" className="bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 rounded-xl p-3 hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-colors">📅</button>
-                                 </div>
-                            </div>
-                            <div className="flex flex-col justify-center gap-3">
-                                 <label className="flex items-center gap-3 cursor-pointer bg-gray-100 dark:bg-gray-800/50 p-2 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-gray-400 dark:hover:border-gray-500 transition-colors">
-                                     <input type="checkbox" checked={projectForm.isFinished} onChange={e => setProjectForm({...projectForm, isFinished: e.target.checked})} className="w-5 h-5 rounded border-gray-400 dark:border-gray-600 text-brand-teal bg-white dark:bg-gray-800 focus:ring-0" />
-                                     <span className="text-xs font-bold uppercase text-gray-700 dark:text-white">Obra Terminada</span>
-                                 </label>
-                                 <label className="flex items-center gap-3 cursor-pointer bg-gray-100 dark:bg-gray-800/50 p-2 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-gray-400 dark:hover:border-gray-500 transition-colors">
-                                     <input type="checkbox" checked={projectForm.isInvoiced} onChange={e => setProjectForm({...projectForm, isInvoiced: e.target.checked})} className="w-5 h-5 rounded border-gray-400 dark:border-gray-600 text-brand-teal bg-white dark:bg-gray-800 focus:ring-0" />
-                                     <span className="text-xs font-bold uppercase text-gray-700 dark:text-white">Facturado</span>
-                                 </label>
-                                 <label className="flex items-center gap-3 cursor-pointer bg-gray-100 dark:bg-gray-800/50 p-2 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-gray-400 dark:hover:border-gray-500 transition-colors">
-                                     <input type="checkbox" checked={projectForm.hasWarning} onChange={e => setProjectForm({...projectForm, hasWarning: e.target.checked})} className="w-5 h-5 rounded border-gray-400 dark:border-gray-600 text-brand-teal bg-white dark:bg-gray-800 focus:ring-0" />
-                                     <span className="text-xs font-bold uppercase text-gray-700 dark:text-white">AVISO</span>
-                                 </label>
-                            </div>
                         </div>
-                   </div>
-                   
-                   <div className="mt-6">
-                        <label className="block text-[10px] text-gray-500 uppercase font-black mb-2 ml-1">Datos Adicionales (Enlaces, Notas...)</label>
-                        <textarea placeholder="Pegar enlaces a Drive, notas importantes, etc..." rows={3} value={projectForm.notes} onChange={e => setProjectForm({...projectForm, notes: e.target.value})} className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-xl p-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none" />
-                   </div>
 
-                   <button onClick={handleSaveProject} className="w-full mt-8 bg-brand-teal hover:bg-teal-600 text-white font-bold py-4 rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 transform active:scale-[0.99]">
-                       <SaveIcon className="w-5 h-5" /> {isEditingProject ? 'Actualizar Obra' : 'Crear Obra'}
-                   </button>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
+                             <div>
+                                 <label className="block text-[10px] text-gray-500 uppercase font-black mb-1">Fecha Inicio</label>
+                                 <input type="date" value={projectForm.startDate} onChange={e => setProjectForm({...projectForm, startDate: e.target.value})} className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-xl p-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none dark:[color-scheme:dark]" />
+                             </div>
+                             <div className="flex flex-wrap gap-4 items-center h-full">
+                                 <label className="flex items-center gap-2 cursor-pointer bg-white dark:bg-gray-800 p-2 rounded border border-gray-200 dark:border-gray-700">
+                                     <input type="checkbox" checked={projectForm.isFinished} onChange={e => setProjectForm({...projectForm, isFinished: e.target.checked})} className="w-4 h-4 text-brand-teal rounded focus:ring-0" />
+                                     <span className="text-xs font-bold uppercase text-gray-700 dark:text-gray-300">Terminada</span>
+                                 </label>
+                                 <label className="flex items-center gap-2 cursor-pointer bg-white dark:bg-gray-800 p-2 rounded border border-gray-200 dark:border-gray-700">
+                                     <input type="checkbox" checked={projectForm.isInvoiced} onChange={e => setProjectForm({...projectForm, isInvoiced: e.target.checked})} className="w-4 h-4 text-blue-500 rounded focus:ring-0" />
+                                     <span className="text-xs font-bold uppercase text-gray-700 dark:text-gray-300">Facturada</span>
+                                 </label>
+                                 <label className="flex items-center gap-2 cursor-pointer bg-white dark:bg-gray-800 p-2 rounded border border-gray-200 dark:border-gray-700">
+                                     <input type="checkbox" checked={projectForm.hasWarning} onChange={e => setProjectForm({...projectForm, hasWarning: e.target.checked})} className="w-4 h-4 text-orange-500 rounded focus:ring-0" />
+                                     <span className="text-xs font-bold uppercase text-gray-700 dark:text-gray-300">Aviso (2m)</span>
+                                 </label>
+                             </div>
+                        </div>
+
+                        <div className="mt-4">
+                             <label className="block text-[10px] text-gray-500 uppercase font-black mb-1">Notas / Observaciones</label>
+                             <textarea rows={2} value={projectForm.notes} onChange={e => setProjectForm({...projectForm, notes: e.target.value})} className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-xl p-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none" placeholder="Detalles extra de la obra..."></textarea>
+                        </div>
+
+                        <button onClick={handleSaveProject} className="w-full mt-6 bg-brand-teal hover:bg-teal-600 text-white font-bold py-3 rounded-xl shadow-lg transition-all flex items-center justify-center gap-2">
+                             <SaveIcon className="w-5 h-5" /> {isEditingProject ? 'Actualizar Obra' : 'Crear Obra'}
+                        </button>
+                   </div>
                 </div>
 
-                <div className="space-y-4 pt-6">
-                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-3">
-                        <h3 className="text-gray-400 font-black uppercase text-[11px] tracking-[3px] flex items-center gap-2">
-                            <BriefcaseIcon className="w-4 h-4" /> Listado de Obras
-                        </h3>
-                        <div className="flex gap-2">
-                            <button onClick={() => handleExportJSON('projects')} className="text-[10px] font-bold uppercase bg-gray-200 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:text-brand-teal hover:bg-gray-300 dark:hover:bg-gray-700 px-3 py-1.5 rounded-full transition-colors flex items-center gap-1 shadow-sm"><DownloadIcon className="w-3 h-3" /> Exportar</button>
-                            <label className="text-[10px] font-bold uppercase bg-brand-teal/10 dark:bg-brand-teal/20 text-brand-teal hover:bg-brand-teal hover:text-white px-3 py-1.5 rounded-full transition-colors flex items-center gap-1 cursor-pointer shadow-sm"><UploadIcon className="w-3 h-3" /> Importar<input type="file" ref={projectsImportRef} onChange={(e) => handleImportJSON(e, 'projects')} accept=".json" className="hidden" /></label>
-                        </div>
-                    </div>
-
+                <div className="space-y-4 pt-4">
                     <div className="relative">
-                        <input type="text" placeholder="🔍 Buscar obra por ID, Nombre o Cliente..." value={projectSearchTerm} onChange={(e) => setProjectSearchTerm(e.target.value)} className="w-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl pl-10 pr-4 py-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none transition-colors shadow-sm" />
+                        <input type="text" placeholder="🔍 Buscar obra por ID, Nombre, Cliente..." value={projectSearchTerm} onChange={(e) => setProjectSearchTerm(e.target.value)} className="w-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl pl-10 pr-4 py-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none transition-colors shadow-sm" />
                         <div className="absolute left-3 top-3.5 text-gray-400"><SearchIcon className="w-4 h-4" /></div>
                     </div>
 
-                    <div className="space-y-4">
-                        {/* ... SECCIONES DESPLEGABLES (VERDE, NARANJA, ROJO, AZUL, TERMINADAS, FACTURADAS) ... */}
-                        {/* 1. AVISOS EN TIEMPO (VERDE) */}
-                        <div className="rounded-xl border border-green-200 dark:border-green-800/30 overflow-hidden shadow-sm">
-                            <button onClick={() => toggleProjectSection('green')} className="w-full flex items-center justify-between p-4 bg-green-50 dark:bg-green-900/20 hover:bg-green-100 dark:hover:bg-green-900/30 transition-colors">
-                                <div className="flex items-center gap-3">
-                                    <div className="w-3 h-3 rounded-full bg-green-500"></div>
-                                    <span className="text-sm font-black text-green-700 dark:text-green-400 uppercase tracking-widest">Avisos en Tiempo</span>
-                                    <span className="bg-green-200 dark:bg-green-800 text-green-800 dark:text-green-200 text-[10px] font-bold px-2 py-0.5 rounded-full">{categorizedProjects.green.length}</span>
-                                </div>
-                                <ChevronDownIcon className={`w-5 h-5 text-green-600 transition-transform ${expandedProjectSections.green ? 'rotate-180' : ''}`} />
-                            </button>
-                            {expandedProjectSections.green && (
-                                <div className="p-3 space-y-3 bg-white dark:bg-brand-dark/20">
-                                    {categorizedProjects.green.map(renderProjectRow)}
-                                    {categorizedProjects.green.length === 0 && <p className="text-center py-4 text-xs text-gray-400 italic">No hay avisos recientes</p>}
-                                </div>
-                            )}
-                        </div>
+                    {/* Categorized Lists */}
+                    {Object.entries(categorizedProjects).map(([key, list]) => {
+                        if (list.length === 0) return null;
+                        const config: any = {
+                            green: { label: 'Obras Activas (Recientes)', color: 'text-green-600', bg: 'bg-green-100', border: 'border-green-200' },
+                            orange: { label: 'Obras Activas (+2 meses)', color: 'text-orange-600', bg: 'bg-orange-100', border: 'border-orange-200' },
+                            red: { label: 'Obras Activas (+5 meses)', color: 'text-red-600', bg: 'bg-red-100', border: 'border-red-200' },
+                            blue: { label: 'Otras Activas', color: 'text-blue-600', bg: 'bg-blue-100', border: 'border-blue-200' },
+                            finished: { label: 'Terminadas', color: 'text-gray-600', bg: 'bg-gray-200', border: 'border-gray-300' },
+                            invoiced: { label: 'Facturadas', color: 'text-purple-600', bg: 'bg-purple-100', border: 'border-purple-200' }
+                        }[key];
+                        
+                        const isExpanded = expandedProjectSections[key];
 
-                        {/* 2. AVISOS CON MENOS DE 5 DIAS (NARANJA) */}
-                        <div className="rounded-xl border border-orange-200 dark:border-orange-800/30 overflow-hidden shadow-sm">
-                            <button onClick={() => toggleProjectSection('orange')} className="w-full flex items-center justify-between p-4 bg-orange-50 dark:bg-orange-900/20 hover:bg-orange-100 dark:hover:bg-orange-900/30 transition-colors">
-                                <div className="flex items-center gap-3">
-                                    <div className="w-3 h-3 rounded-full bg-orange-500"></div>
-                                    <span className="text-sm font-black text-orange-700 dark:text-orange-400 uppercase tracking-widest">Avisos menos de 5 días</span>
-                                    <span className="bg-orange-200 dark:bg-orange-800 text-orange-800 dark:text-orange-200 text-[10px] font-bold px-2 py-0.5 rounded-full">{categorizedProjects.orange.length}</span>
-                                </div>
-                                <ChevronDownIcon className={`w-5 h-5 text-orange-600 transition-transform ${expandedProjectSections.orange ? 'rotate-180' : ''}`} />
-                            </button>
-                            {expandedProjectSections.orange && (
-                                <div className="p-3 space-y-3 bg-white dark:bg-brand-dark/20">
-                                    {categorizedProjects.orange.map(renderProjectRow)}
-                                    {categorizedProjects.orange.length === 0 && <p className="text-center py-4 text-xs text-gray-400 italic">No hay avisos intermedios</p>}
-                                </div>
-                            )}
-                        </div>
-
-                        {/* 3. AVISOS CON MAS DE 5 DIAS (ROJO) */}
-                        <div className="rounded-xl border border-red-200 dark:border-red-800/30 overflow-hidden shadow-sm">
-                            <button onClick={() => toggleProjectSection('red')} className="w-full flex items-center justify-between p-4 bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors">
-                                <div className="flex items-center gap-3">
-                                    <div className="w-3 h-3 rounded-full bg-red-500 animate-pulse"></div>
-                                    <span className="text-sm font-black text-red-700 dark:text-red-400 uppercase tracking-widest">Avisos más de 5 días</span>
-                                    <span className="bg-red-200 dark:bg-red-800 text-red-800 dark:text-red-200 text-[10px] font-bold px-2 py-0.5 rounded-full">{categorizedProjects.red.length}</span>
-                                </div>
-                                <ChevronDownIcon className={`w-5 h-5 text-red-600 transition-transform ${expandedProjectSections.red ? 'rotate-180' : ''}`} />
-                            </button>
-                            {expandedProjectSections.red && (
-                                <div className="p-3 space-y-3 bg-white dark:bg-brand-dark/20">
-                                    {categorizedProjects.red.map(renderProjectRow)}
-                                    {categorizedProjects.red.length === 0 && <p className="text-center py-4 text-xs text-gray-400 italic">Sin avisos críticos</p>}
-                                </div>
-                            )}
-                        </div>
-
-                        {/* 4. OBRAS DE LARGA DURACION (AZUL) */}
-                        <div className="rounded-xl border border-blue-200 dark:border-blue-800/30 overflow-hidden shadow-sm">
-                            <button onClick={() => toggleProjectSection('blue')} className="w-full flex items-center justify-between p-4 bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors">
-                                <div className="flex items-center gap-3">
-                                    <div className="w-3 h-3 rounded-full bg-blue-500"></div>
-                                    <span className="text-sm font-black text-blue-700 dark:text-blue-400 uppercase tracking-widest">Obras Larga Duración</span>
-                                    <span className="bg-blue-200 dark:bg-blue-800 text-blue-800 dark:text-blue-200 text-[10px] font-bold px-2 py-0.5 rounded-full">{categorizedProjects.blue.length}</span>
-                                </div>
-                                <ChevronDownIcon className={`w-5 h-5 text-blue-600 transition-transform ${expandedProjectSections.blue ? 'rotate-180' : ''}`} />
-                            </button>
-                            {expandedProjectSections.blue && (
-                                <div className="p-3 space-y-3 bg-white dark:bg-brand-dark/20">
-                                    {categorizedProjects.blue.map(renderProjectRow)}
-                                    {categorizedProjects.blue.length === 0 && <p className="text-center py-4 text-xs text-gray-400 italic">No hay obras activas sin aviso</p>}
-                                </div>
-                            )}
-                        </div>
-
-                        {/* 5. OBRAS TERMINADAS */}
-                        <div className="rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden shadow-sm">
-                            <button onClick={() => toggleProjectSection('finished')} className="w-full flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-900 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
-                                <div className="flex items-center gap-3">
-                                    <CheckCircleIcon className="w-4 h-4 text-gray-500" />
-                                    <span className="text-sm font-black text-gray-600 dark:text-gray-400 uppercase tracking-widest">Obras Terminadas</span>
-                                    <span className="bg-gray-200 dark:bg-gray-800 text-gray-800 dark:text-gray-200 text-[10px] font-bold px-2 py-0.5 rounded-full">{categorizedProjects.finished.length}</span>
-                                </div>
-                                <ChevronDownIcon className={`w-5 h-5 text-gray-500 transition-transform ${expandedProjectSections.finished ? 'rotate-180' : ''}`} />
-                            </button>
-                            {expandedProjectSections.finished && (
-                                <div className="p-3 space-y-3 bg-gray-50/50 dark:bg-brand-dark/20">
-                                    {categorizedProjects.finished.map(renderProjectRow)}
-                                    {categorizedProjects.finished.length === 0 && <p className="text-center py-4 text-xs text-gray-400 italic">No hay obras terminadas pendientes</p>}
-                                </div>
-                            )}
-                        </div>
-
-                        {/* 6. OBRAS/AVISOS FACTURADOS */}
-                        <div className="rounded-xl border border-gray-300 dark:border-gray-800 overflow-hidden shadow-sm opacity-80">
-                            <button onClick={() => toggleProjectSection('invoiced')} className="w-full flex items-center justify-between p-4 bg-gray-200 dark:bg-black/40 hover:bg-gray-300 dark:hover:bg-black/60 transition-colors">
-                                <div className="flex items-center gap-3">
-                                    <FileTextIcon className="w-4 h-4 text-gray-600" />
-                                    <span className="text-sm font-black text-gray-700 dark:text-gray-500 uppercase tracking-widest">Obras Facturadas</span>
-                                    <span className="bg-gray-300 dark:bg-gray-800 text-gray-800 dark:text-gray-200 text-[10px] font-bold px-2 py-0.5 rounded-full">{categorizedProjects.invoiced.length}</span>
-                                </div>
-                                <ChevronDownIcon className={`w-5 h-5 text-gray-600 transition-transform ${expandedProjectSections.invoiced ? 'rotate-180' : ''}`} />
-                            </button>
-                            {expandedProjectSections.invoiced && (
-                                <div className="p-3 space-y-3 bg-gray-200/50 dark:bg-brand-dark/20">
-                                    {categorizedProjects.invoiced.map(renderProjectRow)}
-                                    {categorizedProjects.invoiced.length === 0 && <p className="text-center py-4 text-xs text-gray-400 italic">No hay registros facturados</p>}
-                                </div>
-                            )}
-                        </div>
-                    </div>
+                        return (
+                            <div key={key} className={`rounded-xl border ${config.border} overflow-hidden shadow-sm`}>
+                                <button onClick={() => toggleProjectSection(key)} className={`w-full flex justify-between items-center p-3 ${config.bg} ${config.color} font-black uppercase text-xs tracking-widest`}>
+                                    <span>{config.label} ({list.length})</span>
+                                    <ChevronDownIcon className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                                </button>
+                                {isExpanded && (
+                                    <div className="p-3 space-y-3 bg-gray-50 dark:bg-gray-900/20">
+                                        {list.map(p => renderProjectRow(p))}
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })}
                 </div>
             </div>
         )}
 
         {tab === 'daily' && (
-            <DailyOrganization 
-                key={data.dailyOrg.fecha}
-                isReadOnly={false} 
+             <DailyOrganization 
                 data={data.dailyOrg} 
-                onUpdate={handleDailyOrgUpdate} 
+                onUpdate={handleDailyOrgUpdate}
                 onChangeDate={handleDailyOrgDateChange}
-            />
+                isReadOnly={false}
+             />
         )}
 
         {tab === 'settings' && (
-            <div className="max-w-2xl mx-auto space-y-6">
-                <div className="bg-white dark:bg-gray-900/50 p-6 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-md">
-                    <h3 className="text-lg font-bold text-gray-800 dark:text-white mb-4">Configuración</h3>
-                    <div className="space-y-4">
+            <div className="space-y-6">
+                <div className="bg-white dark:bg-gray-900/50 p-6 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-xl">
+                    <h3 className="text-lg font-bold text-gray-800 dark:text-white mb-4 flex items-center gap-2">
+                        <LockIcon className="w-5 h-5 text-brand-teal" /> Seguridad y Configuración
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div>
-                            <label className="block text-xs text-gray-500 uppercase mb-1">Pass Admin</label>
-                            <input type="text" value={newAdminPwd} onChange={e => setNewAdminPwd(e.target.value)} className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg p-2 text-gray-900 dark:text-white font-mono" />
+                            <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Contraseña Administrador</label>
+                            <input type="text" value={newAdminPwd} onChange={e => setNewAdminPwd(e.target.value)} className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg p-3 text-gray-900 dark:text-white focus:border-brand-teal outline-none" />
                         </div>
                         <div>
-                            <label className="block text-xs text-gray-500 uppercase mb-1">Firebase Config</label>
-                            <textarea value={firebaseConfigInput} onChange={e => setFirebaseConfigInput(e.target.value)} className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg p-2 text-gray-900 dark:text-white font-mono text-[9px]" rows={5} />
-                        </div>
-                        <button onClick={savePasswords} className="w-full bg-brand-teal text-white font-bold py-3 rounded-xl">Guardar Configuración</button>
-                        {pwdMsg && <p className="text-center text-xs text-green-500">{pwdMsg}</p>}
-                        
-                        <div className="mt-8 pt-8 border-t border-gray-200 dark:border-gray-700">
-                            <h4 className="text-sm font-bold text-gray-600 dark:text-gray-400 mb-4 uppercase tracking-widest">Copia de Seguridad Manual</h4>
-                            <button onClick={onManualBackup} className="w-full bg-gray-200 dark:bg-gray-800 text-gray-700 dark:text-gray-300 font-bold py-3 rounded-xl flex items-center justify-center gap-2 hover:bg-gray-300 dark:hover:bg-gray-700">
-                                <CloudIcon className="w-5 h-5" /> Crear Nueva Copia Manual
-                            </button>
-                        </div>
-
-                        {/* SYSTEM RESTORE SECTION */}
-                        <div className="mt-8 pt-8 border-t border-gray-200 dark:border-gray-700">
-                            <h4 className="text-sm font-bold text-red-600 dark:text-red-400 mb-2 uppercase tracking-widest flex items-center gap-2">
-                                <AlertIcon className="w-4 h-4" /> Restauración del Sistema
-                            </h4>
-                            <p className="text-[10px] text-gray-500 dark:text-gray-400 mb-4">
-                                Utiliza esta sección para recuperar datos antiguos si ha habido un error de sincronización. 
-                                <br/> <b>Advertencia:</b> Restaurar una copia sobrescribirá todos los datos actuales.
-                            </p>
-                            
-                            {!backupsList.length && !isLoadingBackups && (
-                                <button onClick={fetchBackups} className="w-full bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 font-bold py-3 rounded-xl flex items-center justify-center gap-2 hover:bg-red-200 dark:hover:bg-red-900/50 border border-red-200 dark:border-red-800">
-                                    <CloudIcon className="w-5 h-5" /> Cargar Historial de Copias
-                                </button>
-                            )}
-
-                            {isLoadingBackups && <p className="text-center text-xs text-gray-500 animate-pulse">Cargando copias desde el servidor...</p>}
-
-                            {backupsList.length > 0 && (
-                                <div className="space-y-2 mt-4 max-h-60 overflow-y-auto pr-2 custom-scrollbar bg-gray-50 dark:bg-gray-900/50 p-3 rounded-xl border border-gray-200 dark:border-gray-700">
-                                    {backupsList.map((backup) => (
-                                        <div key={backup.id} className="flex justify-between items-center p-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg hover:border-brand-teal transition-colors">
-                                            <div>
-                                                <p className="text-xs font-bold text-gray-700 dark:text-gray-200 font-mono">{backup.id}</p>
-                                                <p className="text-[9px] text-gray-500">
-                                                    {(backup.projectsDetailed || []).length} obras • {(backup.reports || []).length} reportes
-                                                </p>
-                                            </div>
-                                            <button 
-                                                onClick={() => restoreBackup(backup.id)} 
-                                                className="bg-brand-teal text-white p-2 rounded-lg hover:bg-teal-600 transition-colors shadow-sm"
-                                                title="Restaurar esta copia"
-                                            >
-                                                <CloudIcon className="w-4 h-4" />
-                                            </button>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
+                            <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Configuración Firebase (JSON)</label>
+                            <textarea rows={4} value={firebaseConfigInput} onChange={e => setFirebaseConfigInput(e.target.value)} className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg p-3 text-xs font-mono text-gray-900 dark:text-white focus:border-brand-teal outline-none" placeholder='{"apiKey": "...", ...}' />
                         </div>
                     </div>
+                    <button onClick={savePasswords} className="mt-4 bg-brand-teal text-white px-6 py-2 rounded-lg font-bold shadow-lg hover:bg-teal-600 transition-colors">
+                        Guardar Configuración
+                    </button>
+                    {pwdMsg && <p className="mt-2 text-green-600 font-bold text-sm animate-pulse">{pwdMsg}</p>}
+                </div>
+
+                <div className="bg-white dark:bg-gray-900/50 p-6 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-xl">
+                    <h3 className="text-lg font-bold text-gray-800 dark:text-white mb-4 flex items-center gap-2">
+                        <CloudIcon className="w-5 h-5 text-brand-teal" /> Copias de Seguridad (Backups)
+                    </h3>
+                    
+                    <div className="flex gap-4 mb-6">
+                        <button onClick={onManualBackup} className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg font-bold text-sm shadow-md transition-colors flex items-center gap-2">
+                            <PlusIcon className="w-4 h-4" /> Crear Backup Manual
+                        </button>
+                        <button onClick={fetchBackups} className="bg-gray-200 dark:bg-gray-800 hover:bg-gray-300 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 px-4 py-2 rounded-lg font-bold text-sm shadow-md transition-colors flex items-center gap-2">
+                            <DownloadIcon className="w-4 h-4" /> Cargar Lista Backups
+                        </button>
+                    </div>
+
+                    {isLoadingBackups && <p className="text-sm text-gray-500 animate-pulse">Cargando copias de seguridad...</p>}
+
+                    {!isLoadingBackups && backupsList.length > 0 && (
+                        <div className="space-y-2 max-h-60 overflow-y-auto pr-2 custom-scrollbar">
+                            {backupsList.map((bk) => (
+                                <div key={bk.id} className="flex justify-between items-center p-3 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+                                    <div>
+                                        <p className="font-bold text-sm text-gray-800 dark:text-white">{bk.id}</p>
+                                        <p className="text-xs text-gray-500">{(bk.technicians || []).length} técnicos • {(bk.projectsDetailed || []).length} obras</p>
+                                    </div>
+                                    <button onClick={() => restoreBackup(bk.id)} className="text-xs bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 px-3 py-1.5 rounded font-bold hover:bg-red-200 dark:hover:bg-red-800/50 transition-colors">
+                                        Restaurar
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    )}
                 </div>
             </div>
         )}
+
       </div>
     </div>
   );
