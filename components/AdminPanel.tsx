@@ -71,6 +71,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
   const [filterDateStart, setFilterDateStart] = useState('');
   const [filterDateEnd, setFilterDateEnd] = useState('');
   
+  // Backups State
+  const [backupsList, setBackupsList] = useState<any[]>([]);
+  const [isLoadingBackups, setIsLoadingBackups] = useState(false);
+  
   // Estado para controlar qué semanas están expandidas
   const [expandedWeeks, setExpandedWeeks] = useState<Record<string, boolean>>({});
 
@@ -535,6 +539,72 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
       reader.readAsText(file);
   };
 
+  const fetchBackups = async () => {
+      setIsLoadingBackups(true);
+      try {
+          const fb = (window as any).firebase;
+          if (!fb) return;
+          const db = fb.app().firestore();
+          const snapshot = await db.collection('jdg_teleco_backups').orderBy('__name__', 'desc').limit(15).get();
+          
+          const list: any[] = [];
+          snapshot.forEach((doc: any) => {
+              list.push({ id: doc.id, ...doc.data() });
+          });
+          setBackupsList(list);
+      } catch (e) {
+          console.error("Error fetching backups", e);
+          alert("Error al cargar copias de seguridad. Verifica tu conexión.");
+      } finally {
+          setIsLoadingBackups(false);
+      }
+  };
+
+  const restoreBackup = async (backupId: string) => {
+      if(!window.confirm(`⚠️ PELIGRO: Esto sobrescribirá TODOS los datos actuales con la copia del ${backupId}.\n\n¿Estás seguro de continuar?`)) return;
+      
+      try {
+          const fb = (window as any).firebase;
+          const db = fb.app().firestore();
+          
+          // 1. Obtener documento principal
+          const doc = await db.collection('jdg_teleco_backups').doc(backupId).get();
+          if(!doc.exists) {
+              alert("Error: La copia de seguridad no existe.");
+              return;
+          }
+          
+          let restoredData = doc.data() as AppData;
+
+          // 2. Reconstruir Reports desde Shards
+          const reportsSnap = await db.collection('jdg_teleco_backups').doc(backupId).collection('reports_shards').get();
+          let allReports: WorkReport[] = [];
+          if (!reportsSnap.empty) {
+              reportsSnap.forEach((d: any) => {
+                  if(d.data().items) allReports.push(...d.data().items);
+              });
+              restoredData.reports = allReports;
+          }
+
+          // 3. Reconstruir Historial desde Shards
+          const histSnap = await db.collection('jdg_teleco_backups').doc(backupId).collection('history_shards').get();
+          let fullHistory: any = {};
+          if (!histSnap.empty) {
+              histSnap.forEach((d: any) => {
+                  if(d.data().items) Object.assign(fullHistory, d.data().items);
+              });
+              restoredData.dailyOrgHistory = fullHistory;
+          }
+
+          setData(restoredData);
+          alert(`✅ Sistema restaurado correctamente al estado: ${backupId}`);
+
+      } catch (e: any) {
+          console.error("Restore error", e);
+          alert("Error restaurando copia: " + e.message);
+      }
+  };
+
   const filteredReports = useMemo(() => {
     return data.reports.filter(r => {
         if (filterTech && r.technician !== filterTech) return false;
@@ -784,15 +854,19 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
 
       <div className="p-6">
         
-        {/* TAB: REPORTS */}
+        {/* ... (TABS REPORTS, EXPENSES, TECHS, VEHICLES, BUDGETS, PROJECTS, DAILY - SIN CAMBIOS) ... */}
         {tab === 'reports' && (
+          /* ... Contenido Reports existente ... */
           <div>
             <div className="flex gap-2 mb-4 bg-gray-50 dark:bg-gray-900 p-2 rounded-lg border border-gray-200 dark:border-gray-700 max-w-fit flex-wrap">
                 <button onClick={() => setReportViewMode('list')} className={`px-3 py-1.5 text-xs font-bold rounded flex items-center gap-1 ${reportViewMode === 'list' ? 'bg-brand-teal dark:bg-brand-lime text-white dark:text-brand-dark' : 'text-gray-500 dark:text-gray-400'}`}><FileTextIcon className="w-3 h-3" /> Listado</button>
                 <button onClick={() => setReportViewMode('by_project')} className={`px-3 py-1.5 text-xs font-bold rounded flex items-center gap-1 ${reportViewMode === 'by_project' ? 'bg-brand-teal text-white' : 'text-gray-500 dark:text-gray-400'}`}><ChartPieIcon className="w-3 h-3" /> Por Obra</button>
                 <button onClick={() => setReportViewMode('by_hours')} className={`px-3 py-1.5 text-xs font-bold rounded flex items-center gap-1 ${reportViewMode === 'by_hours' ? 'bg-brand-teal text-white' : 'text-gray-500 dark:text-gray-400'}`}><ClockIcon className="w-3 h-3" /> Horas</button>
             </div>
-
+            {/* ... Resto de Reports ... */}
+            {/* OMITIDO PARA BREVEDAD: Mantener todo el código de Reports tal cual estaba */}
+            {/* ... Fin Reports ... */}
+            {/* RE-INSERTANDO BLOQUE REPORTS PARA NO ROMPER XML (Simplificado) */}
             <div className="bg-gray-50 dark:bg-gray-900/50 p-4 rounded-lg border border-gray-200 dark:border-gray-700 mb-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                  <select value={filterTech} onChange={e => setFilterTech(e.target.value)} className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-sm rounded-lg p-2.5 text-gray-900 dark:text-white outline-none">
                     <option value="">Técnicos...</option>
@@ -805,7 +879,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                  <input type="date" value={filterDateStart} onChange={e => setFilterDateStart(e.target.value)} className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-sm rounded-lg p-2.5 text-gray-900 dark:text-white outline-none dark:[color-scheme:dark]" />
                  <input type="date" value={filterDateEnd} onChange={e => setFilterDateEnd(e.target.value)} className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-sm rounded-lg p-2.5 text-gray-900 dark:text-white outline-none dark:[color-scheme:dark]" />
             </div>
-
             {reportViewMode === 'list' && (
                 <>
                     <div className="flex flex-col sm:flex-row justify-between gap-4 mb-6">
@@ -818,7 +891,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                             </label>
                         </div>
                     </div>
-                    
+                    {/* ... Lista de reports ... */}
+                    {/* ... (Manteniendo lógica de renderizado existente) ... */}
                     <div className="space-y-12">
                         {Object.entries(groupedReports).map(([monthLabel, weeks]) => (
                             <div key={monthLabel} className="space-y-6">
@@ -842,7 +916,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                                                     <ChevronDownIcon className={`w-4 h-4 text-gray-600 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`} />
                                                 </div>
                                             </div>
-
                                             {isExpanded && (
                                                 <div className="overflow-x-auto animate-fade-in">
                                                     <table className="w-full text-left">
@@ -866,38 +939,25 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                                                                     <React.Fragment key={report.id}>
                                                                         <tr className="bg-white dark:bg-gray-800/20 hover:bg-gray-50 dark:hover:bg-gray-800/60 transition-colors group">
                                                                             <td className="px-3 py-3">
-                                                                                <button onClick={() => toggleExpandReport(report.id)} className="text-gray-400 hover:text-brand-teal transition-colors">
-                                                                                    <EyeIcon className="w-4 h-4" />
-                                                                                </button>
+                                                                                <button onClick={() => toggleExpandReport(report.id)} className="text-gray-400 hover:text-brand-teal transition-colors"><EyeIcon className="w-4 h-4" /></button>
                                                                             </td>
                                                                             <td className="px-3 py-3 font-mono text-[11px] text-gray-500 dark:text-gray-400">{report.date}</td>
                                                                             <td className="px-3 py-3 text-xs font-black text-gray-700 dark:text-gray-200">{report.technician}</td>
                                                                             <td className="px-3 py-3 text-xs font-bold text-brand-teal/80">
                                                                                 {report.projectNum}
-                                                                                {resolveProjectFullName(report.projectNum) !== report.projectNum && (
-                                                                                    <span className="font-normal text-gray-500 dark:text-gray-400 ml-1">
-                                                                                        - {resolveProjectFullName(report.projectNum)}
-                                                                                    </span>
-                                                                                )}
+                                                                                {resolveProjectFullName(report.projectNum) !== report.projectNum && (<span className="font-normal text-gray-500 dark:text-gray-400 ml-1">- {resolveProjectFullName(report.projectNum)}</span>)}
                                                                             </td>
-                                                                            <td className="px-3 py-3 text-[11px] text-gray-500 italic max-w-xs truncate">
-                                                                                {report.description || 'Sin descripción'}
-                                                                            </td>
-                                                                            <td className="px-3 py-3 text-right font-black text-xs text-yellow-600 dark:text-yellow-500">
-                                                                                {report.overtimeHours > 0 ? `+${report.overtimeHours}h` : '-'}
-                                                                            </td>
-                                                                            <td className="px-3 py-3 text-right text-xs font-black text-gray-800 dark:text-white">
-                                                                                {total > 0 ? `${total.toFixed(2)}€` : '-'}
-                                                                            </td>
+                                                                            <td className="px-3 py-3 text-[11px] text-gray-500 italic max-w-xs truncate">{report.description || 'Sin descripción'}</td>
+                                                                            <td className="px-3 py-3 text-right font-black text-xs text-yellow-600 dark:text-yellow-500">{report.overtimeHours > 0 ? `+${report.overtimeHours}h` : '-'}</td>
+                                                                            <td className="px-3 py-3 text-right text-xs font-black text-gray-800 dark:text-white">{total > 0 ? `${total.toFixed(2)}€` : '-'}</td>
                                                                             <td className="px-3 py-3 text-center">
-                                                                                <button onClick={() => onDeleteReport(report.id)} className="text-red-500/30 hover:text-red-500 transition-colors">
-                                                                                    <TrashIcon className="w-4 h-4" />
-                                                                                </button>
+                                                                                <button onClick={() => onDeleteReport(report.id)} className="text-red-500/30 hover:text-red-500 transition-colors"><TrashIcon className="w-4 h-4" /></button>
                                                                             </td>
                                                                         </tr>
                                                                         {isReportExpanded && (
                                                                             <tr className="bg-gray-50 dark:bg-gray-900/60">
                                                                                 <td colSpan={8} className="p-4 border-l-4 border-brand-teal">
+                                                                                    {/* ... Detalle reporte ... */}
                                                                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                                                                                         <div className="space-y-4">
                                                                                             <div>
@@ -920,14 +980,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                                                                                             <div className="flex gap-3 mt-1 overflow-x-auto pb-2 custom-scrollbar">
                                                                                                 {report.tickets?.map((t, idx) => (
                                                                                                     <div key={idx} className="relative group/img flex-shrink-0">
-                                                                                                        <img 
-                                                                                                            src={t.data} 
-                                                                                                            onClick={() => setSelectedImage({data: t.data, type: t.type})} 
-                                                                                                            className="w-20 h-20 object-cover rounded-lg cursor-pointer hover:border-brand-lime border-2 border-gray-300 dark:border-gray-800 transition-all" 
-                                                                                                        />
-                                                                                                        <div className="absolute top-0 right-0 p-1 opacity-0 group-hover/img:opacity-100 transition-opacity">
-                                                                                                            <span className="bg-brand-teal text-[8px] font-bold px-1 rounded text-white">{t.type}</span>
-                                                                                                        </div>
+                                                                                                        <img src={t.data} onClick={() => setSelectedImage({data: t.data, type: t.type})} className="w-20 h-20 object-cover rounded-lg cursor-pointer hover:border-brand-lime border-2 border-gray-300 dark:border-gray-800 transition-all" />
+                                                                                                        <div className="absolute top-0 right-0 p-1 opacity-0 group-hover/img:opacity-100 transition-opacity"><span className="bg-brand-teal text-[8px] font-bold px-1 rounded text-white">{t.type}</span></div>
                                                                                                     </div>
                                                                                                 ))}
                                                                                                 {(!report.tickets || report.tickets.length === 0) && <p className="text-[10px] text-gray-500 italic">No hay archivos adjuntos.</p>}
@@ -949,16 +1003,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                                 })}
                             </div>
                         ))}
-                        {filteredReports.length === 0 && (
-                            <div className="py-20 text-center">
-                                <FileTextIcon className="w-12 h-12 text-gray-300 dark:text-gray-800 mx-auto mb-4" />
-                                <p className="text-gray-500 font-bold uppercase text-xs tracking-[3px]">Sin resultados en la búsqueda</p>
-                            </div>
-                        )}
+                        {filteredReports.length === 0 && (<div className="py-20 text-center"><FileTextIcon className="w-12 h-12 text-gray-300 dark:text-gray-800 mx-auto mb-4" /><p className="text-gray-500 font-bold uppercase text-xs tracking-[3px]">Sin resultados en la búsqueda</p></div>)}
                     </div>
                 </>
             )}
-            
             {reportViewMode === 'by_project' && (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {projectsSummary.map(([projectNum, summary]) => (
@@ -972,25 +1020,16 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                     ))}
                 </div>
             )}
-
             {reportViewMode === 'by_hours' && (
                 <div className="space-y-6">
                     {hoursSummary.map(([week, techs]) => (
                         <div key={week} className="bg-gray-50 dark:bg-gray-900/30 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
                             <div className="bg-gray-100 dark:bg-gray-800 p-3 text-xs font-bold text-brand-teal uppercase">Semana: {week}</div>
                             <table className="w-full text-xs text-left">
-                                <thead><tr className="text-gray-500 bg-black/5 dark:bg-black/20">
-                                    <th className="px-4 py-2">Técnico</th>
-                                    <th className="px-4 py-2 text-right">Horas</th>
-                                    <th className="px-4 py-2 text-right">Extras</th>
-                                </tr></thead>
+                                <thead><tr className="text-gray-500 bg-black/5 dark:bg-black/20"><th className="px-4 py-2">Técnico</th><th className="px-4 py-2 text-right">Horas</th><th className="px-4 py-2 text-right">Extras</th></tr></thead>
                                 <tbody>
                                     {(Object.entries(techs) as [string, any][]).map(([tech, h]) => (
-                                        <tr key={tech} className="border-t border-gray-200 dark:border-gray-800">
-                                            <td className="px-4 py-2 font-bold text-gray-700 dark:text-gray-300">{tech}</td>
-                                            <td className="px-4 py-2 text-right text-gray-600 dark:text-gray-400">{h.reg.toFixed(1)}h</td>
-                                            <td className="px-4 py-2 text-right text-yellow-600 dark:text-yellow-500">+{h.ot.toFixed(1)}h</td>
-                                        </tr>
+                                        <tr key={tech} className="border-t border-gray-200 dark:border-gray-800"><td className="px-4 py-2 font-bold text-gray-700 dark:text-gray-300">{tech}</td><td className="px-4 py-2 text-right text-gray-600 dark:text-gray-400">{h.reg.toFixed(1)}h</td><td className="px-4 py-2 text-right text-yellow-600 dark:text-yellow-500">+{h.ot.toFixed(1)}h</td></tr>
                                     ))}
                                 </tbody>
                             </table>
@@ -1001,56 +1040,35 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
           </div>
         )}
 
-        {/* TAB: EXPENSES */}
         {tab === 'expenses' && (
+            /* ... Contenido Expenses existente ... */
             <div className="space-y-6">
                 <h3 className="text-lg font-bold text-gray-800 dark:text-white mb-4">Control de Gastos</h3>
                 {Object.keys(groupedExpenses.tree).sort((a,b) => groupedExpenses.dateMap[b].localeCompare(groupedExpenses.dateMap[a])).map((month) => {
-                    const weeksInMonth = groupedExpenses.tree[month];
+                    /* ... */
                     return (
                         <div key={month} className="space-y-4">
-                            <div className="bg-brand-teal/10 dark:bg-brand-teal/20 border-l-4 border-brand-teal px-4 py-3 flex items-center gap-3">
-                                <h4 className="text-brand-teal dark:text-brand-teal font-black text-xl tracking-widest">{month}</h4>
-                            </div>
-                            
-                            {Object.keys(weeksInMonth).sort((a,b) => groupedExpenses.dateMap[b].localeCompare(groupedExpenses.dateMap[a])).map((week) => {
+                            <div className="bg-brand-teal/10 dark:bg-brand-teal/20 border-l-4 border-brand-teal px-4 py-3 flex items-center gap-3"><h4 className="text-brand-teal dark:text-brand-teal font-black text-xl tracking-widest">{month}</h4></div>
+                            {Object.keys(groupedExpenses.tree[month]).sort((a,b) => groupedExpenses.dateMap[b].localeCompare(groupedExpenses.dateMap[a])).map((week) => {
                                 const isExpanded = !!expandedWeeks[week];
-                                const techs = weeksInMonth[week];
+                                const techs = groupedExpenses.tree[month][week];
                                 const totalWeek: number = (Object.values(techs) as number[]).reduce((a, b) => a + b, 0);
-
                                 return (
                                     <div key={week} className="bg-gray-50 dark:bg-gray-900/30 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden shadow-sm">
                                         <div onClick={() => toggleWeekExpansion(week)} className="bg-gray-100 dark:bg-gray-800 p-3 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">
-                                            <div className="flex items-center gap-3">
-                                                <ChartPieIcon className="w-4 h-4 text-brand-teal dark:text-brand-lime" />
-                                                <span className="text-brand-teal dark:text-brand-lime font-black text-sm uppercase tracking-widest">Semana: {week}</span>
-                                            </div>
-                                            <div className="flex items-center gap-4">
-                                                <span className="text-xs font-bold text-gray-600 dark:text-gray-300">Total: {totalWeek.toFixed(2)}€</span>
-                                                <ChevronDownIcon className={`w-4 h-4 text-gray-500 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`} />
-                                            </div>
+                                            <div className="flex items-center gap-3"><ChartPieIcon className="w-4 h-4 text-brand-teal dark:text-brand-lime" /><span className="text-brand-teal dark:text-brand-lime font-black text-sm uppercase tracking-widest">Semana: {week}</span></div>
+                                            <div className="flex items-center gap-4"><span className="text-xs font-bold text-gray-600 dark:text-gray-300">Total: {totalWeek.toFixed(2)}€</span><ChevronDownIcon className={`w-4 h-4 text-gray-500 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`} /></div>
                                         </div>
-                                        
                                         {isExpanded && (
                                             <div className="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 animate-fade-in">
                                                 {Object.entries(techs).map(([tech, rawTotal]) => {
                                                     const total = Number(rawTotal);
                                                     const paymentKey = `${week}_${tech}`;
                                                     const isPaid = data.expensesPayments?.[paymentKey] || false;
-                                                    
                                                     return (
                                                         <div key={tech} className={`p-4 rounded-xl border transition-all flex flex-col justify-between gap-3 group relative ${isPaid ? 'bg-green-50 dark:bg-green-900/20 border-green-500 dark:border-green-600' : 'bg-white dark:bg-gray-950 border-gray-200 dark:border-gray-800 hover:border-brand-teal'}`}>
-                                                            <div className="flex justify-between items-start">
-                                                                <span className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest">{tech}</span>
-                                                                {isPaid && <CheckCircleIcon className="w-4 h-4 text-green-600 dark:text-green-400" />}
-                                                            </div>
-                                                            <div className="flex justify-between items-end">
-                                                                <span className={`text-lg font-black font-mono ${isPaid ? 'text-green-800 dark:text-green-300' : 'text-gray-800 dark:text-white'}`}>{total.toFixed(2)}€</span>
-                                                                <label className="flex items-center gap-2 cursor-pointer">
-                                                                    <input type="checkbox" checked={isPaid} onChange={() => toggleExpensePayment(week, tech)} className="w-4 h-4 rounded border-gray-300 text-green-600 focus:ring-green-500" />
-                                                                    <span className="text-[9px] uppercase font-bold text-gray-500 select-none">Pagado</span>
-                                                                </label>
-                                                            </div>
+                                                            <div className="flex justify-between items-start"><span className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest">{tech}</span>{isPaid && <CheckCircleIcon className="w-4 h-4 text-green-600 dark:text-green-400" />}</div>
+                                                            <div className="flex justify-between items-end"><span className={`text-lg font-black font-mono ${isPaid ? 'text-green-800 dark:text-green-300' : 'text-gray-800 dark:text-white'}`}>{total.toFixed(2)}€</span><label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={isPaid} onChange={() => toggleExpensePayment(week, tech)} className="w-4 h-4 rounded border-gray-300 text-green-600 focus:ring-green-500" /><span className="text-[9px] uppercase font-bold text-gray-500 select-none">Pagado</span></label></div>
                                                         </div>
                                                     );
                                                 })}
@@ -1065,8 +1083,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
             </div>
         )}
 
-        {/* TAB: TECHS */}
+        {/* ... (TECH, VEHICLES, BUDGETS, PROJECTS, DAILY TABS) ... MANTENIDOS IGUAL */}
+        {/* Simplemente renderizo los mismos componentes que antes para no borrar nada */}
         {tab === 'techs' && (
+            /* ... Mismo contenido que archivo original ... */
             <div className="space-y-4">
                 <div className="flex justify-between items-center mb-4">
                     <h3 className="text-gray-400 font-black uppercase text-[11px] tracking-[3px] flex items-center gap-2">
@@ -1117,24 +1137,19 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
             </div>
         )}
 
-        {/* TAB: VEHICLES */}
         {tab === 'vehicles' && (
+            /* ... Mismo contenido que archivo original ... */
             <div className="space-y-4">
+                {/* ... (Copy from original) ... */}
                 <div className="flex justify-between items-center mb-4">
                     <h3 className="text-gray-400 font-black uppercase text-[11px] tracking-[3px] flex items-center gap-2">
                         <TruckIcon className="w-4 h-4" /> Gestión de Vehículos
                     </h3>
                     <div className="flex gap-2">
-                        <button onClick={() => handleExportJSON('vehicles')} className="text-[10px] font-bold uppercase bg-gray-200 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:text-brand-teal hover:bg-gray-300 dark:hover:bg-gray-700 px-3 py-1.5 rounded-full transition-colors flex items-center gap-1 shadow-sm">
-                            <DownloadIcon className="w-3 h-3" /> Exportar
-                        </button>
-                        <label className="text-[10px] font-bold uppercase bg-brand-teal/10 dark:bg-brand-teal/20 text-brand-teal hover:bg-brand-teal hover:text-white px-3 py-1.5 rounded-full transition-colors flex items-center gap-1 cursor-pointer shadow-sm">
-                            <UploadIcon className="w-3 h-3" /> Importar
-                            <input type="file" ref={vehiclesImportRef} onChange={(e) => handleImportJSON(e, 'vehicles')} accept=".json" className="hidden" />
-                        </label>
+                        <button onClick={() => handleExportJSON('vehicles')} className="text-[10px] font-bold uppercase bg-gray-200 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:text-brand-teal hover:bg-gray-300 dark:hover:bg-gray-700 px-3 py-1.5 rounded-full transition-colors flex items-center gap-1 shadow-sm"><DownloadIcon className="w-3 h-3" /> Exportar</button>
+                        <label className="text-[10px] font-bold uppercase bg-brand-teal/10 dark:bg-brand-teal/20 text-brand-teal hover:bg-brand-teal hover:text-white px-3 py-1.5 rounded-full transition-colors flex items-center gap-1 cursor-pointer shadow-sm"><UploadIcon className="w-3 h-3" /> Importar<input type="file" ref={vehiclesImportRef} onChange={(e) => handleImportJSON(e, 'vehicles')} accept=".json" className="hidden" /></label>
                     </div>
                 </div>
-
                 <div className="bg-gray-50 dark:bg-gray-900/50 p-4 rounded-xl border border-gray-200 dark:border-gray-700 flex flex-col sm:flex-row gap-2">
                     <input type="text" placeholder="Nombre/Matrícula del Vehículo" value={newItemName} onChange={e => setNewItemName(e.target.value)} className="flex-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-4 py-2 text-gray-900 dark:text-white" />
                     <button onClick={() => handleAdd('vehicles')} className="bg-brand-teal text-white px-6 py-2 rounded-lg font-bold shadow-md hover:bg-teal-600 transition-colors">Añadir</button>
@@ -1150,10 +1165,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                             </div>
                         ) : (
                             <>
-                                <div className="flex items-center gap-3">
-                                    <div className="w-8 h-8 bg-brand-teal/10 dark:bg-brand-teal/20 rounded-full flex items-center justify-center text-brand-teal font-bold"><TruckIcon className="w-4 h-4" /></div>
-                                    <p className="font-bold text-sm text-gray-800 dark:text-gray-200">{v}</p>
-                                </div>
+                                <div className="flex items-center gap-3"><div className="w-8 h-8 bg-brand-teal/10 dark:bg-brand-teal/20 rounded-full flex items-center justify-center text-brand-teal font-bold"><TruckIcon className="w-4 h-4" /></div><p className="font-bold text-sm text-gray-800 dark:text-gray-200">{v}</p></div>
                                 <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                                     <button onClick={() => startEditing(i, v, 'vehicles')} className="text-gray-400 dark:text-gray-500 hover:text-brand-teal"><EditIcon className="w-4 h-4" /></button>
                                     <button onClick={() => handleDelete('vehicles', i)} className="text-gray-400 dark:text-gray-500 hover:text-red-500"><TrashIcon className="w-4 h-4" /></button>
@@ -1167,99 +1179,44 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
             </div>
         )}
 
-        {/* TAB: BUDGETS */}
         {tab === 'budgets' && (
+            /* ... Mismo contenido que archivo original ... */
             <div className="space-y-6">
+                {/* ... (Manteniendo todo el código de Budgets) ... */}
                 <div className="bg-white dark:bg-gray-900/50 p-6 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-xl">
                    {/* Formulario Presupuestos */}
                    <div className="flex justify-between items-center mb-6">
-                        <h3 className="text-lg font-bold text-gray-800 dark:text-white flex items-center gap-2">
-                            <span className="text-brand-teal dark:text-brand-lime">{isEditingBudget ? '✏️' : '+'}</span> 
-                            {isEditingBudget ? 'Editar Presupuesto' : 'Nuevo Presupuesto'}
-                        </h3>
-                        {isEditingBudget && (
-                            <button onClick={resetBudgetForm} className="text-xs bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 px-3 py-1.5 rounded text-gray-500 dark:text-gray-300">
-                                Cancelar
-                            </button>
-                        )}
+                        <h3 className="text-lg font-bold text-gray-800 dark:text-white flex items-center gap-2"><span className="text-brand-teal dark:text-brand-lime">{isEditingBudget ? '✏️' : '+'}</span> {isEditingBudget ? 'Editar Presupuesto' : 'Nuevo Presupuesto'}</h3>
+                        {isEditingBudget && (<button onClick={resetBudgetForm} className="text-xs bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 px-3 py-1.5 rounded text-gray-500 dark:text-gray-300">Cancelar</button>)}
                    </div>
                    <div className="space-y-4">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div>
-                                <label className="block text-[10px] text-gray-500 uppercase font-black mb-1">Nombre del Presupuesto (Descripción)</label>
-                                <input type="text" placeholder="Descripción breve..." value={budgetForm.name} onChange={e => setBudgetForm({...budgetForm, name: e.target.value})} className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg p-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none" />
-                            </div>
-                            <div>
-                                <label className="block text-[10px] text-gray-500 uppercase font-black mb-1">Cliente</label>
-                                <input type="text" list="client-options-budget" placeholder="" value={budgetForm.client} onChange={e => setBudgetForm({...budgetForm, client: e.target.value})} className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg p-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none" />
-                                <datalist id="client-options-budget">{uniqueClients.map(client => (<option key={client} value={client} />))}</datalist>
-                            </div>
+                            <div><label className="block text-[10px] text-gray-500 uppercase font-black mb-1">Nombre del Presupuesto (Descripción)</label><input type="text" placeholder="Descripción breve..." value={budgetForm.name} onChange={e => setBudgetForm({...budgetForm, name: e.target.value})} className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg p-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none" /></div>
+                            <div><label className="block text-[10px] text-gray-500 uppercase font-black mb-1">Cliente</label><input type="text" list="client-options-budget" placeholder="" value={budgetForm.client} onChange={e => setBudgetForm({...budgetForm, client: e.target.value})} className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg p-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none" /><datalist id="client-options-budget">{uniqueClients.map(client => (<option key={client} value={client} />))}</datalist></div>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            <div>
-                                <label className="block text-[10px] text-gray-500 uppercase font-black mb-1">Número de Presupuesto</label>
-                                <input type="text" placeholder="5 cifras" value={budgetForm.budgetNum} onChange={e => setBudgetForm({...budgetForm, budgetNum: e.target.value})} className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg p-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none" />
-                            </div>
-                            <div>
-                                <label className="block text-[10px] text-gray-500 uppercase font-black mb-1">Fecha de Entrega</label>
-                                <input type="date" value={budgetForm.deliveryDate} onChange={e => setBudgetForm({...budgetForm, deliveryDate: e.target.value})} className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg p-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none dark:[color-scheme:dark]" />
-                            </div>
-                            <div>
-                                <label className="block text-[10px] text-gray-500 uppercase font-black mb-1">Nombre de la Excel</label>
-                                <input type="text" value={budgetForm.excelName} onChange={e => setBudgetForm({...budgetForm, excelName: e.target.value})} className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg p-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none" />
-                            </div>
+                            <div><label className="block text-[10px] text-gray-500 uppercase font-black mb-1">Número de Presupuesto</label><input type="text" placeholder="5 cifras" value={budgetForm.budgetNum} onChange={e => setBudgetForm({...budgetForm, budgetNum: e.target.value})} className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg p-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none" /></div>
+                            <div><label className="block text-[10px] text-gray-500 uppercase font-black mb-1">Fecha de Entrega</label><input type="date" value={budgetForm.deliveryDate} onChange={e => setBudgetForm({...budgetForm, deliveryDate: e.target.value})} className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg p-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none dark:[color-scheme:dark]" /></div>
+                            <div><label className="block text-[10px] text-gray-500 uppercase font-black mb-1">Nombre de la Excel</label><input type="text" value={budgetForm.excelName} onChange={e => setBudgetForm({...budgetForm, excelName: e.target.value})} className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg p-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none" /></div>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 py-2">
-                             <label className="flex items-center gap-3 cursor-pointer bg-gray-100 dark:bg-gray-800/50 p-2 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-gray-400 dark:hover:border-gray-500 transition-colors">
-                                 <input type="checkbox" checked={budgetForm.hasFolderData} onChange={e => setBudgetForm({...budgetForm, hasFolderData: e.target.checked})} className="w-5 h-5 rounded border-gray-400 dark:border-gray-600 text-brand-teal bg-white dark:bg-gray-800 focus:ring-0" />
-                                 <span className="text-xs font-bold uppercase text-gray-700 dark:text-white">Datos Carpeta</span>
-                             </label>
-                             <label className="flex items-center gap-3 cursor-pointer bg-gray-100 dark:bg-gray-800/50 p-2 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-gray-400 dark:hover:border-gray-500 transition-colors">
-                                 <input type="checkbox" checked={budgetForm.isFinished} onChange={e => setBudgetForm({...budgetForm, isFinished: e.target.checked})} className="w-5 h-5 rounded border-gray-400 dark:border-gray-600 text-brand-teal bg-white dark:bg-gray-800 focus:ring-0" />
-                                 <span className="text-xs font-bold uppercase text-gray-700 dark:text-white">Terminado</span>
-                             </label>
-                             <label className="flex items-center gap-3 cursor-pointer bg-gray-100 dark:bg-gray-800/50 p-2 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-gray-400 dark:hover:border-gray-500 transition-colors">
-                                 <input type="checkbox" checked={budgetForm.isAccepted} onChange={e => setBudgetForm({...budgetForm, isAccepted: e.target.checked})} className="w-5 h-5 rounded border-gray-400 dark:border-gray-600 text-brand-teal bg-white dark:bg-gray-800 focus:ring-0" />
-                                 <span className="text-xs font-bold uppercase text-gray-700 dark:text-white">Aceptado (Crear Obra)</span>
-                             </label>
+                             <label className="flex items-center gap-3 cursor-pointer bg-gray-100 dark:bg-gray-800/50 p-2 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-gray-400 dark:hover:border-gray-500 transition-colors"><input type="checkbox" checked={budgetForm.hasFolderData} onChange={e => setBudgetForm({...budgetForm, hasFolderData: e.target.checked})} className="w-5 h-5 rounded border-gray-400 dark:border-gray-600 text-brand-teal bg-white dark:bg-gray-800 focus:ring-0" /><span className="text-xs font-bold uppercase text-gray-700 dark:text-white">Datos Carpeta</span></label>
+                             <label className="flex items-center gap-3 cursor-pointer bg-gray-100 dark:bg-gray-800/50 p-2 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-gray-400 dark:hover:border-gray-500 transition-colors"><input type="checkbox" checked={budgetForm.isFinished} onChange={e => setBudgetForm({...budgetForm, isFinished: e.target.checked})} className="w-5 h-5 rounded border-gray-400 dark:border-gray-600 text-brand-teal bg-white dark:bg-gray-800 focus:ring-0" /><span className="text-xs font-bold uppercase text-gray-700 dark:text-white">Terminado</span></label>
+                             <label className="flex items-center gap-3 cursor-pointer bg-gray-100 dark:bg-gray-800/50 p-2 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-gray-400 dark:hover:border-gray-500 transition-colors"><input type="checkbox" checked={budgetForm.isAccepted} onChange={e => setBudgetForm({...budgetForm, isAccepted: e.target.checked})} className="w-5 h-5 rounded border-gray-400 dark:border-gray-600 text-brand-teal bg-white dark:bg-gray-800 focus:ring-0" /><span className="text-xs font-bold uppercase text-gray-700 dark:text-white">Aceptado (Crear Obra)</span></label>
                         </div>
-                        <div>
-                            <label className="block text-[10px] text-gray-500 uppercase font-black mb-1">Datos / Comentarios</label>
-                            <textarea placeholder="Comentarios adicionales..." rows={3} value={budgetForm.comments} onChange={e => setBudgetForm({...budgetForm, comments: e.target.value})} className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg p-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none" />
-                        </div>
+                        <div><label className="block text-[10px] text-gray-500 uppercase font-black mb-1">Datos / Comentarios</label><textarea placeholder="Comentarios adicionales..." rows={3} value={budgetForm.comments} onChange={e => setBudgetForm({...budgetForm, comments: e.target.value})} className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg p-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none" /></div>
                    </div>
-                   <button onClick={handleSaveBudget} className="w-full mt-6 bg-brand-teal hover:bg-teal-600 text-white font-bold py-3 rounded-xl shadow-lg transition-all flex items-center justify-center gap-2">
-                       <SaveIcon className="w-5 h-5" /> {isEditingBudget ? 'Actualizar Presupuesto' : 'Crear Presupuesto'}
-                   </button>
+                   <button onClick={handleSaveBudget} className="w-full mt-6 bg-brand-teal hover:bg-teal-600 text-white font-bold py-3 rounded-xl shadow-lg transition-all flex items-center justify-center gap-2"><SaveIcon className="w-5 h-5" /> {isEditingBudget ? 'Actualizar Presupuesto' : 'Crear Presupuesto'}</button>
                 </div>
-
                 <div className="space-y-4 pt-4">
                     <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-3">
-                        <h3 className="text-gray-400 font-black uppercase text-[11px] tracking-[3px] flex items-center gap-2">
-                            <FileTextIcon className="w-4 h-4" /> Listado de Presupuestos
-                        </h3>
+                        <h3 className="text-gray-400 font-black uppercase text-[11px] tracking-[3px] flex items-center gap-2"><FileTextIcon className="w-4 h-4" /> Listado de Presupuestos</h3>
                         <div className="flex gap-2">
-                            <button onClick={() => handleExportJSON('budgets')} className="text-[10px] font-bold uppercase bg-gray-200 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:text-brand-teal hover:bg-gray-300 dark:hover:bg-gray-700 px-3 py-1.5 rounded-full transition-colors flex items-center gap-1 shadow-sm">
-                                <DownloadIcon className="w-3 h-3" /> Exportar
-                            </button>
-                            <label className="text-[10px] font-bold uppercase bg-brand-teal/10 dark:bg-brand-teal/20 text-brand-teal hover:bg-brand-teal hover:text-white px-3 py-1.5 rounded-full transition-colors flex items-center gap-1 cursor-pointer shadow-sm">
-                                <UploadIcon className="w-3 h-3" /> Importar
-                                <input type="file" ref={budgetsImportRef} onChange={(e) => handleImportJSON(e, 'budgets')} accept=".json" className="hidden" />
-                            </label>
+                            <button onClick={() => handleExportJSON('budgets')} className="text-[10px] font-bold uppercase bg-gray-200 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:text-brand-teal hover:bg-gray-300 dark:hover:bg-gray-700 px-3 py-1.5 rounded-full transition-colors flex items-center gap-1 shadow-sm"><DownloadIcon className="w-3 h-3" /> Exportar</button>
+                            <label className="text-[10px] font-bold uppercase bg-brand-teal/10 dark:bg-brand-teal/20 text-brand-teal hover:bg-brand-teal hover:text-white px-3 py-1.5 rounded-full transition-colors flex items-center gap-1 cursor-pointer shadow-sm"><UploadIcon className="w-3 h-3" /> Importar<input type="file" ref={budgetsImportRef} onChange={(e) => handleImportJSON(e, 'budgets')} accept=".json" className="hidden" /></label>
                         </div>
                     </div>
-
-                    <div className="relative">
-                        <input 
-                            type="text" 
-                            placeholder="🔍 Buscar presupuesto por Nombre, Cliente, Nº..." 
-                            value={budgetSearchTerm} 
-                            onChange={(e) => setBudgetSearchTerm(e.target.value)} 
-                            className="w-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl pl-10 pr-4 py-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none transition-colors shadow-sm" 
-                        />
-                        <div className="absolute left-3 top-3.5 text-gray-400"><SearchIcon className="w-4 h-4" /></div>
-                    </div>
-
+                    <div className="relative"><input type="text" placeholder="🔍 Buscar presupuesto por Nombre, Cliente, Nº..." value={budgetSearchTerm} onChange={(e) => setBudgetSearchTerm(e.target.value)} className="w-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl pl-10 pr-4 py-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none transition-colors shadow-sm" /><div className="absolute left-3 top-3.5 text-gray-400"><SearchIcon className="w-4 h-4" /></div></div>
                     <div className="space-y-3">
                         {sortedBudgets.map((b) => (
                              <div key={b.id} className={`p-5 rounded-xl border flex flex-col md:flex-row justify-between items-start md:items-center gap-4 group hover:border-brand-teal/50 transition-all shadow-sm ${getBudgetStyle(b)}`}>
@@ -1291,10 +1248,12 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
             </div>
         )}
 
-        {/* TAB: PROJECTS */}
         {tab === 'projects' && (
+            /* ... Mismo contenido que archivo original ... */
             <div className="space-y-6">
+                {/* ... (Manteniendo todo el código de Projects) ... */}
                 <div className="bg-white dark:bg-gray-900/50 p-6 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-xl">
+                   {/* ... Formulario Project ... */}
                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4 border-b border-gray-200 dark:border-gray-800 pb-4">
                         <h3 className="text-xl font-bold text-gray-800 dark:text-white flex items-center gap-2">
                             <span className="text-brand-teal dark:text-brand-lime">{isEditingProject ? '✏️' : '+'}</span> 
@@ -1395,13 +1354,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                             <BriefcaseIcon className="w-4 h-4" /> Listado de Obras
                         </h3>
                         <div className="flex gap-2">
-                            <button onClick={() => handleExportJSON('projects')} className="text-[10px] font-bold uppercase bg-gray-200 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:text-brand-teal hover:bg-gray-300 dark:hover:bg-gray-700 px-3 py-1.5 rounded-full transition-colors flex items-center gap-1 shadow-sm">
-                                <DownloadIcon className="w-3 h-3" /> Exportar
-                            </button>
-                            <label className="text-[10px] font-bold uppercase bg-brand-teal/10 dark:bg-brand-teal/20 text-brand-teal hover:bg-brand-teal hover:text-white px-3 py-1.5 rounded-full transition-colors flex items-center gap-1 cursor-pointer shadow-sm">
-                                <UploadIcon className="w-3 h-3" /> Importar
-                                <input type="file" ref={projectsImportRef} onChange={(e) => handleImportJSON(e, 'projects')} accept=".json" className="hidden" />
-                            </label>
+                            <button onClick={() => handleExportJSON('projects')} className="text-[10px] font-bold uppercase bg-gray-200 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:text-brand-teal hover:bg-gray-300 dark:hover:bg-gray-700 px-3 py-1.5 rounded-full transition-colors flex items-center gap-1 shadow-sm"><DownloadIcon className="w-3 h-3" /> Exportar</button>
+                            <label className="text-[10px] font-bold uppercase bg-brand-teal/10 dark:bg-brand-teal/20 text-brand-teal hover:bg-brand-teal hover:text-white px-3 py-1.5 rounded-full transition-colors flex items-center gap-1 cursor-pointer shadow-sm"><UploadIcon className="w-3 h-3" /> Importar<input type="file" ref={projectsImportRef} onChange={(e) => handleImportJSON(e, 'projects')} accept=".json" className="hidden" /></label>
                         </div>
                     </div>
 
@@ -1411,6 +1365,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                     </div>
 
                     <div className="space-y-4">
+                        {/* ... SECCIONES DESPLEGABLES (VERDE, NARANJA, ROJO, AZUL, TERMINADAS, FACTURADAS) ... */}
                         {/* 1. AVISOS EN TIEMPO (VERDE) */}
                         <div className="rounded-xl border border-green-200 dark:border-green-800/30 overflow-hidden shadow-sm">
                             <button onClick={() => toggleProjectSection('green')} className="w-full flex items-center justify-between p-4 bg-green-50 dark:bg-green-900/20 hover:bg-green-100 dark:hover:bg-green-900/30 transition-colors">
@@ -1550,9 +1505,51 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                         {pwdMsg && <p className="text-center text-xs text-green-500">{pwdMsg}</p>}
                         
                         <div className="mt-8 pt-8 border-t border-gray-200 dark:border-gray-700">
+                            <h4 className="text-sm font-bold text-gray-600 dark:text-gray-400 mb-4 uppercase tracking-widest">Copia de Seguridad Manual</h4>
                             <button onClick={onManualBackup} className="w-full bg-gray-200 dark:bg-gray-800 text-gray-700 dark:text-gray-300 font-bold py-3 rounded-xl flex items-center justify-center gap-2 hover:bg-gray-300 dark:hover:bg-gray-700">
-                                <CloudIcon className="w-5 h-5" /> Crear Copia de Seguridad Manual
+                                <CloudIcon className="w-5 h-5" /> Crear Nueva Copia Manual
                             </button>
+                        </div>
+
+                        {/* SYSTEM RESTORE SECTION */}
+                        <div className="mt-8 pt-8 border-t border-gray-200 dark:border-gray-700">
+                            <h4 className="text-sm font-bold text-red-600 dark:text-red-400 mb-2 uppercase tracking-widest flex items-center gap-2">
+                                <AlertIcon className="w-4 h-4" /> Restauración del Sistema
+                            </h4>
+                            <p className="text-[10px] text-gray-500 dark:text-gray-400 mb-4">
+                                Utiliza esta sección para recuperar datos antiguos si ha habido un error de sincronización. 
+                                <br/> <b>Advertencia:</b> Restaurar una copia sobrescribirá todos los datos actuales.
+                            </p>
+                            
+                            {!backupsList.length && !isLoadingBackups && (
+                                <button onClick={fetchBackups} className="w-full bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 font-bold py-3 rounded-xl flex items-center justify-center gap-2 hover:bg-red-200 dark:hover:bg-red-900/50 border border-red-200 dark:border-red-800">
+                                    <CloudIcon className="w-5 h-5" /> Cargar Historial de Copias
+                                </button>
+                            )}
+
+                            {isLoadingBackups && <p className="text-center text-xs text-gray-500 animate-pulse">Cargando copias desde el servidor...</p>}
+
+                            {backupsList.length > 0 && (
+                                <div className="space-y-2 mt-4 max-h-60 overflow-y-auto pr-2 custom-scrollbar bg-gray-50 dark:bg-gray-900/50 p-3 rounded-xl border border-gray-200 dark:border-gray-700">
+                                    {backupsList.map((backup) => (
+                                        <div key={backup.id} className="flex justify-between items-center p-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg hover:border-brand-teal transition-colors">
+                                            <div>
+                                                <p className="text-xs font-bold text-gray-700 dark:text-gray-200 font-mono">{backup.id}</p>
+                                                <p className="text-[9px] text-gray-500">
+                                                    {(backup.projectsDetailed || []).length} obras • {(backup.reports || []).length} reportes
+                                                </p>
+                                            </div>
+                                            <button 
+                                                onClick={() => restoreBackup(backup.id)} 
+                                                className="bg-brand-teal text-white p-2 rounded-lg hover:bg-teal-600 transition-colors shadow-sm"
+                                                title="Restaurar esta copia"
+                                            >
+                                                <CloudIcon className="w-4 h-4" />
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>
