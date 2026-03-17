@@ -297,6 +297,7 @@ const App: React.FC = () => {
                 const cloudConfig = snapshot.data();
                 // Verificación de seguridad: si viene vacío, no lo cargamos ciegamente si tenemos datos locales
                 if (Object.keys(cloudConfig).length > 0) {
+                    isInternalUpdate.current = true;
                     setData(prev => ({
                         ...prev,
                         ...cloudConfig,
@@ -446,8 +447,39 @@ const App: React.FC = () => {
 
     const timeoutId = setTimeout(() => {
         // Save to LocalStorage
-        const serialized = JSON.stringify(data);
-        localStorage.setItem('workerApp_db', serialized);
+        try {
+            // Limpiar datos pesados (imágenes base64) antes de guardar en localStorage
+            const dataToSave = { ...data };
+            if (dataToSave.reports) {
+                dataToSave.reports = dataToSave.reports.map(r => {
+                    if (r.tickets && r.tickets.some(t => t.data && t.data.length > 1000)) {
+                        return {
+                            ...r,
+                            tickets: r.tickets.map(t => ({
+                                ...t,
+                                data: t.driveUrl?.includes('✅') ? '' : t.data
+                            }))
+                        };
+                    }
+                    return r;
+                });
+            }
+            
+            const serialized = JSON.stringify(dataToSave);
+            localStorage.setItem('workerApp_db', serialized);
+        } catch (e) {
+            console.error("Error saving to localStorage (QuotaExceeded):", e);
+            // Si sigue fallando, guardar una versión más ligera (solo los últimos 100 partes)
+            try {
+                const lighterData = { ...dataToSave };
+                if (lighterData.reports && lighterData.reports.length > 100) {
+                    lighterData.reports = lighterData.reports.slice(0, 100);
+                }
+                localStorage.setItem('workerApp_db', JSON.stringify(lighterData));
+            } catch (e2) {
+                console.error("Error saving lighter version to localStorage:", e2);
+            }
+        }
 
         // Save Config to Cloud if applicable
         if (isCloudConnected && hasSyncedWithCloud) {
@@ -471,6 +503,15 @@ const App: React.FC = () => {
                     }
 
                     const cleanConfig = JSON.parse(JSON.stringify(configOnly));
+                    
+                    // Limitar el historial a los últimos 30 días antes de guardar
+                    if (cleanConfig.dailyOrgHistory) {
+                        const keys = Object.keys(cleanConfig.dailyOrgHistory).sort((a, b) => b.localeCompare(a));
+                        if (keys.length > 30) {
+                            keys.slice(30).forEach(k => delete cleanConfig.dailyOrgHistory[k]);
+                        }
+                    }
+
                     await db.collection("jdg_teleco").doc("main_db").set(cleanConfig);
                 } catch (e: any) {
                     console.error("Cloud sync error", e);
@@ -505,6 +546,7 @@ const App: React.FC = () => {
     if (!window.confirm('¿Eliminar este parte permanentemente?')) return;
 
     isSyncingRef.current = true;
+    isInternalUpdate.current = false;
 
     setData(prev => ({
         ...prev,
@@ -540,6 +582,7 @@ const App: React.FC = () => {
     const finalReport = { ...report, technician: currentUser };
     
     isSyncingRef.current = true;
+    isInternalUpdate.current = false;
 
     if (finalReport.tickets && finalReport.tickets.length > 0) {
       setIsUploadingTickets(true);
@@ -559,6 +602,7 @@ const App: React.FC = () => {
             })
           });
           finalReport.tickets[i].driveUrl = '✅ Subido y Organizado';
+          finalReport.tickets[i].data = ''; // Limpiar base64 para liberar espacio
         } catch (e) {
           console.error("Error Drive:", e);
           finalReport.tickets[i].driveUrl = '❌ Error';
@@ -597,6 +641,7 @@ const App: React.FC = () => {
 
   // Manejo de actualización de Daily Organization (GUARDADO MANUAL)
   const handleDailyOrgUpdate = (newOrg: DailyOrgData) => {
+      isSyncingRef.current = true;
       isInternalUpdate.current = false; 
       setData(prev => {
           const history = { ...(prev.dailyOrgHistory || {}) };
@@ -604,12 +649,20 @@ const App: React.FC = () => {
           if (newOrg && newOrg.fecha) {
               history[newOrg.fecha] = newOrg;
           }
+          
+          // Limitar el historial a los últimos 30 días para evitar exceder el límite de 1MB en Firestore
+          const keys = Object.keys(history).sort((a, b) => b.localeCompare(a));
+          if (keys.length > 30) {
+              keys.slice(30).forEach(k => delete history[k]);
+          }
+
           return {
               ...prev, 
               dailyOrg: newOrg,
               dailyOrgHistory: history
           };
       }); 
+      setTimeout(() => { isSyncingRef.current = false; }, 2000);
   };
 
   // Manejo de cambio de fecha en Daily Organization (CARGA DE DATOS)
@@ -634,7 +687,10 @@ const App: React.FC = () => {
       }
 
       // Solo actualizamos la vista (dailyOrg), no tocamos el historial aún
+      isSyncingRef.current = true;
+      isInternalUpdate.current = false;
       setData(prev => ({ ...prev, dailyOrg: orgToLoad }));
+      setTimeout(() => { isSyncingRef.current = false; }, 2000);
   };
 
   return (
@@ -720,7 +776,7 @@ const App: React.FC = () => {
       <main className={`container mx-auto p-4 ${view === 'admin' || view === 'vacations' ? 'max-w-6xl' : 'md:max-w-3xl'}`}>
         {view === 'login' && <UserLogin onLogin={handleLogin} technicians={data.technicians} adminPwd={data.adminPassword || 'admin'} onViewDailyOrg={() => setView('daily_org')} toggleTheme={toggleTheme} isDark={theme === 'dark'} hasUnreadOrg={hasUnseenDailyOrg} />}
         {view === 'dashboard' && <TechDashboard reports={data.reports.filter(r => r.technician === currentUser)} projects={data.projectsDetailed} onNewReport={() => setView('form')} onEditReport={(r) => { setEditingReport(r); setView('form'); }} onViewDailyOrg={() => setView('daily_org')} onDeleteReport={deleteReport} hasUnreadOrg={hasUnseenDailyOrg} />}
-        {view === 'vacations' && <VacationManager role={userRole || 'tech'} currentUser={currentUser} currentUserId={currentUserId} data={data} onUpdate={(newData) => { isInternalUpdate.current = false; setData(newData); }} onBack={() => setView(userRole === 'admin' ? 'admin' : 'dashboard')} />}
+        {view === 'vacations' && <VacationManager role={userRole || 'tech'} currentUser={currentUser} currentUserId={currentUserId} data={data} onUpdate={(newData) => { isSyncingRef.current = true; isInternalUpdate.current = false; setData(newData); setTimeout(() => {isSyncingRef.current = false;}, 2000); }} onBack={() => setView(userRole === 'admin' ? 'admin' : 'dashboard')} />}
         
         {view === 'daily_org' && (
             <DailyOrganization 
@@ -735,7 +791,7 @@ const App: React.FC = () => {
         )}
         
         {view === 'form' && <ReportForm projects={data.projectsDetailed} vehicles={data.vehicles} initialData={editingReport} onSave={saveReport} onCancel={() => setView('dashboard')} />}
-        {view === 'admin' && <AdminPanel data={data} setData={(updater) => { isSyncingRef.current = true; setData(updater); setTimeout(() => {isSyncingRef.current = false;}, 2000); }} onGoToVacations={() => setView('vacations')} onDeleteReport={deleteReport} onManualBackup={performManualBackup} />}
+        {view === 'admin' && <AdminPanel data={data} setData={(updater) => { isSyncingRef.current = true; isInternalUpdate.current = false; setData(updater); setTimeout(() => {isSyncingRef.current = false;}, 2000); }} onGoToVacations={() => setView('vacations')} onDeleteReport={deleteReport} onManualBackup={performManualBackup} />}
       </main>
     </div>
   );
