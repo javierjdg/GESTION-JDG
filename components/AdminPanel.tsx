@@ -604,7 +604,25 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
           }
 
           setData(restoredData);
-          alert(`✅ Sistema restaurado correctamente al estado: ${backupId}`);
+          
+          // 4. Sincronizar con Firestore (Opcional pero recomendado)
+          if (fb && fb.app().firestore()) {
+              const db = fb.app().firestore();
+              const reportsRef = db.collection("jdg_teleco").doc("main_db").collection("reports");
+              
+              // Subir reportes restaurados uno a uno (Firestore se encarga de sobrescribir por ID)
+              if (restoredData.reports && restoredData.reports.length > 0) {
+                  const batch = db.batch();
+                  // Limitamos a 500 por batch (límite de Firestore)
+                  const reportsToSync = restoredData.reports.slice(0, 450); 
+                  reportsToSync.forEach(r => {
+                      batch.set(reportsRef.doc(r.id), r);
+                  });
+                  await batch.commit();
+              }
+          }
+
+          alert(`✅ Sistema restaurado correctamente al estado: ${backupId}\n\nSe han restaurado ${restoredData.reports?.length || 0} partes de trabajo.`);
 
       } catch (e: any) {
           console.error("Restore error", e);

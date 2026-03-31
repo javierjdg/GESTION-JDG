@@ -314,16 +314,26 @@ const App: React.FC = () => {
 
         unsubReports = db.collection("jdg_teleco").doc("main_db").collection("reports").onSnapshot((snapshot: any) => {
             if (isSyncingRef.current) return; 
+            
             const cloudReports: WorkReport[] = [];
             snapshot.forEach((doc: any) => {
                 cloudReports.push(doc.data() as WorkReport);
             });
             
-            isInternalUpdate.current = true;
-            setData(prev => ({
-                ...prev,
-                reports: cloudReports.sort((a, b) => b.date.localeCompare(a.date))
-            }));
+            // SEGURIDAD: Si la nube está vacía pero tenemos datos locales, no borramos todo sin avisar
+            // Esto previene borrados accidentales por fallos de sincronización inicial
+            setData(prev => {
+                if (snapshot.empty && prev.reports && prev.reports.length > 0) {
+                    console.warn("Sincronización: La nube está vacía pero hay datos locales. Manteniendo datos locales.");
+                    return prev;
+                }
+
+                isInternalUpdate.current = true;
+                return {
+                    ...prev,
+                    reports: cloudReports.sort((a, b) => b.date.localeCompare(a.date))
+                };
+            });
             
             setHasSyncedWithCloud(true);
             setIsInitialLoading(false);
