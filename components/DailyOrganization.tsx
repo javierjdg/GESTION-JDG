@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
+import { toast } from 'sonner';
 import { TrashIcon, CalendarIcon, SaveIcon, CheckCircleIcon } from './icons';
 
 // Exported types for App.tsx usage
@@ -63,16 +64,14 @@ const DailyOrganization: React.FC<DailyOrganizationProps> = ({ isReadOnly = fals
   };
 
   const handleSave = () => {
-      if (window.confirm(`¿Guardar organización para el día ${localData.fecha}?`)) {
-          // Actualizamos el timestamp para disparar notificaciones a los técnicos
-          const dataToSave = {
-              ...localData,
-              lastUpdated: Date.now()
-          };
-          onUpdate(dataToSave);
-          setIsDirty(false);
-          alert("✅ Cambios guardados correctamente.");
-      }
+      // Actualizamos el timestamp para disparar notificaciones a los técnicos
+      const dataToSave = {
+          ...localData,
+          lastUpdated: Date.now()
+      };
+      onUpdate(dataToSave);
+      setIsDirty(false);
+      toast.success(`Organización del ${localData.fecha} guardada correctamente.`);
   };
 
   const handleDateChangeInput = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -191,11 +190,11 @@ const DailyOrganization: React.FC<DailyOrganizationProps> = ({ isReadOnly = fals
                  trabajadores: d.trabajadores,
                  fecha: d.fecha || localData.fecha
              });
-             alert('✓ Importado correctamente (Recuerda GUARDAR)');
+             toast.success('✓ Importado correctamente (Recuerda GUARDAR)');
           } else {
-             alert('Formato de archivo incorrecto');
+             toast.error('Formato de archivo incorrecto');
           }
-        } catch { alert('✗ Error al leer archivo'); }
+        } catch { toast.error('✗ Error al leer archivo'); }
       };
       reader.readAsText(file);
     }

@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { toast } from 'sonner';
 import { AppData, TechUser, WorkReport, ProjectData, Budget } from '../App';
 import { TrashIcon, PlusIcon, DownloadIcon, UserIcon, TruckIcon, FileTextIcon, FilterIcon, EditIcon, SaveIcon, XIcon, LockIcon, UploadIcon, CloudIcon, CalendarIcon, ChartPieIcon, ClockIcon, EyeIcon, AlertIcon, ChevronDownIcon, BriefcaseIcon, SearchIcon, CheckCircleIcon } from './icons';
 import DailyOrganization, { DailyOrgData } from './DailyOrganization';
@@ -311,12 +312,12 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
   };
 
   const handleSaveProject = () => {
-      if (!projectForm.name || !projectForm.client) { alert("Faltan datos obligatorios"); return; }
-      if (!projectForm.id) { alert("El ID de obra es obligatorio."); return; }
+      if (!projectForm.name || !projectForm.client) { toast.error("Faltan datos obligatorios"); return; }
+      if (!projectForm.id) { toast.error("El ID de obra es obligatorio."); return; }
 
       if (!isEditingProject) {
           const exists = data.projectsDetailed.some(p => p.id === projectForm.id);
-          if (exists) { alert(`ERROR: El ID ${projectForm.id} ya existe.`); return; }
+          if (exists) { toast.error(`ERROR: El ID ${projectForm.id} ya existe.`); return; }
       }
       
       const finalProject = { ...projectForm };
@@ -340,7 +341,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
   };
 
   const handleSaveBudget = () => {
-      if (!budgetForm.name || !budgetForm.client) { alert("Faltan datos obligatorios"); return; }
+      if (!budgetForm.name || !budgetForm.client) { toast.error("Faltan datos obligatorios"); return; }
       const finalBudget = { ...budgetForm, id: budgetForm.id || Date.now().toString() };
       let newProjectCreated = false;
       let newProjectId = '';
@@ -370,7 +371,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
           return { ...prev, budgets: updatedBudgets, projectsDetailed: updatedProjects };
       });
 
-      if (newProjectCreated) alert(`✅ Obra creada automáticamente con ID: ${newProjectId}`);
+      if (newProjectCreated) toast.success(`✅ Obra creada automáticamente con ID: ${newProjectId}`);
       resetBudgetForm();
   };
 
@@ -460,7 +461,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
         }
         if (importedCount > 0) {
             setData(prev => ({ ...prev, reports: [...newReports, ...prev.reports] }));
-            alert(`${importedCount} partes añadidos.`);
+            toast.success(`${importedCount} partes añadidos.`);
         }
         if (reportImportInputRef.current) reportImportInputRef.current.value = '';
     };
@@ -493,7 +494,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
       reader.onload = (event) => {
           try {
               const json = JSON.parse(event.target?.result as string);
-              if (!Array.isArray(json)) { alert("Lista inválida."); return; }
+              if (!Array.isArray(json)) { toast.error("Lista inválida."); return; }
               
               setData(prev => {
                   let newData = { ...prev };
@@ -529,10 +530,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                       });
                       newData.vehicles = current;
                   }
-                  alert(`✅ Datos de ${type} importados correctamente.`);
+                  toast.success(`✅ Datos de ${type} importados correctamente.`);
                   return newData;
               });
-          } catch (err) { alert("Error JSON"); }
+          } catch (err) { toast.error("Error al procesar el archivo JSON"); }
           if (e.target) e.target.value = ''; 
       };
       reader.readAsText(file);
@@ -558,9 +559,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
       } catch (e: any) {
           console.error("Error fetching backups", e);
           if (e.code === 'permission-denied') {
-              alert("⛔ BLOQUEO DE SEGURIDAD DETECTADO\n\nFirebase ha impedido leer las copias de seguridad.\n\nSOLUCIÓN:\n1. Ve a Firebase Console > Firestore Database > Reglas.\n2. Añade esta línea:\n\nmatch /jdg_teleco_backups/{document=**} { allow read, write: if true; }\n\n3. Pulsa Publicar.");
+              toast.error("⛔ BLOQUEO DE SEGURIDAD DETECTADO. Revisa las reglas de Firestore.");
           } else {
-              alert("Error al cargar copias de seguridad: " + e.message);
+              toast.error("Error al cargar copias de seguridad: " + e.message);
           }
       } finally {
           setIsLoadingBackups(false);
@@ -577,7 +578,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
           // 1. Obtener documento principal
           const doc = await db.collection('jdg_teleco_backups').doc(backupId).get();
           if(!doc.exists) {
-              alert("Error: La copia de seguridad no existe.");
+              toast.error("Error: La copia de seguridad no existe.");
               return;
           }
           
@@ -622,11 +623,11 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
               }
           }
 
-          alert(`✅ Sistema restaurado correctamente al estado: ${backupId}\n\nSe han restaurado ${restoredData.reports?.length || 0} partes de trabajo.`);
+          toast.success(`✅ Sistema restaurado correctamente al estado: ${backupId}\n\nSe han restaurado ${restoredData.reports?.length || 0} partes de trabajo.`);
 
       } catch (e: any) {
           console.error("Restore error", e);
-          alert("Error restaurando copia: " + e.message);
+          toast.error("Error restaurando copia: " + e.message);
       }
   };
 
@@ -743,7 +744,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
   };
 
   const openGoogleCalendar = (p: ProjectData) => {
-      if (!p.startDate) { alert('Por favor selecciona una fecha de inicio primero.'); return; }
+      if (!p.startDate) { toast.error('Por favor selecciona una fecha de inicio primero.'); return; }
       const title = encodeURIComponent(`${p.id} - ${p.name}`);
       const details = encodeURIComponent(`Cliente: ${p.client}\nResponsable: ${p.responsibleTech || 'Sin asignar'}`);
       const start = p.startDate.replace(/-/g, '');

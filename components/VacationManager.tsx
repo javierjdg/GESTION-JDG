@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { toast } from 'sonner';
 import { AppData, VacationRequest, TechUser } from '../App';
 import { CalendarIcon, ClockIcon, CheckCircleIcon, XCircleIcon, PlusIcon, TrashIcon, AlertIcon, ChevronLeftIcon, ChevronRightIcon, UserIcon } from './icons';
 
@@ -153,13 +154,17 @@ const VacationManager: React.FC<VacationManagerProps> = ({ role, currentUser, cu
 
     const addHoliday = () => {
         if (!newHoliday) return;
-        if (holidays.includes(newHoliday)) return alert('Este festivo ya está registrado.');
+        if (holidays.includes(newHoliday)) {
+            toast.error('Este festivo ya está registrado.');
+            return;
+        }
         
         onUpdate({
             ...data,
             holidays: [...holidays, newHoliday].sort()
         });
         setNewHoliday('');
+        toast.success('Festivo añadido correctamente.');
     };
 
     const removeHoliday = (hDate: string) => {

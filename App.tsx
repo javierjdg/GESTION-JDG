@@ -1,5 +1,7 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { Toaster, toast } from 'sonner';
+import { motion, AnimatePresence } from 'motion/react';
 import UserLogin from './components/UserLogin';
 import ReportForm from './components/ReportForm';
 import AdminPanel from './components/AdminPanel';
@@ -426,7 +428,7 @@ const App: React.FC = () => {
   // FUNCION BACKUP MANUAL
   const performManualBackup = async () => {
     if (!isCloudConnected) {
-        alert("⚠️ No hay conexión con la nube. No se puede realizar el backup.");
+        toast.error("⚠️ No hay conexión con la nube. No se puede realizar el backup.");
         return;
     }
     const today = new Date().toISOString().split('T')[0];
@@ -439,14 +441,14 @@ const App: React.FC = () => {
         
         await saveBackupToFirestore(db, "jdg_teleco_backups", backupId, JSON.parse(JSON.stringify(data)));
 
-        alert(`✅ Copia de seguridad manual creada exitosamente.\n\nID: ${backupId}\nUbicación: Firestore > jdg_teleco_backups\n(Los datos se han fragmentado para optimización)`);
+        toast.success(`✅ Copia de seguridad manual creada exitosamente.\n\nID: ${backupId}`);
         setLastBackupStatus(`Backup Manual: ${today} ${timestamp}`);
     } catch (e: any) {
         console.error(e);
         if (e.code === 'permission-denied') {
-            alert("❌ ERROR DE PERMISOS: No se pudo crear el backup.\n\nAsegúrate de que las reglas de Firestore permiten escribir en 'jdg_teleco_backups'.");
+            toast.error("❌ ERROR DE PERMISOS: No se pudo crear el backup. Revisa las reglas de Firestore.");
         } else {
-            alert("❌ Error al crear copia de seguridad: " + e.message);
+            toast.error("❌ Error al crear copia de seguridad: " + e.message);
         }
     }
   };
@@ -553,6 +555,8 @@ const App: React.FC = () => {
   };
 
   const deleteReport = async (reportId: string) => {
+    // Usamos toast.promise o similar para confirmación si fuera necesario, 
+    // pero por ahora mantendremos la lógica pero sin alert bloqueante al final
     if (!window.confirm('¿Eliminar este parte permanentemente?')) return;
 
     isSyncingRef.current = true;
@@ -568,9 +572,13 @@ const App: React.FC = () => {
             const fb = (window as any).firebase;
             const db = fb.app().firestore();
             await db.collection("jdg_teleco").doc("main_db").collection("reports").doc(reportId).delete();
+            toast.success("Parte eliminado correctamente");
         } catch (e) {
             console.error("Error al borrar en la nube:", e);
+            toast.error("Error al eliminar en la nube");
         }
+    } else {
+        toast.success("Parte eliminado localmente");
     }
 
     setTimeout(() => {
@@ -579,6 +587,7 @@ const App: React.FC = () => {
   };
 
   const saveReport = async (report: WorkReport) => {
+    // Evitamos window.confirm bloqueante si es posible, o lo manejamos rápido
     const isDuplicate = data.reports.some(r => 
         r.technician === currentUser && 
         r.date === report.date && 
@@ -596,6 +605,7 @@ const App: React.FC = () => {
 
     if (finalReport.tickets && finalReport.tickets.length > 0) {
       setIsUploadingTickets(true);
+      toast.info("Subiendo tickets a Drive...");
       for (let i = 0; i < finalReport.tickets.length; i++) {
         const ticket = finalReport.tickets[i];
         if (ticket.driveUrl && ticket.driveUrl.includes('✅')) continue; 
@@ -639,9 +649,13 @@ const App: React.FC = () => {
             const db = fb.app().firestore();
             const firestorePayload = JSON.parse(JSON.stringify(finalReport));
             await db.collection("jdg_teleco").doc("main_db").collection("reports").doc(finalReport.id).set(firestorePayload);
+            toast.success("Parte guardado en la nube");
         } catch (e: any) {
             console.error("Firebase error", e);
+            toast.error("Error al sincronizar con la nube");
         }
+    } else {
+        toast.success("Parte guardado localmente");
     }
 
     setTimeout(() => { isSyncingRef.current = false; }, 2000);
@@ -705,7 +719,7 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gray-100 dark:bg-brand-dark text-gray-900 dark:text-gray-100 font-sans pb-20 transition-colors duration-300">
-      
+      <Toaster position="top-center" richColors />
       {showConfigGuide && (
           <div className="fixed inset-0 z-[200] bg-black/95 p-6 flex items-center justify-center backdrop-blur-md overflow-y-auto">
               <div className="bg-white dark:bg-brand-panel w-full max-w-lg rounded-2xl border border-gray-200 dark:border-gray-700 p-6 shadow-2xl space-y-6">
@@ -784,24 +798,48 @@ const App: React.FC = () => {
       )}
 
       <main className={`container mx-auto p-4 ${view === 'admin' || view === 'vacations' ? 'max-w-6xl' : 'md:max-w-3xl'}`}>
-        {view === 'login' && <UserLogin onLogin={handleLogin} technicians={data.technicians} adminPwd={data.adminPassword || 'admin'} onViewDailyOrg={() => setView('daily_org')} toggleTheme={toggleTheme} isDark={theme === 'dark'} hasUnreadOrg={hasUnseenDailyOrg} />}
-        {view === 'dashboard' && <TechDashboard reports={data.reports.filter(r => r.technician === currentUser)} projects={data.projectsDetailed} onNewReport={() => setView('form')} onEditReport={(r) => { setEditingReport(r); setView('form'); }} onViewDailyOrg={() => setView('daily_org')} onDeleteReport={deleteReport} hasUnreadOrg={hasUnseenDailyOrg} />}
-        {view === 'vacations' && <VacationManager role={userRole || 'tech'} currentUser={currentUser} currentUserId={currentUserId} data={data} onUpdate={(newData) => { isSyncingRef.current = true; isInternalUpdate.current = false; setData(newData); setTimeout(() => {isSyncingRef.current = false;}, 2000); }} onBack={() => setView(userRole === 'admin' ? 'admin' : 'dashboard')} />}
-        
-        {view === 'daily_org' && (
-            <DailyOrganization 
-                key={data.dailyOrg.fecha} 
-                isReadOnly={userRole !== 'admin'} 
-                data={data.dailyOrg} 
-                onUpdate={handleDailyOrgUpdate}
-                onChangeDate={handleDailyOrgDateChange}
-                onBack={() => setView(userRole ? (userRole === 'admin' ? 'admin' : 'dashboard') : 'login')}
-                onMarkSeen={markDailyOrgAsSeen} // Pass function to clear badge
-            />
-        )}
-        
-        {view === 'form' && <ReportForm projects={data.projectsDetailed} vehicles={data.vehicles} initialData={editingReport} onSave={saveReport} onCancel={() => setView('dashboard')} />}
-        {view === 'admin' && <AdminPanel data={data} setData={(updater) => { isSyncingRef.current = true; isInternalUpdate.current = false; setData(updater); setTimeout(() => {isSyncingRef.current = false;}, 2000); }} onGoToVacations={() => setView('vacations')} onDeleteReport={deleteReport} onManualBackup={performManualBackup} />}
+        <AnimatePresence mode="wait">
+          {view === 'login' && (
+            <motion.div key="login" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2 }}>
+              <UserLogin onLogin={handleLogin} technicians={data.technicians} adminPwd={data.adminPassword || 'admin'} onViewDailyOrg={() => setView('daily_org')} toggleTheme={toggleTheme} isDark={theme === 'dark'} hasUnreadOrg={hasUnseenDailyOrg} />
+            </motion.div>
+          )}
+          {view === 'dashboard' && (
+            <motion.div key="dashboard" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }}>
+              <TechDashboard reports={data.reports.filter(r => r.technician === currentUser)} projects={data.projectsDetailed} onNewReport={() => setView('form')} onEditReport={(r) => { setEditingReport(r); setView('form'); }} onViewDailyOrg={() => setView('daily_org')} onDeleteReport={deleteReport} hasUnreadOrg={hasUnseenDailyOrg} />
+            </motion.div>
+          )}
+          {view === 'vacations' && (
+            <motion.div key="vacations" initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.98 }} transition={{ duration: 0.2 }}>
+              <VacationManager role={userRole || 'tech'} currentUser={currentUser} currentUserId={currentUserId} data={data} onUpdate={(newData) => { isSyncingRef.current = true; isInternalUpdate.current = false; setData(newData); setTimeout(() => {isSyncingRef.current = false;}, 2000); }} onBack={() => setView(userRole === 'admin' ? 'admin' : 'dashboard')} />
+            </motion.div>
+          )}
+          
+          {view === 'daily_org' && (
+            <motion.div key="daily_org" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.2 }}>
+              <DailyOrganization 
+                  key={data.dailyOrg.fecha} 
+                  isReadOnly={userRole !== 'admin'} 
+                  data={data.dailyOrg} 
+                  onUpdate={handleDailyOrgUpdate}
+                  onChangeDate={handleDailyOrgDateChange}
+                  onBack={() => setView(userRole ? (userRole === 'admin' ? 'admin' : 'dashboard') : 'login')}
+                  onMarkSeen={markDailyOrgAsSeen} 
+              />
+            </motion.div>
+          )}
+          
+          {view === 'form' && (
+            <motion.div key="form" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} transition={{ duration: 0.2 }}>
+              <ReportForm projects={data.projectsDetailed} vehicles={data.vehicles} initialData={editingReport} onSave={saveReport} onCancel={() => setView('dashboard')} />
+            </motion.div>
+          )}
+          {view === 'admin' && (
+            <motion.div key="admin" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }}>
+              <AdminPanel data={data} setData={(updater) => { isSyncingRef.current = true; isInternalUpdate.current = false; setData(updater); setTimeout(() => {isSyncingRef.current = false;}, 2000); }} onGoToVacations={() => setView('vacations')} onDeleteReport={deleteReport} onManualBackup={performManualBackup} />
+            </motion.div>
+          )}
+        </AnimatePresence>
       </main>
     </div>
   );
