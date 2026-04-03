@@ -36,6 +36,7 @@ const ReportForm: React.FC<ReportFormProps> = ({ projects, vehicles, initialData
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isCompressing, setIsCompressing] = useState(false);
+  const [projectSearch, setProjectSearch] = useState('');
   
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
@@ -62,10 +63,19 @@ const ReportForm: React.FC<ReportFormProps> = ({ projects, vehicles, initialData
 
   // Filtramos las obras: Mostramos solo las NO terminadas, O la que ya está seleccionada (para ediciones)
   const availableProjects = useMemo(() => {
-    return [...projects]
+    let filtered = [...projects]
       .filter(p => !p.isFinished || (initialData && p.id === initialData.projectNum))
       .reverse(); // Las más nuevas primero
-  }, [projects, initialData]);
+      
+    if (projectSearch.trim()) {
+        const term = projectSearch.toLowerCase();
+        filtered = filtered.filter(p => 
+            p.id.toLowerCase().includes(term) || 
+            p.name.toLowerCase().includes(term)
+        );
+    }
+    return filtered;
+  }, [projects, initialData, projectSearch]);
 
   const compressImage = (base64Str: string): Promise<string> => {
     return new Promise((resolve) => {
@@ -250,6 +260,17 @@ const ReportForm: React.FC<ReportFormProps> = ({ projects, vehicles, initialData
               className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg px-4 py-3 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-teal outline-none dark:[color-scheme:dark] cursor-pointer"
             />
           </div>
+        </div>
+
+        {/* Buscador de Obra */}
+        <div>
+            <input
+                type="text"
+                placeholder="Buscar obra por nombre o número..."
+                value={projectSearch}
+                onChange={e => setProjectSearch(e.target.value)}
+                className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg px-4 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-teal outline-none"
+            />
         </div>
 
         <div className="bg-gray-50 dark:bg-gray-900/30 p-4 rounded-lg border border-gray-200 dark:border-gray-700 space-y-4">
