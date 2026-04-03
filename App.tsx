@@ -364,39 +364,56 @@ const App: React.FC = () => {
       // Separamos los datos pesados (Reports y History) de la configuración ligera
       const { reports, dailyOrgHistory, ...coreData } = dataToSave;
       
-      const batch = db.batch();
       const rootRef = db.collection(collectionName).doc(docId);
       
+      let currentBatch = db.batch();
+      let operationCount = 0;
+
+      const commitBatchIfNeeded = async () => {
+          if (operationCount >= 450) {
+              await currentBatch.commit();
+              currentBatch = db.batch();
+              operationCount = 0;
+          }
+      };
+      
       // 1. Guardar documento raíz (configuración, techs, projects, etc.)
-      batch.set(rootRef, coreData);
+      currentBatch.set(rootRef, coreData);
+      operationCount++;
 
       // 2. Guardar Reports en subcolección 'shards' (Chunking)
-      const CHUNK_SIZE_REPORTS = 10;
+      const CHUNK_SIZE_REPORTS = 100; // Aumentado para reducir el número de documentos
       const reportsRef = rootRef.collection('reports_shards');
       
       for (let i = 0; i < reports.length; i += CHUNK_SIZE_REPORTS) {
+          await commitBatchIfNeeded();
           const chunk = reports.slice(i, i + CHUNK_SIZE_REPORTS);
           const chunkRef = reportsRef.doc(`chunk_${Math.floor(i / CHUNK_SIZE_REPORTS)}`);
-          batch.set(chunkRef, { items: chunk });
+          currentBatch.set(chunkRef, { items: chunk });
+          operationCount++;
       }
 
       // 3. Guardar Historial en subcolección 'history_shards'
       if (dailyOrgHistory) {
           const historyKeys = Object.keys(dailyOrgHistory);
-          const CHUNK_SIZE_HISTORY = 5; 
+          const CHUNK_SIZE_HISTORY = 30; // Aumentado
           const historyRef = rootRef.collection('history_shards');
           
           for (let i = 0; i < historyKeys.length; i += CHUNK_SIZE_HISTORY) {
+              await commitBatchIfNeeded();
               const keysChunk = historyKeys.slice(i, i + CHUNK_SIZE_HISTORY);
               const chunkObj: any = {};
               keysChunk.forEach(k => chunkObj[k] = dailyOrgHistory[k]);
               
               const chunkRef = historyRef.doc(`chunk_${Math.floor(i / CHUNK_SIZE_HISTORY)}`);
-              batch.set(chunkRef, { items: chunkObj });
+              currentBatch.set(chunkRef, { items: chunkObj });
+              operationCount++;
           }
       }
 
-      await batch.commit();
+      if (operationCount > 0) {
+          await currentBatch.commit();
+      }
   };
 
   // FUNCION BACKUP DIARIO (AUTOMATICO)

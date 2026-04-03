@@ -545,8 +545,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
           const fb = (window as any).firebase;
           if (!fb) return;
           const db = fb.app().firestore();
-          // Removing orderBy just to be safe against index errors for now, client side sort is fine for 15 items
-          const snapshot = await db.collection('jdg_teleco_backups').limit(20).get();
+          // Fetch all backup root documents (they are lightweight since heavy data is in subcollections)
+          const snapshot = await db.collection('jdg_teleco_backups').get();
           
           const list: any[] = [];
           snapshot.forEach((doc: any) => {
@@ -611,15 +611,18 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
               const db = fb.app().firestore();
               const reportsRef = db.collection("jdg_teleco").doc("main_db").collection("reports");
               
-              // Subir reportes restaurados uno a uno (Firestore se encarga de sobrescribir por ID)
+              // Subir reportes restaurados usando múltiples batches si es necesario
               if (restoredData.reports && restoredData.reports.length > 0) {
-                  const batch = db.batch();
-                  // Limitamos a 500 por batch (límite de Firestore)
-                  const reportsToSync = restoredData.reports.slice(0, 450); 
-                  reportsToSync.forEach(r => {
-                      batch.set(reportsRef.doc(r.id), r);
-                  });
-                  await batch.commit();
+                  const reportsToSync = restoredData.reports;
+                  const batchSize = 450;
+                  for (let i = 0; i < reportsToSync.length; i += batchSize) {
+                      const batch = db.batch();
+                      const currentBatch = reportsToSync.slice(i, i + batchSize);
+                      currentBatch.forEach(r => {
+                          batch.set(reportsRef.doc(r.id), r);
+                      });
+                      await batch.commit();
+                  }
               }
           }
 
