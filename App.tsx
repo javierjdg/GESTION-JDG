@@ -364,6 +364,20 @@ const App: React.FC = () => {
       // Separamos los datos pesados (Reports y History) de la configuración ligera
       const { reports, dailyOrgHistory, ...coreData } = dataToSave;
       
+      // Limpiar datos pesados (imágenes base64) antes de guardar en la nube
+      const cleanedReports = reports.map(r => {
+          if (r.tickets && r.tickets.some(t => t.data && t.data.length > 1000)) {
+              return {
+                  ...r,
+                  tickets: r.tickets.map(t => ({
+                      ...t,
+                      data: t.driveUrl?.includes('✅') ? '' : t.data
+                  }))
+              };
+          }
+          return r;
+      });
+      
       const rootRef = db.collection(collectionName).doc(docId);
       
       let currentBatch = db.batch();
@@ -382,12 +396,12 @@ const App: React.FC = () => {
       operationCount++;
 
       // 2. Guardar Reports en subcolección 'shards' (Chunking)
-      const CHUNK_SIZE_REPORTS = 100; // Aumentado para reducir el número de documentos
+      const CHUNK_SIZE_REPORTS = 25; // Reducido para evitar límite de 1MB por documento
       const reportsRef = rootRef.collection('reports_shards');
       
-      for (let i = 0; i < reports.length; i += CHUNK_SIZE_REPORTS) {
+      for (let i = 0; i < cleanedReports.length; i += CHUNK_SIZE_REPORTS) {
           await commitBatchIfNeeded();
-          const chunk = reports.slice(i, i + CHUNK_SIZE_REPORTS);
+          const chunk = cleanedReports.slice(i, i + CHUNK_SIZE_REPORTS);
           const chunkRef = reportsRef.doc(`chunk_${Math.floor(i / CHUNK_SIZE_REPORTS)}`);
           currentBatch.set(chunkRef, { items: chunk });
           operationCount++;
