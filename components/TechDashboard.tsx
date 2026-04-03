@@ -80,19 +80,30 @@ const TechDashboard: React.FC<TechDashboardProps> = ({ reports, projects, onNewR
 
   // Agrupación por SEMANAS (Para gastos y horas normales)
   const summariesByWeek = useMemo(() => {
-    const groups: Record<string, { regHours: number, otNorm: number, otNoct: number, otFinde: number, totalExpenses: number }> = {};
+    const groups: Record<string, { label: string, timestamp: number, regHours: number, otNorm: number, otNoct: number, otFinde: number, totalExpenses: number }> = {};
     reports.forEach(r => {
-        const week = getWeekRange(r.date);
-        if (!groups[week]) groups[week] = { regHours: 0, otNorm: 0, otNoct: 0, otFinde: 0, totalExpenses: 0 };
-        groups[week].regHours += calculateDuration(r.startTime, r.endTime);
-        const ot = r.overtimeHours || 0;
-        if (r.overtimeType === 'NORMAL') groups[week].otNorm += ot;
-        else if (r.overtimeType === 'NOCTURNA') groups[week].otNoct += ot;
-        else if (r.overtimeType === 'FINDE SEMANA') groups[week].otFinde += ot;
+        const d = new Date(r.date);
+        const day = d.getDay(); 
+        const diff = d.getDate() - day + (day === 0 ? -6 : 1); 
+        const monday = new Date(d);
+        monday.setDate(diff);
+        const sunday = new Date(monday);
+        sunday.setDate(monday.getDate() + 6);
         
-        groups[week].totalExpenses += r.expenses.food + r.expenses.gas + r.expenses.parking + r.expenses.others;
+        const formatDate = (date: Date) => date.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' });
+        const label = `${formatDate(monday)} - ${formatDate(sunday)}`;
+        const key = monday.toISOString().split('T')[0]; // YYYY-MM-DD
+
+        if (!groups[key]) groups[key] = { label, timestamp: monday.getTime(), regHours: 0, otNorm: 0, otNoct: 0, otFinde: 0, totalExpenses: 0 };
+        groups[key].regHours += calculateDuration(r.startTime, r.endTime);
+        const ot = r.overtimeHours || 0;
+        if (r.overtimeType === 'NORMAL') groups[key].otNorm += ot;
+        else if (r.overtimeType === 'NOCTURNA') groups[key].otNoct += ot;
+        else if (r.overtimeType === 'FINDE SEMANA') groups[key].otFinde += ot;
+        
+        groups[key].totalExpenses += r.expenses.food + r.expenses.gas + r.expenses.parking + r.expenses.others;
     });
-    return Object.entries(groups).sort((a, b) => b[0].localeCompare(a[0]));
+    return Object.values(groups).sort((a, b) => b.timestamp - a.timestamp);
   }, [reports]);
 
   // Agrupación por MESES (Para historial de horas extra)
@@ -218,9 +229,9 @@ const TechDashboard: React.FC<TechDashboardProps> = ({ reports, projects, onNewR
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100 dark:divide-gray-800 bg-white dark:bg-gray-900/30">
-                        {summariesByWeek.map(([week, data]) => (
-                            <tr key={`hours-${week}`} className="hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors">
-                                <td className="px-3 py-3 text-[10px] font-mono text-gray-500 dark:text-gray-400">{week}</td>
+                        {summariesByWeek.map((data) => (
+                            <tr key={`hours-${data.timestamp}`} className="hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors">
+                                <td className="px-3 py-3 text-[10px] font-mono text-gray-500 dark:text-gray-400">{data.label}</td>
                                 <td className="px-2 py-3 text-center text-xs text-gray-900 dark:text-white font-bold">{data.regHours.toFixed(1)}h</td>
                                 <td className="px-2 py-3 text-center text-xs text-yellow-600 dark:text-yellow-500">{data.otNorm > 0 ? `${data.otNorm}h` : '-'}</td>
                                 <td className="px-2 py-3 text-center text-xs text-brand-teal">{data.otNoct > 0 ? `${data.otNoct}h` : '-'}</td>
@@ -238,13 +249,13 @@ const TechDashboard: React.FC<TechDashboardProps> = ({ reports, projects, onNewR
                 <ChartPieIcon className="w-4 h-4" /> Gastos Semanales
             </h4>
             <div className="space-y-3 max-h-[250px] overflow-y-auto pr-2 custom-scrollbar">
-                {summariesByWeek.map(([week, data]) => (
-                    <div key={`exp-${week}`} className="flex justify-between items-center bg-gray-50 dark:bg-gray-950/80 px-4 py-4 rounded-xl border border-gray-200 dark:border-gray-800 group hover:border-brand-teal dark:hover:border-brand-lime/30 transition-all">
+                {summariesByWeek.map((data) => (
+                    <div key={`exp-${data.timestamp}`} className="flex justify-between items-center bg-gray-50 dark:bg-gray-950/80 px-4 py-4 rounded-xl border border-gray-200 dark:border-gray-800 group hover:border-brand-teal dark:hover:border-brand-lime/30 transition-all">
                         <div className="flex items-center gap-3">
                             <div className="p-2 bg-white dark:bg-gray-800 rounded-lg text-gray-400 dark:text-gray-500 group-hover:text-brand-teal dark:group-hover:text-brand-lime border border-gray-100 dark:border-gray-700">
                                 <CalendarIcon className="w-4 h-4" />
                             </div>
-                            <span className="text-xs text-gray-600 dark:text-gray-300 font-bold font-mono">{week}</span>
+                            <span className="text-xs text-gray-600 dark:text-gray-300 font-bold font-mono">{data.label}</span>
                         </div>
                         <span className="text-sm font-black text-brand-teal dark:text-brand-lime">{data.totalExpenses.toFixed(2)} €</span>
                     </div>
