@@ -619,7 +619,7 @@ const App: React.FC = () => {
     }, 1500);
   };
 
-  const saveReport = async (report: WorkReport) => {
+  const saveReport = async (report: WorkReport, shouldRedirect: boolean = true) => {
     // Evitamos window.confirm bloqueante si es posible, o lo manejamos rápido
     const isDuplicate = data.reports.some(r => 
         r.technician === currentUser && 
@@ -631,69 +631,73 @@ const App: React.FC = () => {
         if (!window.confirm(`AVISO: Ya existe un parte a tu nombre para el ${report.date}.\n¿Quieres añadir otro?`)) return;
     }
 
-    const finalReport = { ...report, technician: currentUser };
+    const finalReport = { ...report, technician: report.technician || currentUser };
     
     isSyncingRef.current = true;
     isInternalUpdate.current = false;
 
-    if (finalReport.tickets && finalReport.tickets.length > 0) {
-      setIsUploadingTickets(true);
-      toast.info("Subiendo tickets a Drive...");
-      for (let i = 0; i < finalReport.tickets.length; i++) {
-        const ticket = finalReport.tickets[i];
-        if (ticket.driveUrl && ticket.driveUrl.includes('✅')) continue; 
+    try {
+        if (finalReport.tickets && finalReport.tickets.length > 0) {
+          setIsUploadingTickets(true);
+          toast.info("Subiendo tickets a Drive...");
+          for (let i = 0; i < finalReport.tickets.length; i++) {
+            const ticket = finalReport.tickets[i];
+            if (ticket.driveUrl && ticket.driveUrl.includes('✅')) continue; 
 
-        try {
-          await fetch(GOOGLE_DRIVE_WEBHOOK, {
-            method: 'POST',
-            mode: 'no-cors',
-            body: JSON.stringify({
-              technician: currentUser,
-              base64: ticket.data, 
-              filename: `TICKET_${ticket.type.toUpperCase().replace(/\s+/g, '_')}_${finalReport.date}_${i+1}.jpg`,
-              reportDate: finalReport.date 
-            })
-          });
-          finalReport.tickets[i].driveUrl = '✅ Subido y Organizado';
-          finalReport.tickets[i].data = ''; // Limpiar base64 para liberar espacio
-        } catch (e) {
-          console.error("Error Drive:", e);
-          finalReport.tickets[i].driveUrl = '❌ Error';
+            try {
+              await fetch(GOOGLE_DRIVE_WEBHOOK, {
+                method: 'POST',
+                mode: 'no-cors',
+                body: JSON.stringify({
+                  technician: currentUser,
+                  base64: ticket.data, 
+                  filename: `TICKET_${ticket.type.toUpperCase().replace(/\s+/g, '_')}_${finalReport.date}_${i+1}.jpg`,
+                  reportDate: finalReport.date 
+                })
+              });
+              finalReport.tickets[i].driveUrl = '✅ Subido y Organizado';
+              finalReport.tickets[i].data = ''; // Limpiar base64 para liberar espacio
+            } catch (e) {
+              console.error("Error Drive:", e);
+              finalReport.tickets[i].driveUrl = '❌ Error';
+            }
+          }
+          setIsUploadingTickets(false);
         }
-      }
-      setIsUploadingTickets(false);
-    }
 
-    setData(prev => {
-      const existingIndex = prev.reports.findIndex(r => r.id === finalReport.id);
-      let updatedReports;
-      if (existingIndex >= 0) {
-        updatedReports = [...prev.reports];
-        updatedReports[existingIndex] = finalReport;
-      } else {
-        updatedReports = [finalReport, ...prev.reports];
-      }
-      return { ...prev, reports: updatedReports };
-    });
+        setData(prev => {
+          const existingIndex = prev.reports.findIndex(r => r.id === finalReport.id);
+          let updatedReports;
+          if (existingIndex >= 0) {
+            updatedReports = [...prev.reports];
+            updatedReports[existingIndex] = finalReport;
+          } else {
+            updatedReports = [finalReport, ...prev.reports];
+          }
+          return { ...prev, reports: updatedReports };
+        });
 
-    if (isCloudConnected) {
-        try {
-            const fb = (window as any).firebase;
-            const db = fb.app().firestore();
-            const firestorePayload = JSON.parse(JSON.stringify(finalReport));
-            await db.collection("jdg_teleco").doc("main_db").collection("reports").doc(finalReport.id).set(firestorePayload);
-            toast.success("Parte guardado en la nube");
-        } catch (e: any) {
-            console.error("Firebase error", e);
-            toast.error("Error al sincronizar con la nube");
+        if (isCloudConnected) {
+            try {
+                const fb = (window as any).firebase;
+                const db = fb.app().firestore();
+                const firestorePayload = JSON.parse(JSON.stringify(finalReport));
+                await db.collection("jdg_teleco").doc("main_db").collection("reports").doc(finalReport.id).set(firestorePayload);
+                toast.success("Parte guardado en la nube");
+            } catch (e: any) {
+                console.error("Firebase error", e);
+                toast.error("Error al sincronizar con la nube");
+            }
+        } else {
+            toast.success("Parte guardado localmente");
         }
-    } else {
-        toast.success("Parte guardado localmente");
+    } finally {
+        isSyncingRef.current = false;
+        if (shouldRedirect) {
+            setEditingReport(null);
+            setView('dashboard');
+        }
     }
-
-    setTimeout(() => { isSyncingRef.current = false; }, 2000);
-    setEditingReport(null);
-    setView('dashboard');
   };
 
   // Manejo de actualización de Daily Organization (GUARDADO MANUAL)
@@ -869,7 +873,7 @@ const App: React.FC = () => {
           )}
           {view === 'admin' && (
             <motion.div key="admin" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }}>
-              <AdminPanel data={data} setData={(updater) => { isSyncingRef.current = true; isInternalUpdate.current = false; setData(updater); setTimeout(() => {isSyncingRef.current = false;}, 2000); }} onGoToVacations={() => setView('vacations')} onDeleteReport={deleteReport} onManualBackup={performManualBackup} />
+              <AdminPanel data={data} setData={(updater) => { isSyncingRef.current = true; isInternalUpdate.current = false; setData(updater); setTimeout(() => {isSyncingRef.current = false;}, 2000); }} onGoToVacations={() => setView('vacations')} onDeleteReport={deleteReport} onManualBackup={performManualBackup} onUpdateReport={saveReport} />
             </motion.div>
           )}
         </AnimatePresence>

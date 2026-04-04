@@ -11,6 +11,7 @@ interface AdminPanelProps {
   onGoToVacations?: () => void;
   onDeleteReport: (id: string) => void;
   onManualBackup?: () => void;
+  onUpdateReport: (report: WorkReport, shouldRedirect: boolean) => Promise<void>;
 }
 
 // Helpers for calculations
@@ -114,7 +115,7 @@ const MapComponent = ({ projects }: { projects: ProjectData[] }) => {
   ) : <div className="w-full h-[600px] bg-gray-100 dark:bg-gray-800 flex items-center justify-center rounded-xl border border-gray-200 dark:border-gray-700">Cargando mapa...</div>;
 };
 
-const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations, onDeleteReport, onManualBackup }) => {
+const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations, onDeleteReport, onManualBackup, onUpdateReport }) => {
   const [tab, setTab] = useState<'techs' | 'projects' | 'budgets' | 'reports' | 'settings' | 'daily' | 'vehicles' | 'expenses' | 'map' | 'overtime'>('reports');
   const [reportViewMode, setReportViewMode] = useState<'list' | 'by_project' | 'by_hours' | 'overtime'>('list');
   const [expandedReportId, setExpandedReportId] = useState<string | null>(null);
@@ -986,11 +987,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                           </div>
                           <div className="flex gap-2">
                             <button onClick={() => { setReportViewMode('list'); setExpandedReportId(r.id); }} className="text-brand-teal hover:underline text-sm font-bold">Ver Parte</button>
-                            <button onClick={() => {
-                              setData(prev => ({
-                                ...prev,
-                                reports: prev.reports.map(rep => rep.id === r.id ? { ...rep, overtimeStatus: 'validated' } : rep)
-                              }));
+                            <button onClick={async () => {
+                              await onUpdateReport({ ...r, overtimeStatus: 'validated' }, false);
                             }} className="bg-green-600 text-white px-3 py-1 rounded text-sm font-bold">Validar</button>
                           </div>
                         </div>
