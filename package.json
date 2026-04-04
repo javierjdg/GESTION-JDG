@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@react-google-maps/api": "^2.20.8",
     "lucide-react": "^0.555.0",
     "motion": "^12.38.0",
     "react": "^19.2.0",
@@ -16,6 +17,7 @@
     "sonner": "^2.0.7"
   },
   "devDependencies": {
+    "@types/google.maps": "^3.58.1",
     "@types/node": "^22.14.0",
     "@vitejs/plugin-react": "^5.0.0",
     "typescript": "~5.8.2",

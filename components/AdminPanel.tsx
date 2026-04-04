@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { GoogleMap, Marker, useJsApiLoader, InfoWindow } from '@react-google-maps/api';
 import { toast } from 'sonner';
 import { AppData, TechUser, WorkReport, ProjectData, Budget } from '../App';
-import { TrashIcon, PlusIcon, DownloadIcon, UserIcon, TruckIcon, FileTextIcon, FilterIcon, EditIcon, SaveIcon, XIcon, LockIcon, UploadIcon, CloudIcon, CalendarIcon, ChartPieIcon, ClockIcon, EyeIcon, AlertIcon, ChevronDownIcon, BriefcaseIcon, SearchIcon, CheckCircleIcon } from './icons';
+import { TrashIcon, PlusIcon, DownloadIcon, UserIcon, TruckIcon, FileTextIcon, FilterIcon, EditIcon, SaveIcon, XIcon, LockIcon, UploadIcon, CloudIcon, CalendarIcon, ChartPieIcon, ClockIcon, EyeIcon, AlertIcon, ChevronDownIcon, BriefcaseIcon, SearchIcon, CheckCircleIcon, MapIcon } from './icons';
 import DailyOrganization, { DailyOrgData } from './DailyOrganization';
 
 interface AdminPanelProps {
@@ -54,8 +55,67 @@ const getDaysDiff = (dateStr?: string) => {
     return Math.max(0, Math.floor(diffTime / (1000 * 60 * 60 * 24)));
 };
 
+const MapComponent = ({ projects }: { projects: ProjectData[] }) => {
+  const { isLoaded } = useJsApiLoader({
+    id: 'google-map-script',
+    googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ''
+  });
+
+  const [markers, setMarkers] = useState<any[]>([]);
+  const [selectedMarker, setSelectedMarker] = useState<any | null>(null);
+
+  useEffect(() => {
+    if (isLoaded && window.google) {
+      const geocoder = new window.google.maps.Geocoder();
+      const newMarkers: any[] = [];
+      projects.forEach(p => {
+        if (p.location) {
+          geocoder.geocode({ address: p.location }, (results, status) => {
+            if (status === 'OK' && results && results[0]) {
+              newMarkers.push({ id: p.id, position: results[0].geometry.location, name: p.name });
+              if (newMarkers.length === projects.filter(p => p.location).length) setMarkers([...newMarkers]);
+            }
+          });
+        }
+      });
+    }
+  }, [isLoaded, projects]);
+
+  return isLoaded ? (
+    <GoogleMap mapContainerStyle={{ width: '100%', height: '600px' }} center={{ lat: 40.416775, lng: -3.703790 }} zoom={6}>
+      {markers.map(m => (
+        <Marker 
+          key={m.id} 
+          position={m.position} 
+          title={m.name} 
+          onClick={() => setSelectedMarker(m)}
+        />
+      ))}
+      {selectedMarker && (
+        <InfoWindow
+          position={selectedMarker.position}
+          onCloseClick={() => setSelectedMarker(null)}
+        >
+          <div className="p-2 text-gray-900">
+            <h3 className="font-bold text-lg text-gray-900">{selectedMarker.name}</h3>
+            <p className="text-sm text-gray-700">Ubicación: {projects.find(p => p.id === selectedMarker.id)?.location}</p>
+            <button 
+              className="mt-2 text-blue-600 underline text-sm font-medium"
+              onClick={() => {
+                window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(projects.find(p => p.id === selectedMarker.id)?.location || '')}`, '_blank');
+              }}
+            >
+              Cómo llegar (Google Maps)
+            </button>
+          </div>
+        </InfoWindow>
+      )}
+    </GoogleMap>
+  ) : <div className="w-full h-[600px] bg-gray-100 dark:bg-gray-800 flex items-center justify-center rounded-xl border border-gray-200 dark:border-gray-700">Cargando mapa...</div>;
+};
+
 const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations, onDeleteReport, onManualBackup }) => {
-  const [tab, setTab] = useState<'techs' | 'projects' | 'budgets' | 'reports' | 'settings' | 'daily' | 'vehicles' | 'expenses'>('reports');
+  const [tab, setTab] = useState<'techs' | 'projects' | 'budgets' | 'reports' | 'settings' | 'daily' | 'vehicles' | 'expenses' | 'map'>('reports');
   const [reportViewMode, setReportViewMode] = useState<'list' | 'by_project' | 'by_hours'>('list');
   const [expandedReportId, setExpandedReportId] = useState<string | null>(null);
   const [newItemName, setNewItemName] = useState('');
@@ -84,7 +144,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
   const [projectForm, setProjectForm] = useState<ProjectData>({
     id: '', name: '', client: '', budgetNum: '', valuation: 'POR HORAS',
     responsibleTech: '', startDate: '', isFinished: false, isInvoiced: false,
-    hasWarning: false, warningDate: '', notes: ''
+    hasWarning: false, warningDate: '', notes: '', location: ''
   });
   const [isEditingProject, setIsEditingProject] = useState(false);
   const [idMode, setIdMode] = useState<'AUTO' | 'MANUAL'>('AUTO');
@@ -381,7 +441,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
 
   const editProject = (p: ProjectData) => { setProjectForm(p); setIsEditingProject(true); setIdMode('AUTO'); window.scrollTo({ top: 0, behavior: 'smooth' }); };
   const deleteProject = (id: string) => { if (!window.confirm("¿Eliminar obra?")) return; setData(prev => ({ ...prev, projectsDetailed: prev.projectsDetailed.filter(p => p.id !== id) })); };
-  const resetProjectForm = () => { setProjectForm({ id: '', name: '', client: '', budgetNum: '', valuation: 'POR HORAS', responsibleTech: '', startDate: '', isFinished: false, isInvoiced: false, hasWarning: false, warningDate: '', notes: '' }); setIsEditingProject(false); setIdMode('AUTO'); };
+  const resetProjectForm = () => { setProjectForm({ id: '', name: '', client: '', budgetNum: '', valuation: 'POR HORAS', responsibleTech: '', startDate: '', isFinished: false, isInvoiced: false, hasWarning: false, warningDate: '', notes: '', location: '' }); setIsEditingProject(false); setIdMode('AUTO'); };
 
   const handleDelete = (type: 'techs' | 'vehicles', index: number) => {
     if (!window.confirm(`¿Eliminar elemento?`)) return;
@@ -882,6 +942,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
         <button onClick={() => setTab('vehicles')} className={`px-4 md:px-6 py-4 font-medium flex items-center gap-2 whitespace-nowrap transition-colors ${tab === 'vehicles' ? 'text-brand-teal dark:text-brand-teal border-b-2 border-brand-teal dark:border-brand-teal bg-white dark:bg-brand-panel' : 'text-gray-500 dark:text-gray-400'}`}><TruckIcon className="w-4 h-4" /> Vehículos</button>
         <button onClick={() => setTab('daily')} className={`px-4 md:px-6 py-4 font-medium flex items-center gap-2 whitespace-nowrap transition-colors ${tab === 'daily' ? 'text-brand-teal dark:text-brand-teal border-b-2 border-brand-teal dark:border-brand-teal bg-white dark:bg-brand-panel' : 'text-gray-500 dark:text-gray-400'}`}><CalendarIcon className="w-4 h-4" /> Org. Diaria</button>
         <button onClick={() => setTab('settings')} className={`px-4 md:px-6 py-4 font-medium flex items-center gap-2 whitespace-nowrap transition-colors ${tab === 'settings' ? 'text-brand-teal dark:text-brand-teal border-b-2 border-brand-teal dark:border-brand-teal bg-white dark:bg-brand-panel' : 'text-gray-500 dark:text-gray-400'}`}><LockIcon className="w-4 h-4" /> Configuración</button>
+        <button onClick={() => setTab('map')} className={`px-4 md:px-6 py-4 font-medium flex items-center gap-2 whitespace-nowrap transition-colors ${tab === 'map' ? 'text-brand-teal dark:text-brand-teal border-b-2 border-brand-teal dark:border-brand-teal bg-white dark:bg-brand-panel' : 'text-gray-500 dark:text-gray-400'}`}><MapIcon className="w-4 h-4" /> Mapa Obras</button>
       </div>
 
       <div className="p-6">
@@ -1440,6 +1501,11 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                         </div>
 
                         <div className="mt-4">
+                             <label className="block text-[10px] text-gray-500 uppercase font-black mb-1">Ubicación (Ciudad/Pueblo)</label>
+                             <input type="text" value={projectForm.location || ''} onChange={e => setProjectForm({...projectForm, location: e.target.value})} className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-xl p-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none" placeholder="Ej: Madrid, Barcelona..." />
+                        </div>
+
+                        <div className="mt-4">
                              <label className="block text-[10px] text-gray-500 uppercase font-black mb-1">Notas / Observaciones</label>
                              <textarea rows={2} value={projectForm.notes} onChange={e => setProjectForm({...projectForm, notes: e.target.value})} className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-xl p-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none" placeholder="Detalles extra de la obra..."></textarea>
                         </div>
@@ -1488,6 +1554,37 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
             </div>
         )}
 
+        {tab === 'map' && (
+            <div className="bg-white dark:bg-brand-panel rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 overflow-hidden min-h-[600px] transition-colors duration-300 p-6">
+                <h3 className="text-gray-900 dark:text-white font-black uppercase text-lg tracking-widest mb-6 flex items-center gap-2">
+                    <MapIcon className="w-6 h-6 text-brand-teal" /> Mapa de Obras Activas
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div className="md:col-span-1 space-y-4 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
+                        {data.projectsDetailed.filter(p => !p.isFinished && p.location).length === 0 ? (
+                            <p className="text-gray-500 text-sm">No hay obras activas con ubicación definida.</p>
+                        ) : (
+                            data.projectsDetailed.filter(p => !p.isFinished && p.location).map(p => (
+                                <div key={p.id} className="bg-gray-50 dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700">
+                                    <h4 className="font-bold text-gray-900 dark:text-white">{p.name}</h4>
+                                    <p className="text-xs text-gray-500 dark:text-gray-400">{p.location}</p>
+                                </div>
+                            ))
+                        )}
+                    </div>
+                    <div className="md:col-span-2">
+                        {data.projectsDetailed.filter(p => !p.isFinished && p.location).length > 0 ? (
+                            <MapComponent projects={data.projectsDetailed.filter(p => !p.isFinished && p.location)} />
+                        ) : (
+                            <div className="w-full h-[600px] bg-gray-100 dark:bg-gray-800 flex items-center justify-center rounded-xl border border-gray-200 dark:border-gray-700">
+                                <p className="text-gray-500">Mapa no disponible</p>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </div>
+        )}
+        
         {tab === 'daily' && (
              <DailyOrganization 
                 data={data.dailyOrg} 

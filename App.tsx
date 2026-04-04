@@ -86,6 +86,7 @@ export interface ProjectData {
   hasWarning?: boolean; // Nuevo campo para check de aviso
   warningDate?: string; // Fecha en la que se activó el aviso
   notes: string;
+  location?: string; // Ciudad o pueblo para el mapa
 }
 
 export interface Budget {
