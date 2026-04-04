@@ -108,7 +108,7 @@ const TechDashboard: React.FC<TechDashboardProps> = ({ reports, projects, onNewR
 
   // Agrupación por MESES (Para historial de horas extra)
   const summariesByMonth = useMemo(() => {
-      const groups: Record<string, { label: string, total: number, norm: number, noct: number, finde: number }> = {};
+      const groups: Record<string, { label: string, total: number, norm: number, noct: number, finde: number, allValidated: boolean }> = {};
       
       reports.forEach(r => {
           if (!r.overtimeHours || r.overtimeHours === 0) return;
@@ -117,11 +117,13 @@ const TechDashboard: React.FC<TechDashboardProps> = ({ reports, projects, onNewR
           const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`; // YYYY-MM para ordenar
           const label = getMonthYearLabel(r.date);
 
-          if (!groups[key]) groups[key] = { label, total: 0, norm: 0, noct: 0, finde: 0 };
+          if (!groups[key]) groups[key] = { label, total: 0, norm: 0, noct: 0, finde: 0, allValidated: true };
 
           const ot = r.overtimeHours;
           groups[key].total += ot;
           
+          if (r.overtimeStatus !== 'validated') groups[key].allValidated = false;
+
           if (r.overtimeType === 'NORMAL') groups[key].norm += ot;
           else if (r.overtimeType === 'NOCTURNA') groups[key].noct += ot;
           else if (r.overtimeType === 'FINDE SEMANA') groups[key].finde += ot;
@@ -196,7 +198,7 @@ const TechDashboard: React.FC<TechDashboardProps> = ({ reports, projects, onNewR
                     <div key={`ot-${key}`} className="bg-gray-50 dark:bg-gray-950/80 px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-800 group hover:border-yellow-500/50 transition-all">
                         <div className="flex justify-between items-center mb-1">
                             <span className="text-xs text-gray-600 dark:text-gray-300 font-black uppercase">{data.label}</span>
-                            <span className="text-lg font-black text-yellow-600 dark:text-yellow-500">{data.total}h</span>
+                            <span className={`text-lg font-black ${data.allValidated ? 'text-green-500' : 'text-yellow-600 dark:text-yellow-500'}`}>{data.total}h</span>
                         </div>
                         <div className="flex justify-between text-[9px] text-gray-400 font-mono uppercase">
                             <span>Norm: <b className="text-gray-600 dark:text-gray-400">{data.norm}</b></span>

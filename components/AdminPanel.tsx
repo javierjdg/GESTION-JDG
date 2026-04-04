@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { GoogleMap, Marker, useJsApiLoader, InfoWindow } from '@react-google-maps/api';
 import { toast } from 'sonner';
 import { AppData, TechUser, WorkReport, ProjectData, Budget } from '../App';
-import { TrashIcon, PlusIcon, DownloadIcon, UserIcon, TruckIcon, FileTextIcon, FilterIcon, EditIcon, SaveIcon, XIcon, LockIcon, UploadIcon, CloudIcon, CalendarIcon, ChartPieIcon, ClockIcon, EyeIcon, AlertIcon, ChevronDownIcon, BriefcaseIcon, SearchIcon, CheckCircleIcon, MapIcon } from './icons';
+import { TrashIcon, PlusIcon, DownloadIcon, UserIcon, TruckIcon, FileTextIcon, FilterIcon, EditIcon, SaveIcon, XIcon, LockIcon, UploadIcon, CloudIcon, CalendarIcon, ChartPieIcon, ClockIcon, EyeIcon, AlertIcon, ChevronDownIcon, ChevronRightIcon, BriefcaseIcon, SearchIcon, CheckCircleIcon, MapIcon } from './icons';
 import DailyOrganization, { DailyOrgData } from './DailyOrganization';
 
 interface AdminPanelProps {
@@ -115,9 +115,10 @@ const MapComponent = ({ projects }: { projects: ProjectData[] }) => {
 };
 
 const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations, onDeleteReport, onManualBackup }) => {
-  const [tab, setTab] = useState<'techs' | 'projects' | 'budgets' | 'reports' | 'settings' | 'daily' | 'vehicles' | 'expenses' | 'map'>('reports');
-  const [reportViewMode, setReportViewMode] = useState<'list' | 'by_project' | 'by_hours'>('list');
+  const [tab, setTab] = useState<'techs' | 'projects' | 'budgets' | 'reports' | 'settings' | 'daily' | 'vehicles' | 'expenses' | 'map' | 'overtime'>('reports');
+  const [reportViewMode, setReportViewMode] = useState<'list' | 'by_project' | 'by_hours' | 'overtime'>('list');
   const [expandedReportId, setExpandedReportId] = useState<string | null>(null);
+  const [showValidatedOvertime, setShowValidatedOvertime] = useState(false);
   const [newItemName, setNewItemName] = useState('');
   const [newTechPwd, setNewTechPwd] = useState('');
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
@@ -929,20 +930,20 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
               <button onClick={(e) => { e.stopPropagation(); const link = document.createElement('a'); link.href = selectedImage.data; link.download = `TICKET_${selectedImage.type.toUpperCase()}.jpg`; link.click(); }} className="bg-brand-teal text-white p-3 rounded-full shadow-xl"><DownloadIcon className="w-6 h-6" /></button>
               <button className="bg-white/10 text-white p-3 rounded-full" onClick={() => setSelectedImage(null)}><XIcon className="w-6 h-6" /></button>
           </div>
-          <img src={selectedImage.data} className="max-w-full max-h-[85vh] object-contain rounded-lg shadow-2xl border border-white/10" />
+          {selectedImage.data && <img src={selectedImage.data} className="max-w-full max-h-[85vh] object-contain rounded-lg shadow-2xl border border-white/10" />}
         </div>
       )}
 
       <div className="flex border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-brand-dark overflow-x-auto transition-colors duration-300">
         <button onClick={() => setTab('reports')} className={`px-4 md:px-6 py-4 font-medium flex items-center gap-2 whitespace-nowrap transition-colors ${tab === 'reports' ? 'text-brand-teal dark:text-brand-lime border-b-2 border-brand-teal dark:border-brand-lime bg-white dark:bg-brand-panel' : 'text-gray-500 dark:text-gray-400'}`}><FileTextIcon className="w-4 h-4" /> Base de Datos</button>
         <button onClick={() => setTab('expenses')} className={`px-4 md:px-6 py-4 font-medium flex items-center gap-2 whitespace-nowrap transition-colors ${tab === 'expenses' ? 'text-brand-teal dark:text-brand-lime border-b-2 border-brand-teal dark:border-brand-lime bg-white dark:bg-brand-panel' : 'text-gray-500 dark:text-gray-400'}`}><ChartPieIcon className="w-4 h-4" /> Gastos</button>
-        <button onClick={() => setTab('projects')} className={`px-4 md:px-6 py-4 font-medium flex items-center gap-2 whitespace-nowrap transition-colors ${tab === 'projects' ? 'text-brand-teal dark:text-brand-teal border-b-2 border-brand-teal dark:border-brand-teal bg-white dark:bg-brand-panel' : 'text-gray-500 dark:text-gray-400'}`}><BriefcaseIcon className="w-4 h-4" /> Gestión Obras</button>
         <button onClick={() => setTab('budgets')} className={`px-4 md:px-6 py-4 font-medium flex items-center gap-2 whitespace-nowrap transition-colors ${tab === 'budgets' ? 'text-brand-teal dark:text-brand-teal border-b-2 border-brand-teal dark:border-brand-teal bg-white dark:bg-brand-panel' : 'text-gray-500 dark:text-gray-400'}`}><FileTextIcon className="w-4 h-4" /> Presupuestos</button>
+        <button onClick={() => setTab('projects')} className={`px-4 md:px-6 py-4 font-medium flex items-center gap-2 whitespace-nowrap transition-colors ${tab === 'projects' ? 'text-brand-teal dark:text-brand-teal border-b-2 border-brand-teal dark:border-brand-teal bg-white dark:bg-brand-panel' : 'text-gray-500 dark:text-gray-400'}`}><BriefcaseIcon className="w-4 h-4" /> Gestión Obras</button>
+        <button onClick={() => setTab('daily')} className={`px-4 md:px-6 py-4 font-medium flex items-center gap-2 whitespace-nowrap transition-colors ${tab === 'daily' ? 'text-brand-teal dark:text-brand-teal border-b-2 border-brand-teal dark:border-brand-teal bg-white dark:bg-brand-panel' : 'text-gray-500 dark:text-gray-400'}`}><CalendarIcon className="w-4 h-4" /> Org. Diaria</button>
+        <button onClick={() => setTab('map')} className={`px-4 md:px-6 py-4 font-medium flex items-center gap-2 whitespace-nowrap transition-colors ${tab === 'map' ? 'text-brand-teal dark:text-brand-teal border-b-2 border-brand-teal dark:border-brand-teal bg-white dark:bg-brand-panel' : 'text-gray-500 dark:text-gray-400'}`}><MapIcon className="w-4 h-4" /> Mapa Obras</button>
         <button onClick={() => setTab('techs')} className={`px-4 md:px-6 py-4 font-medium flex items-center gap-2 whitespace-nowrap transition-colors ${tab === 'techs' ? 'text-brand-teal dark:text-brand-teal border-b-2 border-brand-teal dark:border-brand-teal bg-white dark:bg-brand-panel' : 'text-gray-500 dark:text-gray-400'}`}><UserIcon className="w-4 h-4" /> Técnicos</button>
         <button onClick={() => setTab('vehicles')} className={`px-4 md:px-6 py-4 font-medium flex items-center gap-2 whitespace-nowrap transition-colors ${tab === 'vehicles' ? 'text-brand-teal dark:text-brand-teal border-b-2 border-brand-teal dark:border-brand-teal bg-white dark:bg-brand-panel' : 'text-gray-500 dark:text-gray-400'}`}><TruckIcon className="w-4 h-4" /> Vehículos</button>
-        <button onClick={() => setTab('daily')} className={`px-4 md:px-6 py-4 font-medium flex items-center gap-2 whitespace-nowrap transition-colors ${tab === 'daily' ? 'text-brand-teal dark:text-brand-teal border-b-2 border-brand-teal dark:border-brand-teal bg-white dark:bg-brand-panel' : 'text-gray-500 dark:text-gray-400'}`}><CalendarIcon className="w-4 h-4" /> Org. Diaria</button>
         <button onClick={() => setTab('settings')} className={`px-4 md:px-6 py-4 font-medium flex items-center gap-2 whitespace-nowrap transition-colors ${tab === 'settings' ? 'text-brand-teal dark:text-brand-teal border-b-2 border-brand-teal dark:border-brand-teal bg-white dark:bg-brand-panel' : 'text-gray-500 dark:text-gray-400'}`}><LockIcon className="w-4 h-4" /> Configuración</button>
-        <button onClick={() => setTab('map')} className={`px-4 md:px-6 py-4 font-medium flex items-center gap-2 whitespace-nowrap transition-colors ${tab === 'map' ? 'text-brand-teal dark:text-brand-teal border-b-2 border-brand-teal dark:border-brand-teal bg-white dark:bg-brand-panel' : 'text-gray-500 dark:text-gray-400'}`}><MapIcon className="w-4 h-4" /> Mapa Obras</button>
       </div>
 
       <div className="p-6">
@@ -953,6 +954,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                 <button onClick={() => setReportViewMode('list')} className={`px-3 py-1.5 text-xs font-bold rounded flex items-center gap-1 ${reportViewMode === 'list' ? 'bg-brand-teal dark:bg-brand-lime text-white dark:text-brand-dark' : 'text-gray-500 dark:text-gray-400'}`}><FileTextIcon className="w-3 h-3" /> Listado</button>
                 <button onClick={() => setReportViewMode('by_project')} className={`px-3 py-1.5 text-xs font-bold rounded flex items-center gap-1 ${reportViewMode === 'by_project' ? 'bg-brand-teal text-white' : 'text-gray-500 dark:text-gray-400'}`}><ChartPieIcon className="w-3 h-3" /> Por Obra</button>
                 <button onClick={() => setReportViewMode('by_hours')} className={`px-3 py-1.5 text-xs font-bold rounded flex items-center gap-1 ${reportViewMode === 'by_hours' ? 'bg-brand-teal text-white' : 'text-gray-500 dark:text-gray-400'}`}><ClockIcon className="w-3 h-3" /> Horas</button>
+                <button onClick={() => setReportViewMode('overtime')} className={`px-3 py-1.5 text-xs font-bold rounded flex items-center gap-1 ${reportViewMode === 'overtime' ? 'bg-brand-teal text-white' : 'text-gray-500 dark:text-gray-400'}`}><ClockIcon className="w-3 h-3" /> Horas Extra</button>
             </div>
             
             <div className="bg-gray-50 dark:bg-gray-900/50 p-4 rounded-lg border border-gray-200 dark:border-gray-700 mb-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -967,6 +969,61 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                  <input type="date" value={filterDateStart} onChange={e => setFilterDateStart(e.target.value)} className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-sm rounded-lg p-2.5 text-gray-900 dark:text-white outline-none dark:[color-scheme:dark]" />
                  <input type="date" value={filterDateEnd} onChange={e => setFilterDateEnd(e.target.value)} className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-sm rounded-lg p-2.5 text-gray-900 dark:text-white outline-none dark:[color-scheme:dark]" />
             </div>
+            {reportViewMode === 'overtime' && (
+              <div>
+                <h3 className="text-lg font-bold text-gray-800 dark:text-white mb-4">Revisión de Horas Extra</h3>
+                <div className="space-y-4">
+                  {data.reports
+                    .filter(r => r.overtimeHours > 0 && r.overtimeStatus !== 'validated')
+                    .map(r => {
+                      console.log('Report ID:', r.id, 'Status:', r.overtimeStatus);
+                      return (
+                      <div key={r.id} className="p-4 rounded-lg border bg-orange-50 dark:bg-orange-900/20 border-orange-200 dark:border-orange-800">
+                        <div className="flex justify-between items-center">
+                          <div>
+                            <p className="font-bold text-gray-800 dark:text-white">{r.technician} - {r.projectNum}</p>
+                            <p className="text-sm text-gray-600 dark:text-gray-300">{r.date} | {r.overtimeHours}h ({r.overtimeType})</p>
+                          </div>
+                          <div className="flex gap-2">
+                            <button onClick={() => { setReportViewMode('list'); setExpandedReportId(r.id); }} className="text-brand-teal hover:underline text-sm font-bold">Ver Parte</button>
+                            <button onClick={() => {
+                              setData(prev => ({
+                                ...prev,
+                                reports: prev.reports.map(rep => rep.id === r.id ? { ...rep, overtimeStatus: 'validated' } : rep)
+                              }));
+                            }} className="bg-green-600 text-white px-3 py-1 rounded text-sm font-bold">Validar</button>
+                          </div>
+                        </div>
+                      </div>
+                    )})}
+                </div>
+                
+                <div className="mt-8">
+                  <button onClick={() => setShowValidatedOvertime(!showValidatedOvertime)} className="flex items-center gap-2 text-gray-700 dark:text-gray-200 font-bold hover:text-brand-teal">
+                    {showValidatedOvertime ? <ChevronDownIcon className="w-5 h-5" /> : <ChevronRightIcon className="w-5 h-5" />}
+                    Horas Validadas
+                  </button>
+                  {showValidatedOvertime && (
+                    <div className="space-y-4 mt-4">
+                      {data.reports
+                        .filter(r => r.overtimeHours > 0 && r.overtimeStatus === 'validated')
+                        .map(r => (
+                          <div key={r.id} className="p-4 rounded-lg border bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800">
+                            <div className="flex justify-between items-center">
+                              <div>
+                                <p className="font-bold text-gray-800 dark:text-white">{r.technician} - {r.projectNum}</p>
+                                <p className="text-sm text-gray-600 dark:text-gray-300">{r.date} | {r.overtimeHours}h ({r.overtimeType})</p>
+                              </div>
+                              <button onClick={() => { setReportViewMode('list'); setExpandedReportId(r.id); }} className="text-brand-teal hover:underline text-sm font-bold">Ver Parte</button>
+                            </div>
+                          </div>
+                        ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+            
             {reportViewMode === 'list' && (
                 <>
                     <div className="flex flex-col sm:flex-row justify-between gap-4 mb-6">
@@ -1024,7 +1081,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                                                                 const isReportExpanded = expandedReportId === report.id;
                                                                 return (
                                                                     <React.Fragment key={report.id}>
-                                                                        <tr className="bg-white dark:bg-gray-800/20 hover:bg-gray-50 dark:hover:bg-gray-800/60 transition-colors group">
+                                                                        <tr className={`${report.overtimeHours > 0 ? (report.overtimeStatus === 'validated' ? 'bg-green-50 dark:bg-green-900/20' : 'bg-orange-50 dark:bg-orange-900/20') : 'bg-white dark:bg-gray-800/20'} hover:bg-gray-50 dark:hover:bg-gray-800/60 transition-colors group`}>
                                                                             <td className="px-3 py-3">
                                                                                 <button onClick={() => toggleExpandReport(report.id)} className="text-gray-400 hover:text-brand-teal transition-colors"><EyeIcon className="w-4 h-4" /></button>
                                                                             </td>
@@ -1035,7 +1092,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                                                                                 {resolveProjectFullName(report.projectNum) !== report.projectNum && (<span className="font-normal text-gray-500 dark:text-gray-400 ml-1">- {resolveProjectFullName(report.projectNum)}</span>)}
                                                                             </td>
                                                                             <td className="px-3 py-3 text-[11px] text-gray-500 italic max-w-xs truncate">{report.description || 'Sin descripción'}</td>
-                                                                            <td className="px-3 py-3 text-right font-black text-xs text-yellow-600 dark:text-yellow-500">{report.overtimeHours > 0 ? `+${report.overtimeHours}h` : '-'}</td>
+                                                                            <td className="px-3 py-3 text-right font-black text-xs text-yellow-600 dark:text-yellow-500">{report.overtimeHours > 0 ? `+${report.overtimeHours}h (${report.overtimeStatus === 'validated' ? 'Validado' : 'Pendiente'})` : '-'}</td>
                                                                             <td className="px-3 py-3 text-right text-xs font-black text-gray-800 dark:text-white">{total > 0 ? `${total.toFixed(2)}€` : '-'}</td>
                                                                             <td className="px-3 py-3 text-center">
                                                                                 <button onClick={() => onDeleteReport(report.id)} className="text-red-500/30 hover:text-red-500 transition-colors"><TrashIcon className="w-4 h-4" /></button>
@@ -1067,7 +1124,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                                                                                             <div className="flex gap-3 mt-1 overflow-x-auto pb-2 custom-scrollbar">
                                                                                                 {report.tickets?.map((t, idx) => (
                                                                                                     <div key={idx} className="relative group/img flex-shrink-0">
-                                                                                                        <img src={t.data} onClick={() => setSelectedImage({data: t.data, type: t.type})} className="w-20 h-20 object-cover rounded-lg cursor-pointer hover:border-brand-lime border-2 border-gray-300 dark:border-gray-800 transition-all" />
+                                                                                                        {t.data && <img src={t.data} onClick={() => setSelectedImage({data: t.data, type: t.type})} className="w-20 h-20 object-cover rounded-lg cursor-pointer hover:border-brand-lime border-2 border-gray-300 dark:border-gray-800 transition-all" />}
                                                                                                         <div className="absolute top-0 right-0 p-1 opacity-0 group-hover/img:opacity-100 transition-opacity"><span className="bg-brand-teal text-[8px] font-bold px-1 rounded text-white">{t.type}</span></div>
                                                                                                     </div>
                                                                                                 ))}

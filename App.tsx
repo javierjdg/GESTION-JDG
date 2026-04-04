@@ -40,6 +40,7 @@ export interface WorkReport {
   endTime: string;
   overtimeHours: number;
   overtimeType: 'NORMAL' | 'NOCTURNA' | 'FINDE SEMANA';
+  overtimeStatus?: 'pending' | 'validated' | 'none';
   description: string;
   vehicle: string;
   isDriver: boolean;

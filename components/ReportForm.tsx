@@ -20,6 +20,7 @@ const ReportForm: React.FC<ReportFormProps> = ({ projects, vehicles, initialData
     endTime: '15:30',
     overtimeHours: 0,
     overtimeType: 'NORMAL' as 'NORMAL' | 'NOCTURNA' | 'FINDE SEMANA',
+    overtimeStatus: 'none' as 'pending' | 'validated' | 'none',
     description: '',
     vehicle: '',
     isDriver: false,
@@ -51,6 +52,7 @@ const ReportForm: React.FC<ReportFormProps> = ({ projects, vehicles, initialData
         endTime: initialData.endTime,
         overtimeHours: initialData.overtimeHours || 0,
         overtimeType: initialData.overtimeType || 'NORMAL',
+        overtimeStatus: initialData.overtimeStatus || 'none',
         description: initialData.description,
         vehicle: initialData.vehicle,
         isDriver: initialData.isDriver,
@@ -137,6 +139,7 @@ const ReportForm: React.FC<ReportFormProps> = ({ projects, vehicles, initialData
       endTime: formData.endTime,
       overtimeHours: formData.overtimeHours,
       overtimeType: formData.overtimeType,
+      overtimeStatus: formData.overtimeHours > 0 ? (formData.overtimeStatus === 'validated' ? 'validated' : 'pending') : 'none',
       description: formData.description,
       vehicle: formData.vehicle,
       isDriver: formData.isDriver,
@@ -451,7 +454,7 @@ const ReportForm: React.FC<ReportFormProps> = ({ projects, vehicles, initialData
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                   {formData.tickets.map((t) => (
                     <div key={t.timestamp} className="relative aspect-square bg-gray-100 dark:bg-gray-950 rounded-lg overflow-hidden border border-gray-300 dark:border-gray-700 group">
-                      <img src={t.data} className="w-full h-full object-cover opacity-90 dark:opacity-70 group-hover:opacity-100 transition-opacity" />
+                      {t.data && <img src={t.data} className="w-full h-full object-cover opacity-90 dark:opacity-70 group-hover:opacity-100 transition-opacity" />}
                       <div className="absolute top-1 left-1 bg-brand-teal/80 px-1.5 py-0.5 rounded text-[8px] font-bold text-white shadow-sm">{t.type}</div>
                       <button onClick={() => removeTicket(t.timestamp)} className="absolute top-1 right-1 bg-red-600/80 hover:bg-red-600 p-1.5 rounded-full text-white shadow-lg backdrop-blur-sm transition-all"><TrashIcon className="w-3 h-3"/></button>
                     </div>
