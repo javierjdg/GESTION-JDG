@@ -986,7 +986,23 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                             <p className="text-sm text-gray-600 dark:text-gray-300">{r.date} | {r.overtimeHours}h ({r.overtimeType})</p>
                           </div>
                           <div className="flex gap-2">
-                            <button onClick={() => { setReportViewMode('list'); setExpandedReportId(r.id); }} className="text-brand-teal hover:underline text-sm font-bold">Ver Parte</button>
+                            <button onClick={() => { 
+                              const week = getWeekRange(r.date);
+                              console.log('Expanding week:', week, 'Report ID:', r.id);
+                              // Limpiamos filtros para asegurar que el parte sea visible
+                              setFilterTech('');
+                              setFilterProject('');
+                              setFilterDateStart('');
+                              setFilterDateEnd('');
+                              setExpandedWeeks(prev => {
+                                const next = { ...prev, [week]: true };
+                                console.log('New expandedWeeks:', next);
+                                return next;
+                              });
+                              setReportViewMode('list'); 
+                              setExpandedReportId(r.id); 
+                              console.log('Setting expandedReportId to:', r.id);
+                            }} className="text-brand-teal hover:underline text-sm font-bold">Ver Parte</button>
                             <button onClick={async () => {
                               await onUpdateReport({ ...r, overtimeStatus: 'validated' }, false);
                             }} className="bg-green-600 text-white px-3 py-1 rounded text-sm font-bold">Validar</button>
@@ -1012,7 +1028,19 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                                 <p className="font-bold text-gray-800 dark:text-white">{r.technician} - {r.projectNum}</p>
                                 <p className="text-sm text-gray-600 dark:text-gray-300">{r.date} | {r.overtimeHours}h ({r.overtimeType})</p>
                               </div>
-                              <button onClick={() => { setReportViewMode('list'); setExpandedReportId(r.id); }} className="text-brand-teal hover:underline text-sm font-bold">Ver Parte</button>
+                              <button onClick={() => { 
+                                const week = getWeekRange(r.date);
+                                console.log('Expanding week (validated):', week, 'Report ID:', r.id);
+                                // Limpiamos filtros para asegurar que el parte sea visible
+                                setFilterTech('');
+                                setFilterProject('');
+                                setFilterDateStart('');
+                                setFilterDateEnd('');
+                                setExpandedWeeks(prev => ({ ...prev, [week]: true }));
+                                setReportViewMode('list'); 
+                                setExpandedReportId(r.id); 
+                                console.log('Setting expandedReportId (validated) to:', r.id);
+                              }} className="text-brand-teal hover:underline text-sm font-bold">Ver Parte</button>
                             </div>
                           </div>
                         ))}
