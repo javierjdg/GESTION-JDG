@@ -150,7 +150,7 @@ const MapComponent = ({ projects }: { projects: ProjectData[] }) => {
 
 const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations, onDeleteReport, onManualBackup, onUpdateReport }) => {
   const [tab, setTab] = useState<'techs' | 'projects' | 'budgets' | 'reports' | 'settings' | 'daily' | 'vehicles' | 'expenses' | 'map' | 'overtime'>('reports');
-  const [reportViewMode, setReportViewMode] = useState<'list' | 'by_project' | 'by_hours' | 'overtime'>('list');
+  const [reportViewMode, setReportViewMode] = useState<'list' | 'by_project' | 'by_hours' | 'overtime' | 'tech_overtime'>('list');
   const [expandedReportId, setExpandedReportId] = useState<string | null>(null);
   const [showValidatedOvertime, setShowValidatedOvertime] = useState(false);
   const [showPendingOvertime, setShowPendingOvertime] = useState(true);
@@ -1015,6 +1015,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                 <button onClick={() => setReportViewMode('by_project')} className={`px-3 py-1.5 text-xs font-bold rounded flex items-center gap-1 ${reportViewMode === 'by_project' ? 'bg-brand-teal text-white' : 'text-gray-500 dark:text-gray-400'}`}><ChartPieIcon className="w-3 h-3" /> Por Obra</button>
                 <button onClick={() => setReportViewMode('by_hours')} className={`px-3 py-1.5 text-xs font-bold rounded flex items-center gap-1 ${reportViewMode === 'by_hours' ? 'bg-brand-teal text-white' : 'text-gray-500 dark:text-gray-400'}`}><ClockIcon className="w-3 h-3" /> Horas</button>
                 <button onClick={() => setReportViewMode('overtime')} className={`px-3 py-1.5 text-xs font-bold rounded flex items-center gap-1 ${reportViewMode === 'overtime' ? 'bg-brand-teal text-white' : 'text-gray-500 dark:text-gray-400'}`}><ClockIcon className="w-3 h-3" /> Horas Extra</button>
+                <button onClick={() => setReportViewMode('tech_overtime')} className={`px-3 py-1.5 text-xs font-bold rounded flex items-center gap-1 ${reportViewMode === 'tech_overtime' ? 'bg-brand-teal text-white' : 'text-gray-500 dark:text-gray-400'}`}><UserIcon className="w-3 h-3" /> Horas Extra Técnicos</button>
             </div>
             
             <div className="bg-gray-50 dark:bg-gray-900/50 p-4 rounded-lg border border-gray-200 dark:border-gray-700 mb-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -1136,7 +1137,75 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                 </div>
               </div>
             )}
-            
+
+            {reportViewMode === 'tech_overtime' && (
+              <div className="space-y-8">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-lg font-bold text-gray-800 dark:text-white flex items-center gap-2">
+                    <ClockIcon className="w-5 h-5 text-brand-teal" /> Historial Horas Extra por Técnico
+                  </h3>
+                </div>
+                <div className="grid grid-cols-1 gap-8">
+                  {data.technicians.map(tech => {
+                    // Agrupación por MESES para este técnico
+                    const techReports = data.reports.filter(r => r.technician === tech.name && r.overtimeHours > 0);
+                    if (techReports.length === 0) return null;
+
+                    const monthlyGroups: Record<string, { label: string, total: number, norm: number, noct: number, finde: number }> = {};
+                    techReports.forEach(r => {
+                      const date = new Date(r.date);
+                      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+                      const label = getMonthYearLabel(r.date);
+                      if (!monthlyGroups[key]) monthlyGroups[key] = { label, total: 0, norm: 0, noct: 0, finde: 0 };
+                      const ot = r.overtimeHours;
+                      monthlyGroups[key].total += ot;
+                      if (r.overtimeType === 'NORMAL') monthlyGroups[key].norm += ot;
+                      else if (r.overtimeType === 'NOCTURNA') monthlyGroups[key].noct += ot;
+                      else if (r.overtimeType === 'FINDE SEMANA') monthlyGroups[key].finde += ot;
+                    });
+
+                    const sortedMonths = Object.entries(monthlyGroups).sort((a, b) => b[0].localeCompare(a[0]));
+
+                    return (
+                      <div key={tech.id} className="bg-white dark:bg-gray-800/40 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden shadow-sm">
+                        <div className="bg-gray-50 dark:bg-gray-800 p-4 border-b border-gray-200 dark:border-gray-700 flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-full bg-brand-teal/10 flex items-center justify-center text-brand-teal font-bold">
+                            {tech.name.charAt(0)}
+                          </div>
+                          <h4 className="font-black text-gray-800 dark:text-white uppercase tracking-wider">{tech.name}</h4>
+                        </div>
+                        <div className="p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                          {sortedMonths.map(([monthKey, monthData]) => (
+                            <div key={monthKey} className="bg-brand-dark p-4 rounded-2xl border border-white/5 shadow-xl relative overflow-hidden group">
+                              <div className="absolute top-0 right-0 w-1 h-full bg-brand-teal opacity-40 group-hover:opacity-100 transition-opacity"></div>
+                              <div className="flex justify-between items-start mb-4">
+                                <h5 className="text-white font-black text-sm tracking-widest uppercase">{monthData.label}</h5>
+                                <span className="text-brand-lime font-black text-2xl tracking-tighter">{monthData.total}h</span>
+                              </div>
+                              <div className="grid grid-cols-3 gap-2">
+                                <div className="bg-white/5 p-2 rounded-lg text-center">
+                                  <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mb-1">Norm</p>
+                                  <p className="text-white font-black text-sm">{monthData.norm}</p>
+                                </div>
+                                <div className="bg-white/5 p-2 rounded-lg text-center">
+                                  <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mb-1">Noc</p>
+                                  <p className="text-white font-black text-sm">{monthData.noct}</p>
+                                </div>
+                                <div className="bg-white/5 p-2 rounded-lg text-center">
+                                  <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mb-1">Fin</p>
+                                  <p className="text-white font-black text-sm">{monthData.finde}</p>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             {reportViewMode === 'list' && (
                 <>
                     <div className="flex flex-col sm:flex-row justify-between gap-4 mb-6">
