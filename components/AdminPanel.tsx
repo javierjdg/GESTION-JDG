@@ -1,3 +1,4 @@
+/// <reference types="vite/client" />
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { GoogleMap, Marker, useJsApiLoader, InfoWindow } from '@react-google-maps/api';
 import { toast } from 'sonner';
@@ -1667,7 +1668,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                     </div>
 
                     {/* Categorized Lists */}
-                    {Object.entries(categorizedProjects).map(([key, list]) => {
+                    {Object.entries(categorizedProjects).map(([key, list]: [string, any]) => {
                         if (list.length === 0) return null;
                         const config: any = {
                             green: { label: 'Obras Activas (Recientes)', color: 'text-green-600', bg: 'bg-green-100', border: 'border-green-200' },
@@ -1688,7 +1689,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                                 </button>
                                 {isExpanded && (
                                     <div className="p-3 space-y-3 bg-gray-50 dark:bg-gray-900/20">
-                                        {list.map(p => renderProjectRow(p))}
+                                        {(list as any[]).map(p => renderProjectRow(p))}
                                     </div>
                                 )}
                             </div>

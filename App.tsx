@@ -492,9 +492,9 @@ const App: React.FC = () => {
 
     const timeoutId = setTimeout(() => {
         // Save to LocalStorage
+        let dataToSave = { ...data };
         try {
             // Limpiar datos pesados (imágenes base64) antes de guardar en localStorage
-            const dataToSave = { ...data };
             if (dataToSave.reports) {
                 dataToSave.reports = dataToSave.reports.map(r => {
                     if (r.tickets && r.tickets.some(t => t.data && t.data.length > 1000)) {
