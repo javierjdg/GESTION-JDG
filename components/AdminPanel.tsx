@@ -57,30 +57,62 @@ const getDaysDiff = (dateStr?: string) => {
 };
 
 const MapComponent = ({ projects }: { projects: ProjectData[] }) => {
-  const { isLoaded } = useJsApiLoader({
+  const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
+  
+  const { isLoaded, loadError } = useJsApiLoader({
     id: 'google-map-script',
-    googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ''
+    googleMapsApiKey: apiKey
   });
 
   const [markers, setMarkers] = useState<any[]>([]);
   const [selectedMarker, setSelectedMarker] = useState<any | null>(null);
 
   useEffect(() => {
-    if (isLoaded && window.google) {
+    if (isLoaded && window.google && apiKey) {
       const geocoder = new window.google.maps.Geocoder();
       const newMarkers: any[] = [];
-      projects.forEach(p => {
-        if (p.location) {
-          geocoder.geocode({ address: p.location }, (results, status) => {
-            if (status === 'OK' && results && results[0]) {
-              newMarkers.push({ id: p.id, position: results[0].geometry.location, name: p.name });
-              if (newMarkers.length === projects.filter(p => p.location).length) setMarkers([...newMarkers]);
+      const projectsWithLocation = projects.filter(p => p.location);
+      
+      if (projectsWithLocation.length === 0) return;
+
+      projectsWithLocation.forEach(p => {
+        geocoder.geocode({ address: p.location }, (results, status) => {
+          if (status === 'OK' && results && results[0]) {
+            newMarkers.push({ id: p.id, position: results[0].geometry.location, name: p.name });
+            if (newMarkers.length === projectsWithLocation.length) {
+              setMarkers([...newMarkers]);
             }
-          });
-        }
+          } else {
+            console.error(`Geocode failed for ${p.location}: ${status}`);
+          }
+        });
       });
     }
-  }, [isLoaded, projects]);
+  }, [isLoaded, projects, apiKey]);
+
+  if (!apiKey) {
+    return (
+      <div className="w-full h-[600px] bg-yellow-50 dark:bg-yellow-900/20 flex flex-col items-center justify-center rounded-xl border border-yellow-200 dark:border-yellow-800 p-6 text-center">
+        <AlertIcon className="w-12 h-12 text-yellow-500 mb-4" />
+        <h3 className="text-lg font-bold text-yellow-700 dark:text-yellow-400 mb-2">Falta la API Key de Google Maps</h3>
+        <p className="text-sm text-yellow-600 dark:text-yellow-300 max-w-md">
+          Para que el mapa funcione, debes configurar la variable <b>VITE_GOOGLE_MAPS_API_KEY</b> en los ajustes de la aplicación.
+        </p>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="w-full h-[600px] bg-red-50 dark:bg-red-900/20 flex flex-col items-center justify-center rounded-xl border border-red-200 dark:border-red-800 p-6 text-center">
+        <AlertIcon className="w-12 h-12 text-red-500 mb-4" />
+        <h3 className="text-lg font-bold text-red-700 dark:text-red-400 mb-2">Error al cargar el mapa</h3>
+        <p className="text-sm text-red-600 dark:text-red-300 max-w-md">
+          Hubo un problema al cargar Google Maps. Por favor, verifica que la API Key en la configuración sea correcta y tenga la facturación activada.
+        </p>
+      </div>
+    );
+  }
 
   return isLoaded ? (
     <GoogleMap mapContainerStyle={{ width: '100%', height: '600px' }} center={{ lat: 40.416775, lng: -3.703790 }} zoom={6}>
