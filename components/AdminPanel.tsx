@@ -152,6 +152,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
   const [reportViewMode, setReportViewMode] = useState<'list' | 'by_project' | 'by_hours' | 'overtime'>('list');
   const [expandedReportId, setExpandedReportId] = useState<string | null>(null);
   const [showValidatedOvertime, setShowValidatedOvertime] = useState(false);
+  const [showPendingOvertime, setShowPendingOvertime] = useState(true);
   const [newItemName, setNewItemName] = useState('');
   const [newTechPwd, setNewTechPwd] = useState('');
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
@@ -1004,50 +1005,78 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
             </div>
             {reportViewMode === 'overtime' && (
               <div>
-                <h3 className="text-lg font-bold text-gray-800 dark:text-white mb-4">Revisión de Horas Extra</h3>
-                <div className="space-y-4">
-                  {data.reports
-                    .filter(r => r.overtimeHours > 0 && r.overtimeStatus !== 'validated')
-                    .map(r => {
-                      console.log('Report ID:', r.id, 'Status:', r.overtimeStatus);
-                      return (
-                      <div key={r.id} className="p-4 rounded-lg border bg-orange-50 dark:bg-orange-900/20 border-orange-200 dark:border-orange-800">
-                        <div className="flex justify-between items-center">
-                          <div>
-                            <p className="font-bold text-gray-800 dark:text-white">{r.technician} - {r.projectNum}</p>
-                            <p className="text-sm text-gray-600 dark:text-gray-300">{r.date} | {r.overtimeHours}h ({r.overtimeType})</p>
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-lg font-bold text-gray-800 dark:text-white">Revisión de Horas Extra</h3>
+                  {data.reports.filter(r => r.overtimeHours > 0 && r.overtimeStatus !== 'validated').length > 0 && (
+                    <button 
+                      onClick={async () => {
+                        const pending = data.reports.filter(r => r.overtimeHours > 0 && r.overtimeStatus !== 'validated');
+                        if (window.confirm(`¿Validar los ${pending.length} partes pendientes?`)) {
+                          for (const r of pending) {
+                            await onUpdateReport({ ...r, overtimeStatus: 'validated' }, false);
+                          }
+                          toast.success(`${pending.length} partes validados`);
+                        }
+                      }}
+                      className="bg-brand-teal text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-teal-600 transition-colors"
+                    >
+                      Validar Todo
+                    </button>
+                  )}
+                </div>
+
+                <div className="mb-8">
+                  <button onClick={() => setShowPendingOvertime(!showPendingOvertime)} className="flex items-center gap-2 text-gray-700 dark:text-gray-200 font-bold hover:text-brand-teal">
+                    {showPendingOvertime ? <ChevronDownIcon className="w-5 h-5" /> : <ChevronRightIcon className="w-5 h-5" />}
+                    Horas por Validar ({data.reports.filter(r => r.overtimeHours > 0 && r.overtimeStatus !== 'validated').length})
+                  </button>
+                  
+                  {showPendingOvertime && (
+                    <div className="space-y-4 mt-4">
+                      {data.reports
+                        .filter(r => r.overtimeHours > 0 && r.overtimeStatus !== 'validated')
+                        .map(r => {
+                          console.log('Report ID:', r.id, 'Status:', r.overtimeStatus);
+                          return (
+                          <div key={r.id} className="p-4 rounded-lg border bg-orange-50 dark:bg-orange-900/20 border-orange-200 dark:border-orange-800">
+                            <div className="flex justify-between items-center">
+                              <div>
+                                <p className="font-bold text-gray-800 dark:text-white">{r.technician} - {r.projectNum}</p>
+                                <p className="text-sm text-gray-600 dark:text-gray-300">{r.date} | {r.overtimeHours}h ({r.overtimeType})</p>
+                              </div>
+                              <div className="flex gap-2">
+                                <button onClick={() => { 
+                                  const week = getWeekRange(r.date);
+                                  console.log('Expanding week:', week, 'Report ID:', r.id);
+                                  // Limpiamos filtros para asegurar que el parte sea visible
+                                  setFilterTech('');
+                                  setFilterProject('');
+                                  setFilterDateStart('');
+                                  setFilterDateEnd('');
+                                  setExpandedWeeks(prev => {
+                                    const next = { ...prev, [week]: true };
+                                    console.log('New expandedWeeks:', next);
+                                    return next;
+                                  });
+                                  setReportViewMode('list'); 
+                                  setExpandedReportId(r.id); 
+                                  console.log('Setting expandedReportId to:', r.id);
+                                }} className="text-brand-teal hover:underline text-sm font-bold">Ver Parte</button>
+                                <button onClick={async () => {
+                                  await onUpdateReport({ ...r, overtimeStatus: 'validated' }, false);
+                                }} className="bg-green-600 text-white px-3 py-1 rounded text-sm font-bold">Validar</button>
+                              </div>
+                            </div>
                           </div>
-                          <div className="flex gap-2">
-                            <button onClick={() => { 
-                              const week = getWeekRange(r.date);
-                              console.log('Expanding week:', week, 'Report ID:', r.id);
-                              // Limpiamos filtros para asegurar que el parte sea visible
-                              setFilterTech('');
-                              setFilterProject('');
-                              setFilterDateStart('');
-                              setFilterDateEnd('');
-                              setExpandedWeeks(prev => {
-                                const next = { ...prev, [week]: true };
-                                console.log('New expandedWeeks:', next);
-                                return next;
-                              });
-                              setReportViewMode('list'); 
-                              setExpandedReportId(r.id); 
-                              console.log('Setting expandedReportId to:', r.id);
-                            }} className="text-brand-teal hover:underline text-sm font-bold">Ver Parte</button>
-                            <button onClick={async () => {
-                              await onUpdateReport({ ...r, overtimeStatus: 'validated' }, false);
-                            }} className="bg-green-600 text-white px-3 py-1 rounded text-sm font-bold">Validar</button>
-                          </div>
-                        </div>
-                      </div>
-                    )})}
+                        )})}
+                    </div>
+                  )}
                 </div>
                 
                 <div className="mt-8">
                   <button onClick={() => setShowValidatedOvertime(!showValidatedOvertime)} className="flex items-center gap-2 text-gray-700 dark:text-gray-200 font-bold hover:text-brand-teal">
                     {showValidatedOvertime ? <ChevronDownIcon className="w-5 h-5" /> : <ChevronRightIcon className="w-5 h-5" />}
-                    Horas Validadas
+                    Horas Validadas ({data.reports.filter(r => r.overtimeHours > 0 && r.overtimeStatus === 'validated').length})
                   </button>
                   {showValidatedOvertime && (
                     <div className="space-y-4 mt-4">
