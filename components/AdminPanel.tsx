@@ -304,6 +304,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
     return (data.vacationRequests || []).filter(r => r.status === 'pending' || r.status === 'cancel_requested');
   }, [data.vacationRequests]);
 
+  const pendingOvertimeReports = useMemo(() => {
+    return data.reports.filter(r => r.overtimeHours > 0 && r.overtimeStatus !== 'validated');
+  }, [data.reports]);
+
   const upcomingAbsences = useMemo(() => {
     const today = new Date();
     today.setHours(0,0,0,0);
@@ -956,6 +960,27 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                 </div>
             </div>
             <button onClick={onGoToVacations} className="bg-orange-600 hover:bg-orange-500 text-white px-6 py-2 rounded-xl text-xs font-black uppercase tracking-widest shadow-lg">Revisar</button>
+        </div>
+      )}
+
+      {pendingOvertimeReports.length > 0 && (
+        <div className="bg-yellow-100 dark:bg-yellow-600/20 border-b border-yellow-200 dark:border-yellow-500/50 p-4 flex flex-col sm:flex-row items-center justify-between gap-4 animate-pulse-slow">
+            <div className="flex items-center gap-3">
+                <div className="bg-yellow-500 dark:bg-yellow-600 p-2 rounded-lg text-white"><ClockIcon className="w-5 h-5" /></div>
+                <div>
+                    <p className="text-yellow-800 dark:text-yellow-400 font-black uppercase text-xs tracking-widest">Horas Extra Pendientes</p>
+                    <p className="text-yellow-700 dark:text-yellow-200 text-sm">Tienes {pendingOvertimeReports.length} partes con horas extra pendientes de validar.</p>
+                </div>
+            </div>
+            <button 
+              onClick={() => {
+                setTab('reports');
+                setReportViewMode('overtime');
+              }} 
+              className="bg-yellow-600 hover:bg-yellow-500 text-white px-6 py-2 rounded-xl text-xs font-black uppercase tracking-widest shadow-lg"
+            >
+              Revisar Horas
+            </button>
         </div>
       )}
 
