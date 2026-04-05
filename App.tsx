@@ -109,6 +109,7 @@ export interface AppData {
   budgets: Budget[]; // Nueva colección de presupuestos
   vehicles: string[];
   reports: WorkReport[];
+  deletedReports?: WorkReport[]; // Papelera de reciclaje
   dailyOrg: DailyOrgData;
   dailyOrgHistory?: Record<string, DailyOrgData>; // Historial de organizaciones por fecha
   vacationRequests: VacationRequest[];
@@ -588,30 +589,44 @@ const App: React.FC = () => {
   };
 
   const deleteReport = async (reportId: string) => {
-    // Usamos toast.promise o similar para confirmación si fuera necesario, 
-    // pero por ahora mantendremos la lógica pero sin alert bloqueante al final
-    if (!window.confirm('¿Eliminar este parte permanentemente?')) return;
+    if (!window.confirm('¿Mover este parte a la papelera de reciclaje?')) return;
 
     isSyncingRef.current = true;
     isInternalUpdate.current = false;
 
+    const reportToDelete = data.reports.find(r => r.id === reportId);
+
     setData(prev => ({
         ...prev,
-        reports: prev.reports.filter(r => r.id !== reportId)
+        reports: prev.reports.filter(r => r.id !== reportId),
+        deletedReports: [
+            ...(prev.deletedReports || []),
+            ...(reportToDelete ? [{ ...reportToDelete, deletedAt: new Date().toISOString() }] : [])
+        ].slice(-50) // Mantener solo los últimos 50 borrados
     }));
 
     if (isCloudConnected) {
         try {
             const fb = (window as any).firebase;
             const db = fb.app().firestore();
+            // Borrar de la colección principal
             await db.collection("jdg_teleco").doc("main_db").collection("reports").doc(reportId).delete();
-            toast.success("Parte eliminado correctamente");
+            
+            // Opcional: Guardar en una colección de "papelera" en la nube
+            if (reportToDelete) {
+                await db.collection("jdg_teleco_trash").doc(reportId).set({
+                    ...reportToDelete,
+                    deletedAt: new Date().toISOString()
+                });
+            }
+            
+            toast.success("Parte movido a la papelera");
         } catch (e) {
             console.error("Error al borrar en la nube:", e);
             toast.error("Error al eliminar en la nube");
         }
     } else {
-        toast.success("Parte eliminado localmente");
+        toast.success("Parte movido a la papelera local");
     }
 
     setTimeout(() => {

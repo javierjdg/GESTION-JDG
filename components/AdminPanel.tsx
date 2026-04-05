@@ -3,7 +3,7 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { GoogleMap, Marker, useJsApiLoader, InfoWindow } from '@react-google-maps/api';
 import { toast } from 'sonner';
 import { AppData, TechUser, WorkReport, ProjectData, Budget } from '../App';
-import { TrashIcon, PlusIcon, DownloadIcon, UserIcon, TruckIcon, FileTextIcon, FilterIcon, EditIcon, SaveIcon, XIcon, LockIcon, UploadIcon, CloudIcon, CalendarIcon, ChartPieIcon, ClockIcon, EyeIcon, AlertIcon, ChevronDownIcon, ChevronRightIcon, BriefcaseIcon, SearchIcon, CheckCircleIcon, MapIcon } from './icons';
+import { TrashIcon, PlusIcon, DownloadIcon, UserIcon, TruckIcon, FileTextIcon, FilterIcon, EditIcon, SaveIcon, XIcon, LockIcon, UploadIcon, CloudIcon, CalendarIcon, ChartPieIcon, ClockIcon, EyeIcon, AlertIcon, ChevronDownIcon, ChevronRightIcon, BriefcaseIcon, SearchIcon, CheckCircleIcon, MapIcon, RefreshCwIcon, ShieldCheckIcon } from './icons';
 import DailyOrganization, { DailyOrgData } from './DailyOrganization';
 
 interface AdminPanelProps {
@@ -150,7 +150,7 @@ const MapComponent = ({ projects }: { projects: ProjectData[] }) => {
 
 const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations, onDeleteReport, onManualBackup, onUpdateReport }) => {
   const [tab, setTab] = useState<'techs' | 'projects' | 'budgets' | 'reports' | 'settings' | 'daily' | 'vehicles' | 'expenses' | 'map' | 'overtime'>('reports');
-  const [reportViewMode, setReportViewMode] = useState<'list' | 'by_project' | 'by_hours' | 'overtime' | 'tech_overtime'>('list');
+  const [reportViewMode, setReportViewMode] = useState<'list' | 'by_project' | 'by_hours' | 'overtime' | 'tech_overtime' | 'trash'>('list');
   const [expandedReportId, setExpandedReportId] = useState<string | null>(null);
   const [showValidatedOvertime, setShowValidatedOvertime] = useState(false);
   const [showPendingOvertime, setShowPendingOvertime] = useState(true);
@@ -170,6 +170,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
   // Backups State
   const [backupsList, setBackupsList] = useState<any[]>([]);
   const [isLoadingBackups, setIsLoadingBackups] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
   // Estado para controlar qué semanas están expandidas
   const [expandedWeeks, setExpandedWeeks] = useState<Record<string, boolean>>({});
@@ -639,6 +642,29 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
       reader.readAsText(file);
   };
 
+  const [isTestingConnection, setIsTestingConnection] = useState(false);
+
+  const testFirebaseConnection = async () => {
+      setIsTestingConnection(true);
+      try {
+          const fb = (window as any).firebase;
+          if (!fb) throw new Error("Firebase no inicializado");
+          const db = fb.app().firestore();
+          // Intentar leer un documento inexistente para forzar el check de permisos/conexión
+          await db.collection("jdg_teleco_test").doc("ping").get();
+          toast.success("Conexión con Firebase establecida correctamente.");
+      } catch (e: any) {
+          console.error(e);
+          if (e.message && e.message.includes("permission-denied")) {
+              toast.error("Error de permisos: Revisa las reglas de seguridad de Firestore.");
+          } else {
+              toast.error("Error de conexión: " + e.message);
+          }
+      } finally {
+          setIsTestingConnection(false);
+      }
+  };
+
   const fetchBackups = async () => {
       setIsLoadingBackups(true);
       try {
@@ -732,6 +758,57 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
           console.error("Restore error", e);
           toast.error("Error restaurando copia: " + e.message);
       }
+  };
+
+  const handleExportFullJSON = () => {
+    setIsExporting(true);
+    try {
+        const dataStr = JSON.stringify(data, null, 2);
+        const blob = new Blob([dataStr], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        const date = new Date().toISOString().split('T')[0];
+        link.href = url;
+        link.download = `JDG_TELECO_FULL_BACKUP_${date}.json`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        toast.success("Copia de seguridad JSON descargada.");
+    } catch (e) {
+        toast.error("Error al exportar JSON");
+    } finally {
+        setIsExporting(false);
+    }
+  };
+
+  const handleImportFullJSON = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!window.confirm("¿Estás seguro de que quieres importar este archivo? SOBREESCRIBIRÁ todos los datos actuales.")) {
+        e.target.value = '';
+        return;
+    }
+
+    setIsImporting(true);
+    const reader = new FileReader();
+    reader.onload = (event) => {
+        try {
+            const importedData = JSON.parse(event.target?.result as string);
+            // Validación básica
+            if (!importedData.technicians || !importedData.reports) {
+                throw new Error("Formato de archivo inválido");
+            }
+            setData(importedData);
+            toast.success("Datos importados correctamente.");
+        } catch (err) {
+            toast.error("Error al importar el archivo JSON.");
+        } finally {
+            setIsImporting(false);
+            if (fileInputRef.current) fileInputRef.current.value = '';
+        }
+    };
+    reader.readAsText(file);
   };
 
   const filteredReports = useMemo(() => {
@@ -1016,6 +1093,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                 <button onClick={() => setReportViewMode('by_hours')} className={`px-3 py-1.5 text-xs font-bold rounded flex items-center gap-1 ${reportViewMode === 'by_hours' ? 'bg-brand-teal text-white' : 'text-gray-500 dark:text-gray-400'}`}><ClockIcon className="w-3 h-3" /> Horas</button>
                 <button onClick={() => setReportViewMode('overtime')} className={`px-3 py-1.5 text-xs font-bold rounded flex items-center gap-1 ${reportViewMode === 'overtime' ? 'bg-brand-teal text-white' : 'text-gray-500 dark:text-gray-400'}`}><ClockIcon className="w-3 h-3" /> Horas Extra</button>
                 <button onClick={() => setReportViewMode('tech_overtime')} className={`px-3 py-1.5 text-xs font-bold rounded flex items-center gap-1 ${reportViewMode === 'tech_overtime' ? 'bg-brand-teal text-white' : 'text-gray-500 dark:text-gray-400'}`}><UserIcon className="w-3 h-3" /> Horas Extra Técnicos</button>
+                <button onClick={() => setReportViewMode('trash')} className={`px-3 py-1.5 text-xs font-bold rounded flex items-center gap-1 ${reportViewMode === 'trash' ? 'bg-red-600 text-white' : 'text-gray-500 dark:text-gray-400 hover:text-red-500'}`}><TrashIcon className="w-3 h-3" /> Papelera</button>
             </div>
             
             <div className="bg-gray-50 dark:bg-gray-900/50 p-4 rounded-lg border border-gray-200 dark:border-gray-700 mb-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -1793,6 +1871,59 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
             </div>
         )}
 
+        {tab === 'reports' && reportViewMode === 'trash' && (
+            <div className="space-y-4">
+                <div className="bg-red-50 dark:bg-red-900/20 p-4 rounded-xl border border-red-200 dark:border-red-800 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                        <TrashIcon className="w-5 h-5 text-red-600" />
+                        <div>
+                            <h3 className="font-bold text-red-800 dark:text-red-300">Papelera de Reciclaje</h3>
+                            <p className="text-xs text-red-600 dark:text-red-400">Los partes borrados se guardan aquí temporalmente (máx. 50).</p>
+                        </div>
+                    </div>
+                    <button onClick={() => setData(prev => ({ ...prev, deletedReports: [] }))} className="text-xs bg-red-600 text-white px-3 py-1.5 rounded-lg font-bold hover:bg-red-700 transition-colors">
+                        Vaciar Papelera
+                    </button>
+                </div>
+
+                {(!data.deletedReports || data.deletedReports.length === 0) ? (
+                    <div className="text-center py-20 bg-white dark:bg-brand-panel rounded-xl border border-gray-200 dark:border-gray-700">
+                        <TrashIcon className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+                        <p className="text-gray-500 font-bold">La papelera está vacía</p>
+                    </div>
+                ) : (
+                    <div className="grid grid-cols-1 gap-3">
+                        {[...data.deletedReports].reverse().map((r: any) => (
+                            <div key={r.id} className="bg-white dark:bg-brand-panel p-4 rounded-xl border border-gray-200 dark:border-gray-700 flex justify-between items-center shadow-sm">
+                                <div>
+                                    <div className="flex items-center gap-2 mb-1">
+                                        <span className="text-xs font-black text-brand-teal">{r.date}</span>
+                                        <span className="text-xs font-bold text-gray-400">•</span>
+                                        <span className="text-xs font-bold text-gray-700 dark:text-gray-300">{r.technician}</span>
+                                    </div>
+                                    <p className="text-sm font-bold text-gray-900 dark:text-white">{resolveProjectFullName(r.projectNum)}</p>
+                                    <p className="text-[10px] text-gray-400 uppercase tracking-widest mt-1 italic">Borrado el: {r.deletedAt ? new Date(r.deletedAt).toLocaleString() : 'N/A'}</p>
+                                </div>
+                                <button 
+                                    onClick={() => {
+                                        setData(prev => ({
+                                            ...prev,
+                                            reports: [r, ...prev.reports],
+                                            deletedReports: (prev.deletedReports || []).filter(dr => dr.id !== r.id)
+                                        }));
+                                        toast.success("Parte restaurado correctamente");
+                                    }}
+                                    className="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded-xl font-bold text-xs transition-all flex items-center gap-2"
+                                >
+                                    <RefreshCwIcon className="w-4 h-4" /> Restaurar
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+        )}
+
         {tab === 'map' && (
             <div className="bg-white dark:bg-brand-panel rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 overflow-hidden min-h-[600px] transition-colors duration-300 p-6">
                 <h3 className="text-gray-900 dark:text-white font-black uppercase text-lg tracking-widest mb-6 flex items-center gap-2">
@@ -1852,7 +1983,25 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                     <button onClick={savePasswords} className="mt-4 bg-brand-teal text-white px-6 py-2 rounded-lg font-bold shadow-lg hover:bg-teal-600 transition-colors">
                         Guardar Configuración
                     </button>
+                    <button onClick={testFirebaseConnection} disabled={isTestingConnection} className="mt-4 ml-4 bg-gray-200 dark:bg-gray-800 text-gray-700 dark:text-gray-300 px-6 py-2 rounded-lg font-bold shadow-md hover:bg-gray-300 dark:hover:bg-gray-700 transition-colors">
+                        {isTestingConnection ? 'Probando...' : 'Probar Conexión'}
+                    </button>
                     {pwdMsg && <p className="mt-2 text-green-600 font-bold text-sm animate-pulse">{pwdMsg}</p>}
+                </div>
+
+                <div className="bg-blue-50 dark:bg-blue-900/20 p-6 rounded-2xl border border-blue-200 dark:border-blue-800 shadow-xl">
+                    <h3 className="text-lg font-bold text-blue-800 dark:text-blue-300 mb-4 flex items-center gap-2">
+                        <ShieldCheckIcon className="w-5 h-5" /> Recomendaciones de Seguridad
+                    </h3>
+                    <div className="space-y-3 text-sm text-blue-700 dark:text-blue-400">
+                        <p>Para garantizar que sus datos estén 100% seguros, le recomendamos seguir estos pasos en su consola de Firebase:</p>
+                        <ul className="list-disc pl-5 space-y-2">
+                            <li><strong>Reglas de Seguridad:</strong> Configure reglas que solo permitan leer/escribir si el usuario está autenticado.</li>
+                            <li><strong>Backups Externos:</strong> Use el botón "Descargar JSON" semanalmente y guarde el archivo en un lugar seguro fuera de la nube.</li>
+                            <li><strong>Papelera:</strong> Los partes borrados se guardan en la pestaña "Papelera" de Reportes antes de eliminarse definitivamente.</li>
+                            <li><strong>Imágenes:</strong> Las fotos de los tickets se suben a Google Drive para no saturar la base de datos y tener un respaldo visual independiente.</li>
+                        </ul>
+                    </div>
                 </div>
 
                 <div className="bg-white dark:bg-gray-900/50 p-6 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-xl">
@@ -1860,30 +2009,67 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                         <CloudIcon className="w-5 h-5 text-brand-teal" /> Copias de Seguridad (Backups)
                     </h3>
                     
-                    <div className="flex gap-4 mb-6">
-                        <button onClick={onManualBackup} className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg font-bold text-sm shadow-md transition-colors flex items-center gap-2">
-                            <PlusIcon className="w-4 h-4" /> Crear Backup Manual
-                        </button>
-                        <button onClick={fetchBackups} className="bg-gray-200 dark:bg-gray-800 hover:bg-gray-300 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 px-4 py-2 rounded-lg font-bold text-sm shadow-md transition-colors flex items-center gap-2">
-                            <DownloadIcon className="w-4 h-4" /> Cargar Lista Backups
-                        </button>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                        <div className="space-y-4">
+                            <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">Opciones de Nube</p>
+                            <div className="flex flex-wrap gap-3">
+                                <button onClick={onManualBackup} className="bg-brand-teal hover:bg-teal-600 text-white px-4 py-2 rounded-xl font-bold text-xs shadow-md transition-all flex items-center gap-2">
+                                    <PlusIcon className="w-4 h-4" /> Crear Backup Nube
+                                </button>
+                                <button onClick={fetchBackups} className="bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 px-4 py-2 rounded-xl font-bold text-xs shadow-md transition-all flex items-center gap-2 border border-gray-200 dark:border-gray-700">
+                                    <DownloadIcon className="w-4 h-4" /> Ver Historial Nube
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div className="space-y-4">
+                            <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">Opciones Locales (Archivo)</p>
+                            <div className="flex flex-wrap gap-3">
+                                <button onClick={handleExportFullJSON} disabled={isExporting} className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-xl font-bold text-xs shadow-md transition-all flex items-center gap-2">
+                                    <DownloadIcon className="w-4 h-4" /> {isExporting ? 'Exportando...' : 'Descargar JSON'}
+                                </button>
+                                <label className="bg-purple-600 hover:bg-purple-500 text-white px-4 py-2 rounded-xl font-bold text-xs shadow-md transition-all flex items-center gap-2 cursor-pointer">
+                                    <UploadIcon className="w-4 h-4" /> {isImporting ? 'Importando...' : 'Importar JSON'}
+                                    <input type="file" ref={fileInputRef} onChange={handleImportFullJSON} accept=".json" className="hidden" />
+                                </label>
+                            </div>
+                        </div>
                     </div>
 
-                    {isLoadingBackups && <p className="text-sm text-gray-500 animate-pulse">Cargando copias de seguridad...</p>}
+                    <div className="bg-gray-50 dark:bg-gray-800/50 p-4 rounded-xl border border-gray-200 dark:border-gray-700 mb-6">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <div className={`w-3 h-3 rounded-full ${data.reports.length > 0 ? 'bg-green-500' : 'bg-yellow-500'} animate-pulse`}></div>
+                                <div>
+                                    <p className="text-sm font-bold text-gray-800 dark:text-white">Estado de la Base de Datos</p>
+                                    <p className="text-xs text-gray-500">{data.reports.length} partes registrados • {data.technicians.length} técnicos</p>
+                                </div>
+                            </div>
+                            <div className="text-right">
+                                <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">Última Sincronización</p>
+                                <p className="text-xs font-bold text-brand-teal">{new Date().toLocaleTimeString()}</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    {isLoadingBackups && <p className="text-sm text-gray-500 animate-pulse flex items-center gap-2"><ClockIcon className="w-4 h-4" /> Cargando copias de seguridad de la nube...</p>}
 
                     {!isLoadingBackups && backupsList.length > 0 && (
-                        <div className="space-y-2 max-h-60 overflow-y-auto pr-2 custom-scrollbar">
-                            {backupsList.map((bk) => (
-                                <div key={bk.id} className="flex justify-between items-center p-3 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
-                                    <div>
-                                        <p className="font-bold text-sm text-gray-800 dark:text-white">{bk.id}</p>
-                                        <p className="text-xs text-gray-500">{(bk.technicians || []).length} técnicos • {(bk.projectsDetailed || []).length} obras</p>
+                        <div className="space-y-3">
+                            <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Copias disponibles en Firestore</p>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-80 overflow-y-auto pr-2 custom-scrollbar">
+                                {backupsList.map((bk) => (
+                                    <div key={bk.id} className="flex justify-between items-center p-4 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm hover:border-brand-teal/30 transition-all">
+                                        <div>
+                                            <p className="font-bold text-sm text-gray-800 dark:text-white">{bk.id}</p>
+                                            <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">{(bk.technicians || []).length} técnicos • {(bk.projectsDetailed || []).length} obras</p>
+                                        </div>
+                                        <button onClick={() => restoreBackup(bk.id)} className="text-[10px] font-black uppercase tracking-widest bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border border-red-100 dark:border-red-800/50 px-4 py-2 rounded-lg hover:bg-red-600 hover:text-white transition-all">
+                                            Restaurar
+                                        </button>
                                     </div>
-                                    <button onClick={() => restoreBackup(bk.id)} className="text-xs bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 px-3 py-1.5 rounded font-bold hover:bg-red-200 dark:hover:bg-red-800/50 transition-colors">
-                                        Restaurar
-                                    </button>
-                                </div>
-                            ))}
+                                ))}
+                            </div>
                         </div>
                     )}
                 </div>
