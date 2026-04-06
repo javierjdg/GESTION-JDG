@@ -1,5 +1,5 @@
 /// <reference types="vite/client" />
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useTransition } from 'react';
 import { GoogleMap, Marker, useJsApiLoader, InfoWindow } from '@react-google-maps/api';
 import { toast } from 'sonner';
 import { AppData, TechUser, WorkReport, ProjectData, Budget } from '../App';
@@ -149,6 +149,7 @@ const MapComponent = ({ projects }: { projects: ProjectData[] }) => {
 };
 
 const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations, onDeleteReport, onManualBackup, onUpdateReport }) => {
+  const [isPending, startTransition] = useTransition();
   const [tab, setTab] = useState<'techs' | 'projects' | 'budgets' | 'reports' | 'settings' | 'daily' | 'vehicles' | 'expenses' | 'map' | 'overtime'>('reports');
   const [reportViewMode, setReportViewMode] = useState<'list' | 'by_project' | 'by_hours' | 'overtime' | 'tech_overtime' | 'trash'>('list');
   const [expandedReportId, setExpandedReportId] = useState<string | null>(null);
@@ -430,17 +431,19 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
           finalProject.warningDate = '';
       }
 
-      setData(prev => {
-          let updatedDetailed = [...(prev.projectsDetailed || [])];
-          if (isEditingProject) {
-              const idx = updatedDetailed.findIndex(p => p.id === finalProject.id);
-              if (idx >= 0) updatedDetailed[idx] = finalProject;
-          } else {
-              updatedDetailed.push(finalProject);
-          }
-          return { ...prev, projectsDetailed: updatedDetailed };
+      startTransition(() => {
+          setData(prev => {
+              let updatedDetailed = [...(prev.projectsDetailed || [])];
+              if (isEditingProject) {
+                  const idx = updatedDetailed.findIndex(p => p.id === finalProject.id);
+                  if (idx >= 0) updatedDetailed[idx] = finalProject;
+              } else {
+                  updatedDetailed.push(finalProject);
+              }
+              return { ...prev, projectsDetailed: updatedDetailed };
+          });
+          resetProjectForm();
       });
-      resetProjectForm();
   };
 
   const handleSaveBudget = () => {
@@ -449,33 +452,35 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
       let newProjectCreated = false;
       let newProjectId = '';
 
-      setData(prev => {
-          let updatedBudgets = [...(prev.budgets || [])];
-          const idx = updatedBudgets.findIndex(b => b.id === finalBudget.id);
-          if (idx >= 0) updatedBudgets[idx] = finalBudget;
-          else updatedBudgets = [finalBudget, ...updatedBudgets];
+      startTransition(() => {
+          setData(prev => {
+              let updatedBudgets = [...(prev.budgets || [])];
+              const idx = updatedBudgets.findIndex(b => b.id === finalBudget.id);
+              if (idx >= 0) updatedBudgets[idx] = finalBudget;
+              else updatedBudgets = [finalBudget, ...updatedBudgets];
 
-          let updatedProjects = [...prev.projectsDetailed];
-          if (finalBudget.isAccepted) {
-              newProjectId = generateNextProjectId();
-              const newProject: ProjectData = {
-                  id: newProjectId, name: finalBudget.name, client: finalBudget.client,
-                  budgetNum: finalBudget.budgetNum, valuation: 'PRESUPUESTO', responsibleTech: '',
-                  startDate: new Date().toISOString().split('T')[0], isFinished: false, isInvoiced: false,
-                  hasWarning: false, warningDate: '', notes: `Generado desde presupuesto: ${finalBudget.comments}`
-              };
-              while (updatedProjects.some(p => p.id === newProject.id)) {
-                  const num = parseInt(newProject.id.slice(2)) + 1;
-                  newProject.id = `${newProject.id.slice(0,2)}${num.toString().padStart(3, '0')}`;
+              let updatedProjects = [...prev.projectsDetailed];
+              if (finalBudget.isAccepted) {
+                  newProjectId = generateNextProjectId();
+                  const newProject: ProjectData = {
+                      id: newProjectId, name: finalBudget.name, client: finalBudget.client,
+                      budgetNum: finalBudget.budgetNum, valuation: 'PRESUPUESTO', responsibleTech: '',
+                      startDate: new Date().toISOString().split('T')[0], isFinished: false, isInvoiced: false,
+                      hasWarning: false, warningDate: '', notes: `Generado desde presupuesto: ${finalBudget.comments}`
+                  };
+                  while (updatedProjects.some(p => p.id === newProject.id)) {
+                      const num = parseInt(newProject.id.slice(2)) + 1;
+                      newProject.id = `${newProject.id.slice(0,2)}${num.toString().padStart(3, '0')}`;
+                  }
+                  updatedProjects.push(newProject);
+                  newProjectCreated = true;
               }
-              updatedProjects.push(newProject);
-              newProjectCreated = true;
-          }
-          return { ...prev, budgets: updatedBudgets, projectsDetailed: updatedProjects };
-      });
+              return { ...prev, budgets: updatedBudgets, projectsDetailed: updatedProjects };
+          });
 
-      if (newProjectCreated) toast.success(`✅ Obra creada automáticamente con ID: ${newProjectId}`);
-      resetBudgetForm();
+          if (newProjectCreated) toast.success(`✅ Obra creada automáticamente con ID: ${newProjectId}`);
+          resetBudgetForm();
+      });
   };
 
   const editBudget = (b: Budget) => { setBudgetForm(b); setIsEditingBudget(true); window.scrollTo({ top: 0, behavior: 'smooth' }); };
