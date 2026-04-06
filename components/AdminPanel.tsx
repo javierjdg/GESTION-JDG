@@ -57,8 +57,9 @@ const getDaysDiff = (dateStr?: string) => {
     return Math.max(0, Math.floor(diffTime / (1000 * 60 * 60 * 24)));
 };
 
-const MapComponent = ({ projects }: { projects: ProjectData[] }) => {
+const MapComponent = ({ projects, selectedProjectId, onSelectProject }: { projects: ProjectData[], selectedProjectId?: string | null, onSelectProject?: (id: string | null) => void }) => {
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
+  const mapRef = useRef<google.maps.Map | null>(null);
   
   const { isLoaded, loadError } = useJsApiLoader({
     id: 'google-map-script',
@@ -91,6 +92,37 @@ const MapComponent = ({ projects }: { projects: ProjectData[] }) => {
     }
   }, [isLoaded, projects, apiKey]);
 
+  useEffect(() => {
+    if (markers.length > 0 && mapRef.current) {
+        if (selectedProjectId) {
+            const marker = markers.find(m => m.id === selectedProjectId);
+            if (marker) {
+                setSelectedMarker(marker);
+                mapRef.current.panTo(marker.position);
+                mapRef.current.setZoom(15);
+            }
+        } else {
+            setSelectedMarker(null);
+            const bounds = new window.google.maps.LatLngBounds();
+            markers.forEach(m => bounds.extend(m.position));
+            mapRef.current.fitBounds(bounds);
+            // Si solo hay un marcador, fitBounds puede poner un zoom demasiado alto
+            if (markers.length === 1) {
+                mapRef.current.setZoom(12);
+            }
+        }
+    }
+  }, [selectedProjectId, markers, isLoaded]);
+
+  const onMapLoad = (map: google.maps.Map) => {
+    mapRef.current = map;
+    if (markers.length > 0) {
+        const bounds = new window.google.maps.LatLngBounds();
+        markers.forEach(m => bounds.extend(m.position));
+        map.fitBounds(bounds);
+    }
+  };
+
   if (!apiKey) {
     return (
       <div className="w-full h-[600px] bg-yellow-50 dark:bg-yellow-900/20 flex flex-col items-center justify-center rounded-xl border border-yellow-200 dark:border-yellow-800 p-6 text-center">
@@ -116,19 +148,30 @@ const MapComponent = ({ projects }: { projects: ProjectData[] }) => {
   }
 
   return isLoaded ? (
-    <GoogleMap mapContainerStyle={{ width: '100%', height: '600px' }} center={{ lat: 40.416775, lng: -3.703790 }} zoom={6}>
+    <GoogleMap 
+      mapContainerStyle={{ width: '100%', height: '600px' }} 
+      center={{ lat: 40.416775, lng: -3.703790 }} 
+      zoom={6}
+      onLoad={onMapLoad}
+    >
       {markers.map(m => (
         <Marker 
           key={m.id} 
           position={m.position} 
           title={m.name} 
-          onClick={() => setSelectedMarker(m)}
+          onClick={() => {
+              setSelectedMarker(m);
+              if (onSelectProject) onSelectProject(m.id);
+          }}
         />
       ))}
       {selectedMarker && (
         <InfoWindow
           position={selectedMarker.position}
-          onCloseClick={() => setSelectedMarker(null)}
+          onCloseClick={() => {
+              setSelectedMarker(null);
+              if (onSelectProject) onSelectProject(null);
+          }}
         >
           <div className="p-2 text-gray-900">
             <h3 className="font-bold text-lg text-gray-900">{selectedMarker.name}</h3>
@@ -150,6 +193,7 @@ const MapComponent = ({ projects }: { projects: ProjectData[] }) => {
 
 const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations, onDeleteReport, onManualBackup, onUpdateReport }) => {
   const [isPending, startTransition] = useTransition();
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [tab, setTab] = useState<'techs' | 'projects' | 'budgets' | 'reports' | 'settings' | 'daily' | 'vehicles' | 'expenses' | 'map' | 'overtime'>('reports');
   const [reportViewMode, setReportViewMode] = useState<'list' | 'by_project' | 'by_hours' | 'overtime' | 'tech_overtime' | 'trash'>('list');
   const [expandedReportId, setExpandedReportId] = useState<string | null>(null);
@@ -204,6 +248,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
   });
   const [isEditingBudget, setIsEditingBudget] = useState(false);
   const [budgetSearchTerm, setBudgetSearchTerm] = useState('');
+  const [mapSearchTerm, setMapSearchTerm] = useState('');
 
   // Refs de inputs
   const reportImportInputRef = useRef<HTMLInputElement>(null);
@@ -1931,30 +1976,75 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
 
         {tab === 'map' && (
             <div className="bg-white dark:bg-brand-panel rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 overflow-hidden min-h-[600px] transition-colors duration-300 p-6">
-                <h3 className="text-gray-900 dark:text-white font-black uppercase text-lg tracking-widest mb-6 flex items-center gap-2">
-                    <MapIcon className="w-6 h-6 text-brand-teal" /> Mapa de Obras Activas
-                </h3>
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+                    <h3 className="text-gray-900 dark:text-white font-black uppercase text-lg tracking-widest flex items-center gap-2">
+                        <MapIcon className="w-6 h-6 text-brand-teal" /> Mapa de Obras Activas
+                    </h3>
+                    <div className="relative w-full md:w-72">
+                        <input 
+                            type="text" 
+                            placeholder="Buscar obra en mapa..." 
+                            value={mapSearchTerm} 
+                            onChange={(e) => setMapSearchTerm(e.target.value)}
+                            className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl pl-10 pr-4 py-2 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none"
+                        />
+                        <SearchIcon className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
+                    </div>
+                </div>
+                
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     <div className="md:col-span-1 space-y-4 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
-                        {data.projectsDetailed.filter(p => !p.isFinished && p.location).length === 0 ? (
-                            <p className="text-gray-500 text-sm">No hay obras activas con ubicación definida.</p>
-                        ) : (
-                            data.projectsDetailed.filter(p => !p.isFinished && p.location).map(p => (
-                                <div key={p.id} className="bg-gray-50 dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700">
-                                    <h4 className="font-bold text-gray-900 dark:text-white">{p.name}</h4>
+                        {(() => {
+                            const filtered = data.projectsDetailed.filter(p => 
+                                !p.isFinished && 
+                                p.location && 
+                                (p.name.toLowerCase().includes(mapSearchTerm.toLowerCase()) || 
+                                 p.id.toLowerCase().includes(mapSearchTerm.toLowerCase()) ||
+                                 (p.client && p.client.toLowerCase().includes(mapSearchTerm.toLowerCase())))
+                            );
+                            
+                            if (filtered.length === 0) {
+                                return <p className="text-gray-500 text-sm">No se han encontrado obras con esos criterios.</p>;
+                            }
+                            
+                            return filtered.map(p => (
+                                <div 
+                                    key={p.id} 
+                                    onClick={() => setSelectedProjectId(p.id)}
+                                    className={`p-4 rounded-xl border transition-all cursor-pointer hover:shadow-md ${selectedProjectId === p.id ? 'bg-brand-teal/10 border-brand-teal shadow-md' : 'bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700'}`}
+                                >
+                                    <h4 className={`font-bold ${selectedProjectId === p.id ? 'text-brand-teal' : 'text-gray-900 dark:text-white'}`}>{p.name}</h4>
                                     <p className="text-xs text-gray-500 dark:text-gray-400">{p.location}</p>
                                 </div>
-                            ))
-                        )}
+                            ));
+                        })()}
                     </div>
                     <div className="md:col-span-2">
-                        {data.projectsDetailed.filter(p => !p.isFinished && p.location).length > 0 ? (
-                            <MapComponent projects={data.projectsDetailed.filter(p => !p.isFinished && p.location)} />
-                        ) : (
-                            <div className="w-full h-[600px] bg-gray-100 dark:bg-gray-800 flex items-center justify-center rounded-xl border border-gray-200 dark:border-gray-700">
-                                <p className="text-gray-500">Mapa no disponible</p>
-                            </div>
-                        )}
+                        {(() => {
+                            const filtered = data.projectsDetailed.filter(p => 
+                                !p.isFinished && 
+                                p.location && 
+                                (p.name.toLowerCase().includes(mapSearchTerm.toLowerCase()) || 
+                                 p.id.toLowerCase().includes(mapSearchTerm.toLowerCase()) ||
+                                 (p.client && p.client.toLowerCase().includes(mapSearchTerm.toLowerCase())))
+                            );
+                            
+                            if (filtered.length > 0) {
+                                return (
+                                    <MapComponent 
+                                        projects={filtered} 
+                                        selectedProjectId={selectedProjectId}
+                                        onSelectProject={setSelectedProjectId}
+                                    />
+                                );
+                            }
+                            
+                            return (
+                                <div className="w-full h-[600px] bg-gray-100 dark:bg-gray-800 flex items-center justify-center rounded-xl border border-gray-200 dark:border-gray-700">
+                                    <p className="text-gray-500">Sin resultados para mostrar en el mapa</p>
+                                </div>
+                            );
+                        })()}
                     </div>
                 </div>
             </div>
