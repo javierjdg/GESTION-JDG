@@ -194,6 +194,8 @@ const MapComponent = ({ projects, selectedProjectId, onSelectProject }: { projec
 const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations, onDeleteReport, onManualBackup, onUpdateReport }) => {
   const [isPending, startTransition] = useTransition();
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  const [expandedTechId, setExpandedTechId] = useState<string | null>(null);
+  const [expandedTechMonths, setExpandedTechMonths] = useState<Record<string, boolean>>({});
   const [tab, setTab] = useState<'techs' | 'projects' | 'budgets' | 'reports' | 'settings' | 'daily' | 'vehicles' | 'expenses' | 'map' | 'overtime'>('reports');
   const [reportViewMode, setReportViewMode] = useState<'list' | 'by_project' | 'by_hours' | 'overtime' | 'tech_overtime' | 'trash'>('list');
   const [expandedReportId, setExpandedReportId] = useState<string | null>(null);
@@ -1579,30 +1581,113 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                     <input type="password" placeholder="Pass" value={newTechPwd} onChange={e => setNewTechPwd(e.target.value)} className="flex-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-4 py-2 text-gray-900 dark:text-white" />
                     <button onClick={() => handleAdd('techs')} className="bg-brand-teal text-white px-6 py-2 rounded-lg font-bold shadow-md hover:bg-teal-600 transition-colors">Añadir</button>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {(data.technicians || []).map((t, i) => (
-                    <div key={t.id || i} className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 flex justify-between items-center group shadow-sm hover:border-brand-teal/50 transition-all">
-                        {editingIndex === i ? (
-                            <div className="flex-1 flex gap-2">
-                                <input value={editValue} onChange={e => setEditValue(e.target.value)} className="flex-1 bg-gray-50 dark:bg-gray-900 border border-brand-teal rounded px-2 py-1 text-xs text-gray-900 dark:text-white" />
-                                <input value={editPwdValue} onChange={e => setEditPwdValue(e.target.value)} className="flex-1 bg-gray-50 dark:bg-gray-900 border border-brand-teal rounded px-2 py-1 text-xs text-gray-900 dark:text-white" />
-                                <button onClick={() => saveEditing('techs')} className="text-green-500"><SaveIcon className="w-4 h-4" /></button>
-                                <button onClick={cancelEditing} className="text-red-500"><XIcon className="w-4 h-4" /></button>
+                <div className="grid grid-cols-1 gap-4">
+                {(data.technicians || []).map((t, i) => {
+                    const techReports = data.reports.filter(r => r.technician === t.name);
+                    const groupedByMonth: Record<string, { label: string, reports: WorkReport[] }> = {};
+                    techReports.forEach(r => {
+                        const d = new Date(r.date);
+                        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+                        const label = getMonthYearLabel(r.date);
+                        if (!groupedByMonth[key]) groupedByMonth[key] = { label, reports: [] };
+                        groupedByMonth[key].reports.push(r);
+                    });
+                    const sortedMonths = Object.entries(groupedByMonth).sort((a, b) => b[0].localeCompare(a[0]));
+                    const isExpanded = expandedTechId === t.id;
+
+                    return (
+                        <div key={t.id || i} className="space-y-2">
+                            <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 flex justify-between items-center group shadow-sm hover:border-brand-teal/50 transition-all">
+                                {editingIndex === i ? (
+                                    <div className="flex-1 flex gap-2">
+                                        <input value={editValue} onChange={e => setEditValue(e.target.value)} className="flex-1 bg-gray-50 dark:bg-gray-900 border border-brand-teal rounded px-2 py-1 text-xs text-gray-900 dark:text-white" />
+                                        <input value={editPwdValue} onChange={e => setEditPwdValue(e.target.value)} className="flex-1 bg-gray-50 dark:bg-gray-900 border border-brand-teal rounded px-2 py-1 text-xs text-gray-900 dark:text-white" />
+                                        <button onClick={() => saveEditing('techs')} className="text-green-500"><SaveIcon className="w-4 h-4" /></button>
+                                        <button onClick={cancelEditing} className="text-red-500"><XIcon className="w-4 h-4" /></button>
+                                    </div>
+                                ) : (
+                                    <>
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-8 h-8 bg-brand-teal/10 dark:bg-brand-teal/20 rounded-full flex items-center justify-center text-brand-teal font-bold">{t.name.charAt(0)}</div>
+                                            <div>
+                                                <p className="font-bold text-sm text-gray-800 dark:text-gray-200">{t.name}</p>
+                                                <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">{techReports.length} partes registrados</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-4">
+                                            <button 
+                                                onClick={() => setExpandedTechId(isExpanded ? null : t.id)}
+                                                className={`text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-lg border transition-all ${isExpanded ? 'bg-brand-teal text-white border-brand-teal' : 'text-brand-teal border-brand-teal/30 hover:bg-brand-teal/5'}`}
+                                            >
+                                                {isExpanded ? 'Ocultar Historial' : 'Ver Historial'}
+                                            </button>
+                                            <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <button onClick={() => startEditing(i, t, 'techs')} className="text-gray-400 dark:text-gray-500 hover:text-brand-teal"><EditIcon className="w-4 h-4" /></button>
+                                                <button onClick={() => handleDelete('techs', i)} className="text-gray-400 dark:text-gray-500 hover:text-red-500"><TrashIcon className="w-4 h-4" /></button>
+                                            </div>
+                                        </div>
+                                    </>
+                                )}
                             </div>
-                        ) : (
-                            <>
-                                <div className="flex items-center gap-3">
-                                    <div className="w-8 h-8 bg-brand-teal/10 dark:bg-brand-teal/20 rounded-full flex items-center justify-center text-brand-teal font-bold">{t.name.charAt(0)}</div>
-                                    <div><p className="font-bold text-sm text-gray-800 dark:text-gray-200">{t.name}</p></div>
+                            
+                            {isExpanded && (
+                                <div className="ml-4 pl-4 border-l-2 border-brand-teal/30 space-y-4 py-2 animate-fade-in">
+                                    {sortedMonths.length === 0 ? (
+                                        <p className="text-xs text-gray-500 italic">Este técnico aún no tiene partes registrados.</p>
+                                    ) : (
+                                        sortedMonths.map(([monthKey, monthData]) => {
+                                            const isMonthExpanded = !!expandedTechMonths[`${t.id}_${monthKey}`];
+                                            return (
+                                                <div key={monthKey} className="space-y-2">
+                                                    <button 
+                                                        onClick={() => setExpandedTechMonths(prev => ({ ...prev, [`${t.id}_${monthKey}`]: !isMonthExpanded }))}
+                                                        className="flex items-center justify-between w-full bg-gray-50 dark:bg-gray-900/40 p-3 rounded-lg border border-gray-200 dark:border-gray-800 hover:border-brand-teal/30 transition-colors"
+                                                    >
+                                                        <div className="flex items-center gap-2">
+                                                            <CalendarIcon className="w-4 h-4 text-brand-teal" />
+                                                            <span className="text-xs font-black uppercase tracking-widest text-gray-700 dark:text-gray-300">{monthData.label}</span>
+                                                        </div>
+                                                        <div className="flex items-center gap-3">
+                                                            <span className="text-[10px] font-bold text-gray-500">{monthData.reports.length} partes</span>
+                                                            <ChevronDownIcon className={`w-4 h-4 text-gray-400 transition-transform duration-300 ${isMonthExpanded ? 'rotate-180' : ''}`} />
+                                                        </div>
+                                                    </button>
+                                                    
+                                                    {isMonthExpanded && (
+                                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pl-2 animate-fade-in">
+                                                            {monthData.reports.sort((a,b) => b.date.localeCompare(a.date)).map(r => (
+                                                                <div 
+                                                                    key={r.id} 
+                                                                    onClick={() => {
+                                                                        setFilterTech(t.name);
+                                                                        setFilterDateStart(r.date);
+                                                                        setFilterDateEnd(r.date);
+                                                                        setReportViewMode('list');
+                                                                        setTab('reports');
+                                                                        setExpandedReportId(r.id);
+                                                                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                                                                    }}
+                                                                    className="bg-white dark:bg-gray-800 p-3 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm hover:border-brand-teal cursor-pointer transition-all group/report"
+                                                                >
+                                                                    <div className="flex justify-between items-start mb-1">
+                                                                        <span className="text-[10px] font-black text-brand-teal">{r.date}</span>
+                                                                        <EyeIcon className="w-3 h-3 text-gray-300 group-hover/report:text-brand-teal transition-colors" />
+                                                                    </div>
+                                                                    <p className="text-xs font-bold text-gray-800 dark:text-white truncate">{resolveProjectFullName(r.projectNum)}</p>
+                                                                    <p className="text-[10px] text-gray-500 italic truncate mt-1">{r.description || 'Sin descripción'}</p>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            );
+                                        })
+                                    )}
                                 </div>
-                                <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <button onClick={() => startEditing(i, t, 'techs')} className="text-gray-400 dark:text-gray-500 hover:text-brand-teal"><EditIcon className="w-4 h-4" /></button>
-                                    <button onClick={() => handleDelete('techs', i)} className="text-gray-400 dark:text-gray-500 hover:text-red-500"><TrashIcon className="w-4 h-4" /></button>
-                                </div>
-                            </>
-                        )}
-                    </div>
-                ))}
+                            )}
+                        </div>
+                    );
+                })}
                 {(data.technicians || []).length === 0 && <p className="col-span-full text-center py-8 text-gray-500 text-xs italic">No hay técnicos registrados.</p>}
                 </div>
             </div>
