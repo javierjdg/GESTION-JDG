@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { WorkReport, ProjectData } from '../App';
-import { PlusIcon, SearchIcon, EditIcon, TrashIcon, FileTextIcon, CalendarIcon, ClockIcon, ChartPieIcon } from './icons';
+import { PlusIcon, SearchIcon, EditIcon, TrashIcon, FileTextIcon, CalendarIcon, ClockIcon, ChartPieIcon, ChevronDownIcon, EyeIcon } from './icons';
 
 interface TechDashboardProps {
   reports: WorkReport[];
@@ -47,6 +47,7 @@ const getMonthYearLabel = (dateStr: string) => {
 const TechDashboard: React.FC<TechDashboardProps> = ({ reports, projects, onNewReport, onEditReport, onViewDailyOrg, onDeleteReport, hasUnreadOrg }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [searchDate, setSearchDate] = useState('');
+  const [expandedMonths, setExpandedMonths] = useState<Record<string, boolean>>({});
 
   const resolveProjectFullName = (num: string) => {
     const found = projects.find(p => p.id === num);
@@ -294,33 +295,55 @@ const TechDashboard: React.FC<TechDashboardProps> = ({ reports, projects, onNewR
         <h3 className="text-gray-400 font-black mb-3 uppercase text-[11px] tracking-[3px] flex items-center gap-2">
             <FileTextIcon className="w-4 h-4" /> Historial de Partes
         </h3>
-        {Object.entries(groupedReports).map(([monthLabel, weeks]) => (
-            <div key={monthLabel} className="space-y-4">
-                <div className="bg-gray-100 dark:bg-gray-800/30 border-l-4 border-brand-teal px-4 py-3 rounded-r-xl">
-                    <h4 className="text-brand-teal font-black text-xs uppercase tracking-widest">{monthLabel}</h4>
-                </div>
-                {Object.entries(weeks).sort((a, b) => b[1][0].date.localeCompare(a[1][0].date)).map(([weekRange, reportsInWeek]) => (
-                    <div key={weekRange} className="space-y-3 ml-2">
-                        {reportsInWeek.map(report => (
-                            <div key={report.id} className="bg-white dark:bg-brand-panel p-5 rounded-3xl border border-gray-200 dark:border-gray-800 flex justify-between items-center group shadow-md hover:border-brand-teal/30 dark:hover:border-gray-700 transition-all">
-                                <div className="flex-1 min-w-0 pr-4">
-                                    <div className="flex items-center gap-2">
-                                        <span className="font-black text-gray-900 dark:text-gray-100 text-sm">{formatDateToSpanish(report.date)}</span>
-                                        <span className="text-[10px] text-gray-500 dark:text-gray-600 font-mono">#{report.id.slice(-4)}</span>
+        {Object.entries(groupedReports).map(([monthLabel, weeks]) => {
+            const isExpanded = !!expandedMonths[monthLabel];
+            return (
+                <div key={monthLabel} className="space-y-4">
+                    <button 
+                        onClick={() => setExpandedMonths(prev => ({ ...prev, [monthLabel]: !isExpanded }))}
+                        className="w-full flex items-center justify-between bg-gray-100 dark:bg-gray-800/30 border-l-4 border-brand-teal px-4 py-3 rounded-r-xl hover:bg-gray-200 dark:hover:bg-gray-800/50 transition-colors group"
+                    >
+                        <h4 className="text-brand-teal font-black text-xs uppercase tracking-widest">{monthLabel}</h4>
+                        <div className="flex items-center gap-3">
+                            <span className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-tighter">
+                                {Object.values(weeks).flat().length} partes
+                            </span>
+                            <ChevronDownIcon className={`w-4 h-4 text-brand-teal transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`} />
+                        </div>
+                    </button>
+                    
+                    {isExpanded && (
+                        <div className="space-y-6 animate-fade-in">
+                            {Object.entries(weeks).sort((a, b) => b[1][0].date.localeCompare(a[1][0].date)).map(([weekRange, reportsInWeek]) => (
+                                <div key={weekRange} className="space-y-3 ml-2">
+                                    <div className="flex items-center gap-2 mb-1">
+                                        <div className="h-px flex-1 bg-gray-200 dark:bg-gray-800"></div>
+                                        <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">{weekRange}</span>
+                                        <div className="h-px flex-1 bg-gray-200 dark:bg-gray-800"></div>
                                     </div>
-                                    <div className="text-xs text-brand-teal dark:text-brand-lime mt-1 font-black truncate uppercase tracking-wider">{resolveProjectFullName(report.projectNum)}</div>
-                                    <div className="text-xs text-gray-600 dark:text-gray-500 mt-1.5 italic truncate line-clamp-1">"{report.description || 'Sin descripción'}"</div>
+                                    {reportsInWeek.map(report => (
+                                        <div key={report.id} className="bg-white dark:bg-brand-panel p-5 rounded-3xl border border-gray-200 dark:border-gray-800 flex justify-between items-center group shadow-md hover:border-brand-teal/30 dark:hover:border-gray-700 transition-all">
+                                            <div className="flex-1 min-w-0 pr-4">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="font-black text-gray-900 dark:text-gray-100 text-sm">{formatDateToSpanish(report.date)}</span>
+                                                    <span className="text-[10px] text-gray-500 dark:text-gray-600 font-mono">#{report.id.slice(-4)}</span>
+                                                </div>
+                                                <div className="text-xs text-brand-teal dark:text-brand-lime mt-1 font-black truncate uppercase tracking-wider">{resolveProjectFullName(report.projectNum)}</div>
+                                                <div className="text-xs text-gray-600 dark:text-gray-500 mt-1.5 italic truncate line-clamp-1">"{report.description || 'Sin descripción'}"</div>
+                                            </div>
+                                            <div className="flex items-center gap-2 flex-shrink-0">
+                                                <button onClick={() => onEditReport(report)} className="p-3 bg-gray-50 dark:bg-gray-900 hover:bg-brand-teal rounded-2xl text-brand-teal hover:text-white transition-all border border-gray-200 dark:border-gray-800"><EditIcon className="w-5 h-5" /></button>
+                                                <button onClick={() => onDeleteReport(report.id)} className="p-3 bg-gray-50 dark:bg-gray-900 hover:bg-red-600 rounded-2xl text-red-500/60 dark:text-red-500/40 hover:text-white transition-all border border-gray-200 dark:border-gray-800"><TrashIcon className="w-5 h-5" /></button>
+                                            </div>
+                                        </div>
+                                    ))}
                                 </div>
-                                <div className="flex items-center gap-2 flex-shrink-0">
-                                    <button onClick={() => onEditReport(report)} className="p-3 bg-gray-50 dark:bg-gray-900 hover:bg-brand-teal rounded-2xl text-brand-teal hover:text-white transition-all border border-gray-200 dark:border-gray-800"><EditIcon className="w-5 h-5" /></button>
-                                    <button onClick={() => onDeleteReport(report.id)} className="p-3 bg-gray-50 dark:bg-gray-900 hover:bg-red-600 rounded-2xl text-red-500/60 dark:text-red-500/40 hover:text-white transition-all border border-gray-200 dark:border-gray-800"><TrashIcon className="w-5 h-5" /></button>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                ))}
-            </div>
-        ))}
+                            ))}
+                        </div>
+                    )}
+                </div>
+            );
+        })}
         {reports.length === 0 && (
             <div className="text-center py-20 bg-gray-50 dark:bg-gray-900/20 rounded-3xl border border-dashed border-gray-300 dark:border-gray-800">
                 <FileTextIcon className="w-12 h-12 text-gray-300 dark:text-gray-800 mx-auto mb-4" />
