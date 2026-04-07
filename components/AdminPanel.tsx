@@ -2,8 +2,10 @@
 import React, { useState, useRef, useEffect, useMemo, useTransition } from 'react';
 import { GoogleMap, Marker, useJsApiLoader, InfoWindow } from '@react-google-maps/api';
 import { toast } from 'sonner';
-import { AppData, TechUser, WorkReport, ProjectData, Budget } from '../App';
-import { TrashIcon, PlusIcon, DownloadIcon, UserIcon, TruckIcon, FileTextIcon, FilterIcon, EditIcon, SaveIcon, XIcon, LockIcon, UploadIcon, CloudIcon, CalendarIcon, ChartPieIcon, ClockIcon, EyeIcon, AlertIcon, ChevronDownIcon, ChevronRightIcon, BriefcaseIcon, SearchIcon, CheckCircleIcon, MapIcon, RefreshCwIcon, ShieldCheckIcon } from './icons';
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import { AppData, TechUser, WorkReport, ProjectData, Budget, ProjectAttachment } from '../App';
+import { TrashIcon, PlusIcon, DownloadIcon, UserIcon, TruckIcon, FileTextIcon, FilterIcon, EditIcon, SaveIcon, XIcon, LockIcon, UploadIcon, CloudIcon, CalendarIcon, ChartPieIcon, ClockIcon, EyeIcon, AlertIcon, ChevronDownIcon, ChevronRightIcon, BriefcaseIcon, SearchIcon, CheckCircleIcon, MapIcon, RefreshCwIcon, ShieldCheckIcon, ImageIcon } from './icons';
 import DailyOrganization, { DailyOrgData } from './DailyOrganization';
 
 interface AdminPanelProps {
@@ -224,13 +226,13 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
   // Estado para controlar qué semanas están expandidas
   const [expandedWeeks, setExpandedWeeks] = useState<Record<string, boolean>>({});
 
-  const [selectedImage, setSelectedImage] = useState<{data: string, type: string} | null>(null);
+  const [selectedImage, setSelectedImage] = useState<{data: string, type: string, name?: string} | null>(null);
   
   // Estados para Gestión de Obras
   const [projectForm, setProjectForm] = useState<ProjectData>({
     id: '', name: '', client: '', budgetNum: '', valuation: 'POR HORAS',
     responsibleTech: '', startDate: '', isFinished: false, isInvoiced: false,
-    hasWarning: false, warningDate: '', notes: '', location: ''
+    hasWarning: false, warningDate: '', notes: '', location: '', attachments: []
   });
   const [isEditingProject, setIsEditingProject] = useState(false);
   const [idMode, setIdMode] = useState<'AUTO' | 'MANUAL'>('AUTO');
@@ -536,7 +538,83 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
 
   const editProject = (p: ProjectData) => { setProjectForm(p); setIsEditingProject(true); setIdMode('AUTO'); window.scrollTo({ top: 0, behavior: 'smooth' }); };
   const deleteProject = (id: string) => { if (!window.confirm("¿Eliminar obra?")) return; setData(prev => ({ ...prev, projectsDetailed: prev.projectsDetailed.filter(p => p.id !== id) })); };
-  const resetProjectForm = () => { setProjectForm({ id: '', name: '', client: '', budgetNum: '', valuation: 'POR HORAS', responsibleTech: '', startDate: '', isFinished: false, isInvoiced: false, hasWarning: false, warningDate: '', notes: '', location: '' }); setIsEditingProject(false); setIdMode('AUTO'); };
+  const resetProjectForm = () => { setProjectForm({ id: '', name: '', client: '', budgetNum: '', valuation: 'POR HORAS', responsibleTech: '', startDate: '', isFinished: false, isInvoiced: false, hasWarning: false, warningDate: '', notes: '', location: '', attachments: [] }); setIsEditingProject(false); setIdMode('AUTO'); };
+  
+  const handleProjectFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+    
+    Array.from(files).forEach((file: File) => {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const base64 = event.target?.result as string;
+        const newAttachment: ProjectAttachment = {
+          name: file.name,
+          data: base64,
+          type: file.type
+        };
+        setProjectForm(prev => ({
+          ...prev,
+          attachments: [...(prev.attachments || []), newAttachment]
+        }));
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const removeProjectAttachment = (index: number) => {
+    setProjectForm(prev => ({
+      ...prev,
+      attachments: (prev.attachments || []).filter((_, i) => i !== index)
+    }));
+  };
+
+  const generateProjectPDF = (p: ProjectData) => {
+    const doc = new jsPDF();
+    const title = `FICHA DE OBRA: ${p.id}`;
+    
+    doc.setFontSize(18);
+    doc.text(title, 14, 22);
+    
+    doc.setFontSize(11);
+    doc.setTextColor(100);
+    doc.text(`Generado el: ${new Date().toLocaleString()}`, 14, 30);
+
+    const tableData = [
+      ['ID OBRA', p.id],
+      ['NOMBRE', p.name],
+      ['CLIENTE', p.client],
+      ['TÉCNICO RESPONSABLE', p.responsibleTech || 'Sin asignar'],
+      ['VALORACIÓN', p.valuation],
+      ['Nº PRESUPUESTO', p.budgetNum || '-'],
+      ['FECHA INICIO', formatDateToSpanish(p.startDate)],
+      ['UBICACIÓN', p.location || '-'],
+      ['ESTADO', p.isFinished ? 'TERMINADA' : 'ACTIVA'],
+      ['FACTURADA', p.isInvoiced ? 'SÍ' : 'NO'],
+    ];
+
+    autoTable(doc, {
+      startY: 40,
+      head: [['Campo', 'Información']],
+      body: tableData,
+      theme: 'striped',
+      headStyles: { fillColor: [0, 128, 128] }, // brand-teal approx
+    });
+
+    if (p.notes) {
+      const finalY = (doc as any).lastAutoTable.finalY || 40;
+      doc.setFontSize(12);
+      doc.setTextColor(0);
+      doc.text('NOTAS / OBSERVACIONES:', 14, finalY + 15);
+      doc.setFontSize(10);
+      doc.setTextColor(50);
+      const splitNotes = doc.splitTextToSize(p.notes, 180);
+      doc.text(splitNotes, 14, finalY + 22);
+    }
+
+    doc.save(`Obra_${p.id}.pdf`);
+    toast.success("PDF generado correctamente");
+  };
 
   const handleDelete = (type: 'techs' | 'vehicles', index: number) => {
     if (!window.confirm(`¿Eliminar elemento?`)) return;
@@ -1015,7 +1093,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
       
       return (
           <div key={p.id} className={`bg-white dark:bg-brand-panel p-5 rounded-xl border flex flex-col md:flex-row justify-between items-start md:items-center gap-4 group hover:border-brand-teal/50 transition-all ${isInactive ? 'opacity-60 border-gray-300 dark:border-gray-800 bg-gray-100 dark:bg-gray-900/20' : warningStyle ? warningStyle : 'border-gray-200 dark:border-gray-700'}`}>
-              <div className="flex-1 w-full">
+              <div className="flex-1 min-w-0 w-full">
                   <div className="flex items-center gap-3 mb-1">
                       <button onClick={() => viewProjectHistory(p.id)} className={`font-black px-2 py-0.5 rounded text-sm tracking-wider hover:scale-105 transition-transform cursor-pointer ${isInactive ? 'bg-gray-200 dark:bg-gray-800 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300' : 'bg-brand-teal/10 dark:bg-brand-teal/20 text-brand-teal hover:bg-brand-teal hover:text-white'}`} title="Ver historial de partes">{p.id}</button>
                       <span className={`font-bold uppercase text-sm truncate ${isInactive ? 'text-gray-500 line-through decoration-brand-teal/50' : 'text-gray-900 dark:text-white'}`}>{p.name}</span>
@@ -1030,14 +1108,29 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                       {!isInactive && p.hasWarning && getWarningBadge(p.warningDate)}
                   </div>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-2 text-[10px] text-gray-400 uppercase font-medium">
-                      <div><span className="block text-gray-500 dark:text-gray-600 mb-0.5">Cliente</span><span className="text-gray-700 dark:text-gray-300">{p.client}</span></div>
-                      <div><span className="block text-gray-500 dark:text-gray-600 mb-0.5">Responsable</span><span className="text-gray-700 dark:text-gray-300">{p.responsibleTech || '-'}</span></div>
-                      <div><span className="block text-gray-500 dark:text-gray-600 mb-0.5">Valoración</span><span className="text-gray-700 dark:text-gray-300">{p.valuation}</span></div>
-                      <div><span className="block text-gray-500 dark:text-gray-600 mb-0.5">Presupuesto</span><span className="text-gray-700 dark:text-gray-300">{p.budgetNum || '-'}</span></div>
+                      <div><span className="block text-gray-500 dark:text-gray-600 mb-0.5">Cliente</span><span className="text-gray-700 dark:text-gray-300 truncate block">{p.client}</span></div>
+                      <div><span className="block text-gray-500 dark:text-gray-600 mb-0.5">Responsable</span><span className="text-gray-700 dark:text-gray-300 truncate block">{p.responsibleTech || '-'}</span></div>
+                      <div><span className="block text-gray-500 dark:text-gray-600 mb-0.5">Valoración</span><span className="text-gray-700 dark:text-gray-300 truncate block">{p.valuation}</span></div>
+                      <div><span className="block text-gray-500 dark:text-gray-600 mb-0.5">Presupuesto</span><span className="text-gray-700 dark:text-gray-300 truncate block">{p.budgetNum || '-'}</span></div>
                   </div>
-                  {p.notes && <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-800"><p className="text-[10px] text-gray-500 italic truncate">{p.notes}</p></div>}
+                  {p.notes && <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-800"><p className="text-[10px] text-gray-500 italic truncate w-full">{p.notes}</p></div>}
+                  {p.attachments && p.attachments.length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-2">
+                          {p.attachments.map((att, idx) => (
+                              <button 
+                                  key={idx} 
+                                  onClick={() => setSelectedImage({data: att.data, type: att.type, name: att.name})}
+                                  className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded text-[9px] font-bold text-gray-500 hover:text-brand-teal transition-colors"
+                              >
+                                  {att.type.includes('pdf') ? <FileTextIcon className="w-3 h-3" /> : <ImageIcon className="w-3 h-3" />}
+                                  <span className="truncate max-w-[100px]">{att.name}</span>
+                              </button>
+                          ))}
+                      </div>
+                  )}
               </div>
-              <div className="flex gap-2 self-end md:self-center">
+              <div className="flex gap-2 self-end md:self-center flex-shrink-0">
+                  <button onClick={() => generateProjectPDF(p)} className="p-2 text-gray-400 hover:text-brand-teal bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors" title="Generar PDF de Obra"><FileTextIcon className="w-4 h-4" /></button>
                   <button onClick={() => editProject(p)} className="p-2 text-gray-400 hover:text-brand-teal bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors"><EditIcon className="w-4 h-4" /></button>
                   <button onClick={() => deleteProject(p.id)} className="p-2 text-gray-400 hover:text-red-500 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors"><TrashIcon className="w-4 h-4" /></button>
               </div>
@@ -1116,10 +1209,16 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
       {selectedImage && (
         <div className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-md flex items-center justify-center p-4 animate-fade-in" onClick={() => setSelectedImage(null)}>
           <div className="absolute top-6 right-6 flex gap-4">
-              <button onClick={(e) => { e.stopPropagation(); const link = document.createElement('a'); link.href = selectedImage.data; link.download = `TICKET_${selectedImage.type.toUpperCase()}.jpg`; link.click(); }} className="bg-brand-teal text-white p-3 rounded-full shadow-xl"><DownloadIcon className="w-6 h-6" /></button>
+              <button onClick={(e) => { e.stopPropagation(); const link = document.createElement('a'); link.href = selectedImage.data; link.download = selectedImage.name || `ARCHIVO_${selectedImage.type.toUpperCase().split('/')[1] || 'DOC'}`; link.click(); }} className="bg-brand-teal text-white p-3 rounded-full shadow-xl"><DownloadIcon className="w-6 h-6" /></button>
               <button className="bg-white/10 text-white p-3 rounded-full" onClick={() => setSelectedImage(null)}><XIcon className="w-6 h-6" /></button>
           </div>
-          {selectedImage.data && <img src={selectedImage.data} className="max-w-full max-h-[85vh] object-contain rounded-lg shadow-2xl border border-white/10" />}
+          {selectedImage.data && (
+            selectedImage.type.includes('pdf') ? (
+              <iframe src={selectedImage.data} className="w-full h-full max-w-4xl max-h-[85vh] rounded-lg shadow-2xl bg-white" />
+            ) : (
+              <img src={selectedImage.data} className="max-w-full max-h-[85vh] object-contain rounded-lg shadow-2xl border border-white/10" />
+            )
+          )}
         </div>
       )}
 
@@ -1960,6 +2059,28 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                         <div className="mt-4">
                              <label className="block text-[10px] text-gray-500 uppercase font-black mb-1">Notas / Observaciones</label>
                              <textarea rows={2} value={projectForm.notes} onChange={e => setProjectForm({...projectForm, notes: e.target.value})} className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-xl p-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none" placeholder="Detalles extra de la obra..."></textarea>
+                        </div>
+
+                        <div className="mt-4">
+                             <label className="block text-[10px] text-gray-500 uppercase font-black mb-2 ml-1">Documentación Adjunta (PDF / Imágenes)</label>
+                             <div className="flex flex-wrap gap-3 mb-3">
+                                 {projectForm.attachments?.map((att, idx) => (
+                                     <div key={idx} className="relative group bg-gray-100 dark:bg-gray-800 p-2 rounded-lg border border-gray-200 dark:border-gray-700 flex items-center gap-2 max-w-[200px]">
+                                         <div className="w-8 h-8 rounded bg-brand-teal/10 flex items-center justify-center text-brand-teal">
+                                             {att.type.includes('pdf') ? <FileTextIcon className="w-4 h-4" /> : <ImageIcon className="w-4 h-4" />}
+                                         </div>
+                                         <span className="text-[10px] font-bold truncate flex-1">{att.name}</span>
+                                         <button onClick={() => removeProjectAttachment(idx)} className="text-red-500 hover:text-red-700 p-1">
+                                             <XIcon className="w-3 h-3" />
+                                         </button>
+                                     </div>
+                                 ))}
+                             </div>
+                             <label className="flex items-center justify-center gap-2 w-full border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-xl p-4 hover:border-brand-teal cursor-pointer transition-all group">
+                                 <UploadIcon className="w-5 h-5 text-gray-400 group-hover:text-brand-teal" />
+                                 <span className="text-xs font-bold text-gray-500 group-hover:text-brand-teal uppercase tracking-widest">Subir Documentos</span>
+                                 <input type="file" multiple accept="image/*,.pdf" onChange={handleProjectFileChange} className="hidden" />
+                             </label>
                         </div>
 
                         <button onClick={handleSaveProject} className="w-full mt-6 bg-brand-teal hover:bg-teal-600 text-white font-bold py-3 rounded-xl shadow-lg transition-all flex items-center justify-center gap-2">

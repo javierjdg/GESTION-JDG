@@ -74,6 +74,12 @@ export interface TechUser {
   password: string;
 }
 
+export interface ProjectAttachment {
+  name: string;
+  data: string; // base64
+  type: string; // mime type
+}
+
 export interface ProjectData {
   id: string; // El ID calculado ej: 26001
   name: string;
@@ -88,6 +94,7 @@ export interface ProjectData {
   warningDate?: string; // Fecha en la que se activó el aviso
   notes: string;
   location?: string; // Ciudad o pueblo para el mapa
+  attachments?: ProjectAttachment[];
 }
 
 export interface Budget {
