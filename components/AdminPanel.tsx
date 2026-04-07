@@ -1309,11 +1309,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                                   setFilterProject('');
                                   setFilterDateStart('');
                                   setFilterDateEnd('');
-                                  setExpandedWeeks(prev => {
-                                    const next = { ...prev, [week]: true };
-                                    console.log('New expandedWeeks:', next);
-                                    return next;
-                                  });
+                                  setExpandedWeeks({ [week]: true });
                                   setReportViewMode('list'); 
                                   setExpandedReportId(r.id); 
                                   console.log('Setting expandedReportId to:', r.id);
@@ -1353,7 +1349,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                                 setFilterProject('');
                                 setFilterDateStart('');
                                 setFilterDateEnd('');
-                                setExpandedWeeks(prev => ({ ...prev, [week]: true }));
+                                setExpandedWeeks({ [week]: true });
                                 setReportViewMode('list'); 
                                 setExpandedReportId(r.id); 
                                 console.log('Setting expandedReportId (validated) to:', r.id);
