@@ -1537,6 +1537,38 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                                                                                                 ))}
                                                                                                 {(!report.tickets || report.tickets.length === 0) && <p className="text-[10px] text-gray-500 italic">No hay archivos adjuntos.</p>}
                                                                                             </div>
+
+                                                                                            {/* Desglose de gastos solicitado por el usuario */}
+                                                                                            <div className="mt-4 pt-3 border-t border-gray-200 dark:border-gray-800">
+                                                                                                <p className="text-[9px] uppercase font-black text-gray-400 tracking-widest mb-2">Desglose de Gastos</p>
+                                                                                                <div className="flex flex-wrap gap-2">
+                                                                                                    {report.expenses.food > 0 && (
+                                                                                                        <div className="bg-white dark:bg-gray-950/40 px-2 py-1.5 rounded-lg border border-gray-200 dark:border-gray-800 flex flex-col">
+                                                                                                            <span className="text-[8px] text-gray-500 font-bold uppercase">Comida</span>
+                                                                                                            <span className="text-xs font-black text-brand-teal">{report.expenses.food.toFixed(2)}€</span>
+                                                                                                        </div>
+                                                                                                    )}
+                                                                                                    {report.expenses.gas > 0 && (
+                                                                                                        <div className="bg-white dark:bg-gray-950/40 px-2 py-1.5 rounded-lg border border-gray-200 dark:border-gray-800 flex flex-col">
+                                                                                                            <span className="text-[8px] text-gray-500 font-bold uppercase">Gasolina</span>
+                                                                                                            <span className="text-xs font-black text-brand-teal">{report.expenses.gas.toFixed(2)}€</span>
+                                                                                                        </div>
+                                                                                                    )}
+                                                                                                    {report.expenses.parking > 0 && (
+                                                                                                        <div className="bg-white dark:bg-gray-950/40 px-2 py-1.5 rounded-lg border border-gray-200 dark:border-gray-800 flex flex-col">
+                                                                                                            <span className="text-[8px] text-gray-500 font-bold uppercase">Parking</span>
+                                                                                                            <span className="text-xs font-black text-brand-teal">{report.expenses.parking.toFixed(2)}€</span>
+                                                                                                        </div>
+                                                                                                    )}
+                                                                                                    {report.expenses.others > 0 && (
+                                                                                                        <div className="bg-white dark:bg-gray-950/40 px-2 py-1.5 rounded-lg border border-gray-200 dark:border-gray-800 flex flex-col">
+                                                                                                            <span className="text-[8px] text-gray-500 font-bold uppercase">Otros ({report.expenses.othersDesc || 'Sin desc.'})</span>
+                                                                                                            <span className="text-xs font-black text-brand-teal">{report.expenses.others.toFixed(2)}€</span>
+                                                                                                        </div>
+                                                                                                    )}
+                                                                                                    {total === 0 && <p className="text-[10px] text-gray-500 italic">Sin gastos registrados</p>}
+                                                                                                </div>
+                                                                                            </div>
                                                                                         </div>
                                                                                     </div>
                                                                                 </td>
