@@ -15,6 +15,8 @@ interface AdminPanelProps {
   onDeleteReport: (id: string) => void;
   onManualBackup?: () => void;
   onUpdateReport: (report: WorkReport, shouldRedirect: boolean) => Promise<void>;
+  onSaveProject: (project: ProjectData) => Promise<void>;
+  onDeleteProject: (id: string) => Promise<void>;
 }
 
 // Helpers for calculations
@@ -193,7 +195,7 @@ const MapComponent = ({ projects, selectedProjectId, onSelectProject }: { projec
   ) : <div className="w-full h-[600px] bg-gray-100 dark:bg-gray-800 flex items-center justify-center rounded-xl border border-gray-200 dark:border-gray-700">Cargando mapa...</div>;
 };
 
-const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations, onDeleteReport, onManualBackup, onUpdateReport }) => {
+const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations, onDeleteReport, onManualBackup, onUpdateReport, onSaveProject, onDeleteProject }) => {
   const [isPending, startTransition] = useTransition();
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [expandedTechId, setExpandedTechId] = useState<string | null>(null);
@@ -481,16 +483,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
       }
 
       startTransition(() => {
-          setData(prev => {
-              let updatedDetailed = [...(prev.projectsDetailed || [])];
-              if (isEditingProject) {
-                  const idx = updatedDetailed.findIndex(p => p.id === finalProject.id);
-                  if (idx >= 0) updatedDetailed[idx] = finalProject;
-              } else {
-                  updatedDetailed.push(finalProject);
-              }
-              return { ...prev, projectsDetailed: updatedDetailed };
-          });
+          onSaveProject(finalProject);
           resetProjectForm();
       });
   };
@@ -498,8 +491,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
   const handleSaveBudget = () => {
       if (!budgetForm.name || !budgetForm.client) { toast.error("Faltan datos obligatorios"); return; }
       const finalBudget = { ...budgetForm, id: budgetForm.id || Date.now().toString() };
-      let newProjectCreated = false;
-      let newProjectId = '';
 
       startTransition(() => {
           setData(prev => {
@@ -507,27 +498,20 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
               const idx = updatedBudgets.findIndex(b => b.id === finalBudget.id);
               if (idx >= 0) updatedBudgets[idx] = finalBudget;
               else updatedBudgets = [finalBudget, ...updatedBudgets];
-
-              let updatedProjects = [...prev.projectsDetailed];
-              if (finalBudget.isAccepted) {
-                  newProjectId = generateNextProjectId();
-                  const newProject: ProjectData = {
-                      id: newProjectId, name: finalBudget.name, client: finalBudget.client,
-                      budgetNum: finalBudget.budgetNum, valuation: 'PRESUPUESTO', responsibleTech: '',
-                      startDate: new Date().toISOString().split('T')[0], isFinished: false, isInvoiced: false,
-                      hasWarning: false, warningDate: '', notes: `Generado desde presupuesto: ${finalBudget.comments}`
-                  };
-                  while (updatedProjects.some(p => p.id === newProject.id)) {
-                      const num = parseInt(newProject.id.slice(2)) + 1;
-                      newProject.id = `${newProject.id.slice(0,2)}${num.toString().padStart(3, '0')}`;
-                  }
-                  updatedProjects.push(newProject);
-                  newProjectCreated = true;
-              }
-              return { ...prev, budgets: updatedBudgets, projectsDetailed: updatedProjects };
+              return { ...prev, budgets: updatedBudgets };
           });
 
-          if (newProjectCreated) toast.success(`✅ Obra creada automáticamente con ID: ${newProjectId}`);
+          if (finalBudget.isAccepted) {
+              const newProjectId = generateNextProjectId();
+              const newProject: ProjectData = {
+                  id: newProjectId, name: finalBudget.name, client: finalBudget.client,
+                  budgetNum: finalBudget.budgetNum, valuation: 'PRESUPUESTO', responsibleTech: '',
+                  startDate: new Date().toISOString().split('T')[0], isFinished: false, isInvoiced: false,
+                  hasWarning: false, warningDate: '', notes: `Generado desde presupuesto: ${finalBudget.comments}`
+              };
+              onSaveProject(newProject);
+              toast.success(`✅ Obra creada automáticamente con ID: ${newProjectId}`);
+          }
           resetBudgetForm();
       });
   };
@@ -537,14 +521,23 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
   const resetBudgetForm = () => { setBudgetForm({ id: '', budgetNum: '', name: '', client: '', deliveryDate: '', excelName: '', hasFolderData: false, isFinished: false, isAccepted: false, comments: '' }); setIsEditingBudget(false); };
 
   const editProject = (p: ProjectData) => { setProjectForm(p); setIsEditingProject(true); setIdMode('AUTO'); window.scrollTo({ top: 0, behavior: 'smooth' }); };
-  const deleteProject = (id: string) => { if (!window.confirm("¿Eliminar obra?")) return; setData(prev => ({ ...prev, projectsDetailed: prev.projectsDetailed.filter(p => p.id !== id) })); };
+  const deleteProject = (id: string) => { 
+      onDeleteProject(id);
+  };
   const resetProjectForm = () => { setProjectForm({ id: '', name: '', client: '', budgetNum: '', valuation: 'POR HORAS', responsibleTech: '', startDate: '', isFinished: false, isInvoiced: false, hasWarning: false, warningDate: '', notes: '', location: '', attachments: [] }); setIsEditingProject(false); setIdMode('AUTO'); };
   
   const handleProjectFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files) return;
     
+    const MAX_FILE_SIZE = 2 * 1024 * 1024; // 2MB limit per file
+
     Array.from(files).forEach((file: File) => {
+      if (file.size > MAX_FILE_SIZE) {
+          toast.error(`El archivo ${file.name} es demasiado grande. Máximo 2MB.`);
+          return;
+      }
+
       const reader = new FileReader();
       reader.onload = (event) => {
         const base64 = event.target?.result as string;
@@ -558,8 +551,13 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
           attachments: [...(prev.attachments || []), newAttachment]
         }));
       };
+      reader.onerror = () => {
+          toast.error(`Error al leer el archivo ${file.name}`);
+      };
       reader.readAsDataURL(file);
     });
+    // Limpiar el input para permitir subir el mismo archivo si se borra
+    e.target.value = '';
   };
 
   const removeProjectAttachment = (index: number) => {

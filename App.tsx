@@ -281,6 +281,7 @@ const App: React.FC = () => {
   useEffect(() => {
     let unsubConfig = () => {};
     let unsubReports = () => {};
+    let unsubProjects = () => {};
 
     const initializeFirebaseSync = async () => {
       const fb = (window as any).firebase;
@@ -313,7 +314,8 @@ const App: React.FC = () => {
                     setData(prev => ({
                         ...prev,
                         ...cloudConfig,
-                        reports: prev.reports 
+                        reports: prev.reports,
+                        projectsDetailed: prev.projectsDetailed
                     }));
                 }
             }
@@ -357,6 +359,27 @@ const App: React.FC = () => {
             }
         });
 
+        unsubProjects = db.collection("jdg_teleco").doc("main_db").collection("projects").onSnapshot((snapshot: any) => {
+            if (isSyncingRef.current) return; 
+            
+            const cloudProjects: ProjectData[] = [];
+            snapshot.forEach((doc: any) => {
+                cloudProjects.push(doc.data() as ProjectData);
+            });
+            
+            setData(prev => {
+                if (snapshot.empty && prev.projectsDetailed && prev.projectsDetailed.length > 0) {
+                    return prev;
+                }
+
+                isInternalUpdate.current = true;
+                return {
+                    ...prev,
+                    projectsDetailed: cloudProjects.sort((a, b) => b.id.localeCompare(a.id))
+                };
+            });
+        });
+
       } catch (e) {
         setIsCloudConnected(false);
         setIsInitialLoading(false);
@@ -366,6 +389,7 @@ const App: React.FC = () => {
     return () => {
         unsubConfig();
         unsubReports();
+        unsubProjects();
     };
   }, [data.firebaseConfig]);
 
@@ -517,16 +541,30 @@ const App: React.FC = () => {
                     return r;
                 });
             }
+
+            // También limpiar adjuntos de obras si son pesados para localStorage
+            if (dataToSave.projectsDetailed) {
+                dataToSave.projectsDetailed = dataToSave.projectsDetailed.map(p => {
+                    if (p.attachments && p.attachments.some(att => att.data && att.data.length > 5000)) {
+                        return {
+                            ...p,
+                            attachments: p.attachments.map(att => ({ ...att, data: '' })) // Limpiar base64 en local si es muy pesado
+                        };
+                    }
+                    return p;
+                });
+            }
             
             const serialized = JSON.stringify(dataToSave);
             localStorage.setItem('workerApp_db', serialized);
         } catch (e) {
             console.error("Error saving to localStorage (QuotaExceeded):", e);
-            // Si sigue fallando, guardar una versión más ligera (solo los últimos 100 partes)
+            // Si sigue fallando, guardar una versión más ligera
             try {
                 const lighterData = { ...dataToSave };
-                if (lighterData.reports && lighterData.reports.length > 100) {
-                    lighterData.reports = lighterData.reports.slice(0, 100);
+                if (lighterData.reports) lighterData.reports = lighterData.reports.slice(0, 50);
+                if (lighterData.projectsDetailed) {
+                    lighterData.projectsDetailed = lighterData.projectsDetailed.map(p => ({ ...p, attachments: [] }));
                 }
                 localStorage.setItem('workerApp_db', JSON.stringify(lighterData));
             } catch (e2) {
@@ -549,9 +587,9 @@ const App: React.FC = () => {
                     const fb = (window as any).firebase;
                     if (!fb) return;
                     const db = fb.app().firestore();
-                    const { reports, ...configOnly } = data;
+                    const { reports, projectsDetailed, ...configOnly } = data;
 
-                    if ((!configOnly.technicians || configOnly.technicians.length === 0) && (!configOnly.projectsDetailed || configOnly.projectsDetailed.length === 0)) {
+                    if ((!configOnly.technicians || configOnly.technicians.length === 0) && (!projectsDetailed || projectsDetailed.length === 0)) {
                         return;
                     }
 
@@ -719,6 +757,72 @@ const App: React.FC = () => {
             setEditingReport(null);
             setView('dashboard');
         }
+    }
+  };
+
+  const saveProject = async (project: ProjectData) => {
+    isSyncingRef.current = true;
+    isInternalUpdate.current = false;
+
+    try {
+        setData(prev => {
+            const existingIndex = prev.projectsDetailed.findIndex(p => p.id === project.id);
+            let updatedProjects;
+            if (existingIndex >= 0) {
+                updatedProjects = [...prev.projectsDetailed];
+                updatedProjects[existingIndex] = project;
+            } else {
+                updatedProjects = [project, ...prev.projectsDetailed];
+            }
+            return { ...prev, projectsDetailed: updatedProjects };
+        });
+
+        if (isCloudConnected) {
+            try {
+                const fb = (window as any).firebase;
+                const db = fb.app().firestore();
+                const firestorePayload = JSON.parse(JSON.stringify(project));
+                await db.collection("jdg_teleco").doc("main_db").collection("projects").doc(project.id).set(firestorePayload);
+                toast.success("Obra guardada en la nube");
+            } catch (e: any) {
+                console.error("Firebase project save error", e);
+                toast.error("Error al sincronizar obra con la nube");
+            }
+        } else {
+            toast.success("Obra guardada localmente");
+        }
+    } finally {
+        isSyncingRef.current = false;
+    }
+  };
+
+  const deleteProject = async (projectId: string) => {
+    if (!window.confirm('¿Eliminar esta obra permanentemente?')) return;
+
+    isSyncingRef.current = true;
+    isInternalUpdate.current = false;
+
+    try {
+        setData(prev => ({
+            ...prev,
+            projectsDetailed: prev.projectsDetailed.filter(p => p.id !== projectId)
+        }));
+
+        if (isCloudConnected) {
+            try {
+                const fb = (window as any).firebase;
+                const db = fb.app().firestore();
+                await db.collection("jdg_teleco").doc("main_db").collection("projects").doc(projectId).delete();
+                toast.success("Obra eliminada de la nube");
+            } catch (e) {
+                console.error("Error al borrar obra en la nube:", e);
+                toast.error("Error al eliminar obra en la nube");
+            }
+        } else {
+            toast.success("Obra eliminada localmente");
+        }
+    } finally {
+        isSyncingRef.current = false;
     }
   };
 
@@ -895,7 +999,16 @@ const App: React.FC = () => {
           )}
           {view === 'admin' && (
             <motion.div key="admin" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }}>
-              <AdminPanel data={data} setData={(updater) => { isSyncingRef.current = true; isInternalUpdate.current = false; setData(updater); setTimeout(() => {isSyncingRef.current = false;}, 2000); }} onGoToVacations={() => setView('vacations')} onDeleteReport={deleteReport} onManualBackup={performManualBackup} onUpdateReport={saveReport} />
+              <AdminPanel 
+                data={data} 
+                setData={(updater) => { isSyncingRef.current = true; isInternalUpdate.current = false; setData(updater); setTimeout(() => {isSyncingRef.current = false;}, 2000); }} 
+                onGoToVacations={() => setView('vacations')} 
+                onDeleteReport={deleteReport} 
+                onManualBackup={performManualBackup} 
+                onUpdateReport={saveReport}
+                onSaveProject={saveProject}
+                onDeleteProject={deleteProject}
+              />
             </motion.div>
           )}
         </AnimatePresence>
