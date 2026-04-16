@@ -22,6 +22,7 @@ interface AdminPanelProps {
 
 // Helpers for calculations
 const calculateDuration = (start: string, end: string): number => {
+    if (!start || !end || !start.includes(':') || !end.includes(':')) return 0;
     const [h1, m1] = start.split(':').map(Number);
     const [h2, m2] = end.split(':').map(Number);
     const diff = (h2 + m2/60) - (h1 + m1/60);
@@ -29,7 +30,7 @@ const calculateDuration = (start: string, end: string): number => {
 };
 
 const formatDateToSpanish = (dateStr: string) => {
-    if (!dateStr) return '';
+    if (!dateStr || !dateStr.includes('-')) return dateStr || '';
     const [year, month, day] = dateStr.split('-');
     return `${day}/${month}/${year}`;
 };
@@ -369,7 +370,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
     today.setHours(0,0,0,0);
     
     return (data.vacationRequests || []).filter(r => {
-        if (r.status !== 'approved') return false;
+        if (r.status !== 'approved' || !r.startDate) return false;
         
         const [y, m, d] = r.startDate.split('-').map(Number);
         const start = new Date(y, m-1, d);
@@ -378,7 +379,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
         
         return diffDays > 0 && diffDays <= 4; 
-    }).sort((a, b) => a.startDate.localeCompare(b.startDate));
+    }).sort((a, b) => (a.startDate || '').localeCompare(b.startDate || ''));
   }, [data.vacationRequests]);
 
   const uniqueClients = useMemo(() => {
@@ -422,7 +423,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
 
       // Ordenar cada grupo por ID descendente
       Object.keys(groups).forEach(key => {
-          (groups as any)[key].sort((a: ProjectData, b: ProjectData) => b.id.localeCompare(a.id));
+          (groups as any)[key].sort((a: ProjectData, b: ProjectData) => (b.id || '').localeCompare(a.id || ''));
       });
 
       return groups;
@@ -449,7 +450,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
           // 1. Terminados al final
           if (a.isFinished !== b.isFinished) return a.isFinished ? 1 : -1;
           // 2. Orden cronológico inverso (más nuevos primero)
-          return b.id.localeCompare(a.id);
+          return (b.id || '').localeCompare(a.id || '');
       });
   }, [data.budgets, budgetSearchTerm]);
 
@@ -808,7 +809,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
               list.push({ id: doc.id, ...doc.data() });
           });
           // Sort client side
-          list.sort((a, b) => b.id.localeCompare(a.id));
+          list.sort((a, b) => (b.id || '').localeCompare(a.id || ''));
           
           setBackupsList(list);
       } catch (e: any) {
@@ -951,7 +952,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
         if (filterDateStart && r.date < filterDateStart) return false;
         if (filterDateEnd && r.date > filterDateEnd) return false;
         return true;
-    }).sort((a, b) => b.date.localeCompare(a.date));
+    }).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
   }, [data.reports, filterTech, filterProject, filterDateStart, filterDateEnd, data.projectsDetailed]);
 
   const groupedReports = useMemo(() => {
@@ -1006,7 +1007,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
         summary[week][r.technician].reg += calculateDuration(r.startTime, r.endTime);
         summary[week][r.technician].ot += r.overtimeHours || 0;
     });
-    return Object.entries(summary).sort((a, b) => b[0].localeCompare(a[0]));
+    return Object.entries(summary).sort((a, b) => (b[0] || '').localeCompare(a[0] || ''));
   }, [filteredReports]);
 
   const downloadCSV = () => {
@@ -1149,6 +1150,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
             </div>
             <div className="flex flex-wrap gap-2">
                 {upcomingAbsences.map(r => {
+                    if (!r.startDate || !r.startDate.includes('-')) return null;
                     const [y, m, d] = r.startDate.split('-').map(Number);
                     const start = new Date(y, m-1, d);
                     const today = new Date(); today.setHours(0,0,0,0);
@@ -1208,7 +1210,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
       {selectedImage && (
         <div className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-md flex items-center justify-center p-4 animate-fade-in" onClick={() => setSelectedImage(null)}>
           <div className="absolute top-6 right-6 flex gap-4">
-              <button onClick={(e) => { e.stopPropagation(); const link = document.createElement('a'); link.href = selectedImage.data; link.download = selectedImage.name || `ARCHIVO_${selectedImage.type.toUpperCase().split('/')[1] || 'DOC'}`; link.click(); }} className="bg-brand-teal text-white p-3 rounded-full shadow-xl"><DownloadIcon className="w-6 h-6" /></button>
+              <button onClick={(e) => { 
+                  e.stopPropagation(); 
+                  const link = document.createElement('a'); 
+                  link.href = selectedImage.data; 
+                  const ext = selectedImage.type?.split('/')[1] || 'DOC';
+                  link.download = selectedImage.name || `ARCHIVO_${selectedImage.type?.toUpperCase().split('/')[1] || 'DOC'}`; 
+                  link.click(); 
+              }} className="bg-brand-teal text-white p-3 rounded-full shadow-xl"><DownloadIcon className="w-6 h-6" /></button>
               <button className="bg-white/10 text-white p-3 rounded-full" onClick={() => setSelectedImage(null)}><XIcon className="w-6 h-6" /></button>
           </div>
           {selectedImage.data && (
@@ -1388,7 +1397,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                       else if (r.overtimeType === 'FINDE SEMANA') monthlyGroups[key].finde += ot;
                     });
 
-                    const sortedMonths = Object.entries(monthlyGroups).sort((a, b) => b[0].localeCompare(a[0]));
+                    const sortedMonths = Object.entries(monthlyGroups).sort((a, b) => (b[0] || '').localeCompare(a[0] || ''));
 
                     return (
                       <div key={tech.id} className="bg-white dark:bg-gray-800/40 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden shadow-sm">
@@ -1449,7 +1458,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                                 <div className="bg-brand-teal/10 dark:bg-brand-teal/20 border-l-4 border-brand-teal px-4 py-3 flex items-center gap-3">
                                     <h4 className="text-brand-teal dark:text-brand-teal font-black text-xl tracking-widest">{monthLabel}</h4>
                                 </div>
-                                {Object.entries(weeks).sort((a, b) => b[1][0].date.localeCompare(a[1][0].date)).map(([weekRange, reports]) => {
+                                {Object.entries(weeks).sort((a, b) => (b[1][0]?.date || '').localeCompare(a[1][0]?.date || '')).map(([weekRange, reports]) => {
                                     const isExpanded = !!expandedWeeks[weekRange];
                                     return (
                                         <div key={weekRange} className="space-y-3">
@@ -1625,7 +1634,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
         {tab === 'expenses' && (
             <div className="space-y-6">
                 <h3 className="text-lg font-bold text-gray-800 dark:text-white mb-4">Control de Gastos</h3>
-                {Object.keys(groupedExpenses.tree).sort((a,b) => groupedExpenses.dateMap[b].localeCompare(groupedExpenses.dateMap[a])).map((month) => {
+                {Object.keys(groupedExpenses.tree).sort((a,b) => (groupedExpenses.dateMap[b] || '').localeCompare(groupedExpenses.dateMap[a] || '')).map((month) => {
                     const weeksInMonth = groupedExpenses.tree[month];
                     return (
                         <div key={month} className="space-y-4">
@@ -1633,7 +1642,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                                 <h4 className="text-brand-teal dark:text-brand-teal font-black text-xl tracking-widest">{month}</h4>
                             </div>
                             
-                            {Object.keys(weeksInMonth).sort((a,b) => groupedExpenses.dateMap[b].localeCompare(groupedExpenses.dateMap[a])).map((week) => {
+                            {Object.keys(weeksInMonth).sort((a,b) => (groupedExpenses.dateMap[b] || '').localeCompare(groupedExpenses.dateMap[a] || '')).map((week) => {
                                 const isExpanded = !!expandedWeeks[week];
                                 const techs = weeksInMonth[week];
                                 const totalWeek: number = (Object.values(techs) as number[]).reduce((a, b) => a + b, 0);
@@ -1718,7 +1727,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                         if (!groupedByMonth[key]) groupedByMonth[key] = { label, reports: [] };
                         groupedByMonth[key].reports.push(r);
                     });
-                    const sortedMonths = Object.entries(groupedByMonth).sort((a, b) => b[0].localeCompare(a[0]));
+                    const sortedMonths = Object.entries(groupedByMonth).sort((a, b) => (b[0] || '').localeCompare(a[0] || ''));
                     const isExpanded = expandedTechId === t.id;
 
                     return (
@@ -1781,7 +1790,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                                                     
                                                     {isMonthExpanded && (
                                                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pl-2 animate-fade-in">
-                                                            {monthData.reports.sort((a,b) => b.date.localeCompare(a.date)).map(r => (
+                                                            {monthData.reports.sort((a,b) => (b.date || '').localeCompare(a.date || '')).map(r => (
                                                                 <div 
                                                                     key={r.id} 
                                                                     onClick={() => {

@@ -352,7 +352,7 @@ const App: React.FC = () => {
                 isInternalUpdate.current = true;
                 return {
                     ...prev,
-                    reports: cloudReports.sort((a, b) => b.date.localeCompare(a.date))
+                    reports: cloudReports.sort((a, b) => (b.date || '').localeCompare(a.date || ''))
                 };
             });
             
@@ -391,7 +391,7 @@ const App: React.FC = () => {
 
                 return {
                     ...prev,
-                    projectsDetailed: merged.sort((a, b) => b.id.localeCompare(a.id))
+                    projectsDetailed: merged.sort((a, b) => (b.id || '').localeCompare(a.id || ''))
                 };
             });
         });
@@ -827,7 +827,7 @@ const App: React.FC = () => {
         // Buscamos en los últimos 15 backups (orden descendente por ID que es la fecha)
         const backupsSnap = await db.collection('jdg_teleco_backups').get();
         const backups = backupsSnap.docs.map(d => ({ id: d.id, ...d.data() }))
-            .sort((a, b) => b.id.localeCompare(a.id))
+            .sort((a, b) => (b.id || '').localeCompare(a.id || ''))
             .slice(0, 15);
         
         if (backups.length === 0) {
@@ -849,7 +849,7 @@ const App: React.FC = () => {
                         });
                         return {
                             ...prev,
-                            projectsDetailed: merged.sort((a, b) => b.id.localeCompare(a.id))
+                            projectsDetailed: merged.sort((a, b) => (b.id || '').localeCompare(a.id || ''))
                         };
                     });
 
