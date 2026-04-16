@@ -17,6 +17,7 @@ interface AdminPanelProps {
   onUpdateReport: (report: WorkReport, shouldRedirect: boolean) => Promise<void>;
   onSaveProject: (project: ProjectData) => Promise<void>;
   onDeleteProject: (id: string) => Promise<void>;
+  onRecoverProjects?: () => Promise<void>;
 }
 
 // Helpers for calculations
@@ -195,7 +196,7 @@ const MapComponent = ({ projects, selectedProjectId, onSelectProject }: { projec
   ) : <div className="w-full h-[600px] bg-gray-100 dark:bg-gray-800 flex items-center justify-center rounded-xl border border-gray-200 dark:border-gray-700">Cargando mapa...</div>;
 };
 
-const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations, onDeleteReport, onManualBackup, onUpdateReport, onSaveProject, onDeleteProject }) => {
+const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations, onDeleteReport, onManualBackup, onUpdateReport, onSaveProject, onDeleteProject, onRecoverProjects }) => {
   const [isPending, startTransition] = useTransition();
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [expandedTechId, setExpandedTechId] = useState<string | null>(null);
@@ -2122,6 +2123,24 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                     </div>
 
                     {/* Categorized Lists */}
+                    {Object.values(categorizedProjects).every(l => (l as any[]).length === 0) && (
+                        <div className="bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 p-8 rounded-2xl text-center space-y-4">
+                            <div className="text-4xl">🔍</div>
+                            <h4 className="text-lg font-bold text-orange-800 dark:text-orange-300">No se han encontrado obras</h4>
+                            <p className="text-sm text-orange-700 dark:text-orange-400 max-w-md mx-auto">
+                                Si tus obras han desaparecido tras la última actualización, puedes intentar recuperarlas desde la última copia de seguridad.
+                            </p>
+                            {onRecoverProjects && (
+                                <button 
+                                    onClick={onRecoverProjects}
+                                    className="bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 px-6 rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 mx-auto"
+                                >
+                                    <RefreshCwIcon className="w-5 h-5" /> RECUPERAR OBRAS DESDE BACKUP
+                                </button>
+                            )}
+                        </div>
+                    )}
+
                     {Object.entries(categorizedProjects).map(([key, list]: [string, any]) => {
                         if (list.length === 0) return null;
                         const config: any = {
@@ -2346,6 +2365,11 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                                 <button onClick={fetchBackups} className="bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 px-4 py-2 rounded-xl font-bold text-xs shadow-md transition-all flex items-center gap-2 border border-gray-200 dark:border-gray-700">
                                     <DownloadIcon className="w-4 h-4" /> Ver Historial Nube
                                 </button>
+                                {onRecoverProjects && (
+                                    <button onClick={onRecoverProjects} className="bg-orange-100 dark:bg-orange-900/40 hover:bg-orange-200 dark:hover:bg-orange-800 text-orange-700 dark:text-orange-300 px-4 py-2 rounded-xl font-bold text-xs shadow-md transition-all flex items-center gap-2 border border-orange-200 dark:border-orange-800">
+                                        <RefreshCwIcon className="w-4 h-4" /> Recuperar Obras
+                                    </button>
+                                )}
                             </div>
                         </div>
                         

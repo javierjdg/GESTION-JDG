@@ -311,12 +311,19 @@ const App: React.FC = () => {
                 // Verificación de seguridad: si viene vacío, no lo cargamos ciegamente si tenemos datos locales
                 if (Object.keys(cloudConfig).length > 0) {
                     isInternalUpdate.current = true;
-                    setData(prev => ({
-                        ...prev,
-                        ...cloudConfig,
-                        reports: prev.reports,
-                        projectsDetailed: prev.projectsDetailed
-                    }));
+                    setData(prev => {
+                        // Si la nube tiene proyectos (formato antiguo) y nosotros no, los cargamos para migrar
+                        const projectsToUse = (cloudConfig.projectsDetailed && cloudConfig.projectsDetailed.length > 0 && prev.projectsDetailed.length === 0)
+                            ? cloudConfig.projectsDetailed
+                            : prev.projectsDetailed;
+
+                        return {
+                            ...prev,
+                            ...cloudConfig,
+                            reports: prev.reports,
+                            projectsDetailed: projectsToUse
+                        };
+                    });
                 }
             }
         }, (error: any) => {
@@ -368,14 +375,23 @@ const App: React.FC = () => {
             });
             
             setData(prev => {
-                if (snapshot.empty && prev.projectsDetailed && prev.projectsDetailed.length > 0) {
-                    return prev;
-                }
+                // Si la subcolección está vacía, mantenemos lo que tenemos (podría estar en main_db o localStorage)
+                if (snapshot.empty) return prev;
 
                 isInternalUpdate.current = true;
+                
+                // MEZCLA DE SEGURIDAD: Durante la migración, combinamos lo que hay en la subcolección 
+                // con lo que tenemos localmente para evitar desapariciones accidentales.
+                const merged = [...cloudProjects];
+                prev.projectsDetailed.forEach(p => {
+                    if (!merged.find(mp => mp.id === p.id)) {
+                        merged.push(p);
+                    }
+                });
+
                 return {
                     ...prev,
-                    projectsDetailed: cloudProjects.sort((a, b) => b.id.localeCompare(a.id))
+                    projectsDetailed: merged.sort((a, b) => b.id.localeCompare(a.id))
                 };
             });
         });
@@ -796,6 +812,68 @@ const App: React.FC = () => {
     }
   };
 
+  const recoverProjectsFromBackup = async () => {
+    if (!isCloudConnected) {
+        toast.error("⚠️ No hay conexión con la nube.");
+        return;
+    }
+    
+    try {
+        const fb = (window as any).firebase;
+        const db = fb.app().firestore();
+        
+        toast.info("Buscando obras en copias de seguridad...");
+        
+        // Buscamos en los últimos 15 backups (orden descendente por ID que es la fecha)
+        const backupsSnap = await db.collection('jdg_teleco_backups').get();
+        const backups = backupsSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+            .sort((a, b) => b.id.localeCompare(a.id))
+            .slice(0, 15);
+        
+        if (backups.length === 0) {
+            toast.error("No se encontraron copias de seguridad.");
+            return;
+        }
+
+        for (const bData of backups) {
+            if (bData.projectsDetailed && bData.projectsDetailed.length > 0) {
+                const count = bData.projectsDetailed.length;
+                if (window.confirm(`He encontrado una copia (${bData.id}) con ${count} obras. ¿Deseas restaurar estas obras?\n\n(Esto recuperará las obras desaparecidas sin afectar a tus partes actuales)`)) {
+                    
+                    setData(prev => {
+                        const merged = [...bData.projectsDetailed];
+                        prev.projectsDetailed.forEach(p => {
+                            if (!merged.find(mp => mp.id === p.id)) {
+                                merged.push(p);
+                            }
+                        });
+                        return {
+                            ...prev,
+                            projectsDetailed: merged.sort((a, b) => b.id.localeCompare(a.id))
+                        };
+                    });
+
+                    // Migrar inmediatamente a la nueva colección para que no vuelvan a desaparecer
+                    const projectsRef = db.collection("jdg_teleco").doc("main_db").collection("projects");
+                    const batch = db.batch();
+                    bData.projectsDetailed.forEach((p: any) => {
+                        batch.set(projectsRef.doc(p.id), p);
+                    });
+                    await batch.commit();
+
+                    toast.success(`✅ ${count} obras restauradas y sincronizadas correctamente.`);
+                    return;
+                }
+            }
+        }
+        
+        toast.error("No se encontraron obras en las copias de seguridad recientes.");
+    } catch (e: any) {
+        console.error("Error en recuperación:", e);
+        toast.error("Error al intentar recuperar: " + e.message);
+    }
+  };
+
   const deleteProject = async (projectId: string) => {
     if (!window.confirm('¿Eliminar esta obra permanentemente?')) return;
 
@@ -999,16 +1077,17 @@ const App: React.FC = () => {
           )}
           {view === 'admin' && (
             <motion.div key="admin" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }}>
-              <AdminPanel 
-                data={data} 
-                setData={(updater) => { isSyncingRef.current = true; isInternalUpdate.current = false; setData(updater); setTimeout(() => {isSyncingRef.current = false;}, 2000); }} 
-                onGoToVacations={() => setView('vacations')} 
-                onDeleteReport={deleteReport} 
-                onManualBackup={performManualBackup} 
-                onUpdateReport={saveReport}
-                onSaveProject={saveProject}
-                onDeleteProject={deleteProject}
-              />
+                <AdminPanel 
+                    data={data} 
+                    setData={(updater) => { isSyncingRef.current = true; isInternalUpdate.current = false; setData(updater); setTimeout(() => {isSyncingRef.current = false;}, 2000); }} 
+                    onGoToVacations={() => setView('vacations')} 
+                    onDeleteReport={deleteReport} 
+                    onManualBackup={performManualBackup} 
+                    onUpdateReport={saveReport}
+                    onSaveProject={saveProject}
+                    onDeleteProject={deleteProject}
+                    onRecoverProjects={recoverProjectsFromBackup}
+                />
             </motion.div>
           )}
         </AnimatePresence>
