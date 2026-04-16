@@ -874,6 +874,125 @@ const App: React.FC = () => {
     }
   };
 
+  const restoreFullBackup = async (backupId: string) => {
+    if (!isCloudConnected) {
+        toast.error("⚠️ No hay conexión con la nube para restaurar.");
+        return;
+    }
+
+    if(!window.confirm(`⚠️ PELIGRO: Esto sobrescribirá TODOS los datos actuales con la copia del ${backupId}.\n\n¿Estás seguro de continuar?`)) return;
+
+    isSyncingRef.current = true;
+    isInternalUpdate.current = false;
+    setIsInitialLoading(true);
+
+    try {
+        const fb = (window as any).firebase;
+        const db = fb.app().firestore();
+        
+        // 1. Obtener documento principal del backup
+        const doc = await db.collection('jdg_teleco_backups').doc(backupId).get();
+        if(!doc.exists) {
+            toast.error("Error: La copia de seguridad no existe.");
+            return;
+        }
+        
+        let restoredData = doc.data() as AppData;
+
+        // 2. Reconstruir Reports desde Shards
+        const reportsSnap = await db.collection('jdg_teleco_backups').doc(backupId).collection('reports_shards').get();
+        let allReports: WorkReport[] = [];
+        if (!reportsSnap.empty) {
+            reportsSnap.forEach((d: any) => {
+                if(d.data().items) allReports.push(...d.data().items);
+            });
+            restoredData.reports = allReports;
+        }
+
+        // 3. Reconstruir Historial desde Shards
+        const histSnap = await db.collection('jdg_teleco_backups').doc(backupId).collection('history_shards').get();
+        let fullHistory: any = {};
+        if (!histSnap.empty) {
+            histSnap.forEach((d: any) => {
+                if(d.data().items) Object.assign(fullHistory, d.data().items);
+            });
+            restoredData.dailyOrgHistory = fullHistory;
+        }
+
+        // 4. LIMPIEZA Y SINCRONIZACIÓN (CRÍTICO)
+        
+        // A. Limpiar y Sincronizar Reportes
+        const reportsRef = db.collection("jdg_teleco").doc("main_db").collection("reports");
+        const currentReportsSnap = await reportsRef.get();
+        
+        // Borrar actuales en bloques de 450
+        if (!currentReportsSnap.empty) {
+            const docs = currentReportsSnap.docs;
+            for (let i = 0; i < docs.length; i += 450) {
+                const batch = db.batch();
+                docs.slice(i, i + 450).forEach(d => batch.delete(d.ref));
+                await batch.commit();
+            }
+        }
+
+        // Subir nuevos
+        if (restoredData.reports && restoredData.reports.length > 0) {
+            const reportsToSync = restoredData.reports;
+            for (let i = 0; i < reportsToSync.length; i += 450) {
+                const batch = db.batch();
+                reportsToSync.slice(i, i + 450).forEach(r => {
+                    batch.set(reportsRef.doc(r.id), r);
+                });
+                await batch.commit();
+            }
+        }
+
+        // B. Limpiar y Sincronizar Obras
+        const projectsRef = db.collection("jdg_teleco").doc("main_db").collection("projects");
+        const currentProjectsSnap = await projectsRef.get();
+        
+        // Borrar actuales en bloques de 450
+        if (!currentProjectsSnap.empty) {
+            const docs = currentProjectsSnap.docs;
+            for (let i = 0; i < docs.length; i += 450) {
+                const batch = db.batch();
+                docs.slice(i, i + 450).forEach(d => batch.delete(d.ref));
+                await batch.commit();
+            }
+        }
+
+        // Subir nuevos
+        if (restoredData.projectsDetailed && restoredData.projectsDetailed.length > 0) {
+            const projectsToSync = restoredData.projectsDetailed;
+            for (let i = 0; i < projectsToSync.length; i += 450) {
+                const batch = db.batch();
+                projectsToSync.slice(i, i + 450).forEach(p => {
+                    batch.set(projectsRef.doc(p.id), p);
+                });
+                await batch.commit();
+            }
+        }
+
+        // C. Sincronizar Configuración General
+        const { reports, projectsDetailed, ...configOnly } = restoredData;
+        const cleanConfig = JSON.parse(JSON.stringify(configOnly));
+        await db.collection("jdg_teleco").doc("main_db").set(cleanConfig);
+
+        // 5. Actualizar estado local
+        setData(restoredData);
+        toast.success(`✅ Sistema restaurado y sincronizado correctamente al estado: ${backupId}`);
+
+    } catch (e: any) {
+        console.error("Restore error", e);
+        toast.error("Error restaurando copia: " + e.message);
+    } finally {
+        setIsInitialLoading(false);
+        setTimeout(() => {
+            isSyncingRef.current = false;
+        }, 3000);
+    }
+  };
+
   const deleteProject = async (projectId: string) => {
     if (!window.confirm('¿Eliminar esta obra permanentemente?')) return;
 
@@ -1087,6 +1206,7 @@ const App: React.FC = () => {
                     onSaveProject={saveProject}
                     onDeleteProject={deleteProject}
                     onRecoverProjects={recoverProjectsFromBackup}
+                    onRestoreFullBackup={restoreFullBackup}
                 />
             </motion.div>
           )}

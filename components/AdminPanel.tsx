@@ -18,6 +18,7 @@ interface AdminPanelProps {
   onSaveProject: (project: ProjectData) => Promise<void>;
   onDeleteProject: (id: string) => Promise<void>;
   onRecoverProjects?: () => Promise<void>;
+  onRestoreFullBackup?: (backupId: string) => Promise<void>;
 }
 
 // Helpers for calculations
@@ -197,7 +198,7 @@ const MapComponent = ({ projects, selectedProjectId, onSelectProject }: { projec
   ) : <div className="w-full h-[600px] bg-gray-100 dark:bg-gray-800 flex items-center justify-center rounded-xl border border-gray-200 dark:border-gray-700">Cargando mapa...</div>;
 };
 
-const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations, onDeleteReport, onManualBackup, onUpdateReport, onSaveProject, onDeleteProject, onRecoverProjects }) => {
+const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations, onDeleteReport, onManualBackup, onUpdateReport, onSaveProject, onDeleteProject, onRecoverProjects, onRestoreFullBackup }) => {
   const [isPending, startTransition] = useTransition();
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [expandedTechId, setExpandedTechId] = useState<string | null>(null);
@@ -825,88 +826,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
   };
 
   const restoreBackup = async (backupId: string) => {
-      if(!window.confirm(`⚠️ PELIGRO: Esto sobrescribirá TODOS los datos actuales con la copia del ${backupId}.\n\n¿Estás seguro de continuar?`)) return;
-      
-      try {
-          const fb = (window as any).firebase;
-          const db = fb.app().firestore();
-          
-          // 1. Obtener documento principal
-          const doc = await db.collection('jdg_teleco_backups').doc(backupId).get();
-          if(!doc.exists) {
-              toast.error("Error: La copia de seguridad no existe.");
-              return;
-          }
-          
-          let restoredData = doc.data() as AppData;
-
-          // 2. Reconstruir Reports desde Shards
-          const reportsSnap = await db.collection('jdg_teleco_backups').doc(backupId).collection('reports_shards').get();
-          let allReports: WorkReport[] = [];
-          if (!reportsSnap.empty) {
-              reportsSnap.forEach((d: any) => {
-                  if(d.data().items) allReports.push(...d.data().items);
-              });
-              restoredData.reports = allReports;
-          }
-
-          // 3. Reconstruir Historial desde Shards
-          const histSnap = await db.collection('jdg_teleco_backups').doc(backupId).collection('history_shards').get();
-          let fullHistory: any = {};
-          if (!histSnap.empty) {
-              histSnap.forEach((d: any) => {
-                  if(d.data().items) Object.assign(fullHistory, d.data().items);
-              });
-              restoredData.dailyOrgHistory = fullHistory;
-          }
-
-          setData(restoredData);
-          
-          // 4. Sincronizar con Firestore (CRÍTICO: Sincronizar todo para que otros usuarios lo vean)
-          if (fb && fb.app().firestore()) {
-              const db = fb.app().firestore();
-              
-              // A. Sincronizar Reportes
-              const reportsRef = db.collection("jdg_teleco").doc("main_db").collection("reports");
-              if (restoredData.reports && restoredData.reports.length > 0) {
-                  const reportsToSync = restoredData.reports;
-                  const batchSize = 450;
-                  for (let i = 0; i < reportsToSync.length; i += batchSize) {
-                      const batch = db.batch();
-                      const currentBatch = reportsToSync.slice(i, i + batchSize);
-                      currentBatch.forEach(r => {
-                          batch.set(reportsRef.doc(r.id), r);
-                      });
-                      await batch.commit();
-                  }
-              }
-
-              // B. Sincronizar Obras (Projects)
-              const projectsRef = db.collection("jdg_teleco").doc("main_db").collection("projects");
-              if (restoredData.projectsDetailed && restoredData.projectsDetailed.length > 0) {
-                  const projectsToSync = restoredData.projectsDetailed;
-                  const batchSize = 450;
-                  for (let i = 0; i < projectsToSync.length; i += batchSize) {
-                      const batch = db.batch();
-                      const currentBatch = projectsToSync.slice(i, i + batchSize);
-                      currentBatch.forEach(p => {
-                          batch.set(projectsRef.doc(p.id), p);
-                      });
-                      await batch.commit();
-                  }
-              }
-
-              // C. Sincronizar Configuración General (Técnicos, presupuestos, etc.)
-              const { reports, projectsDetailed, ...configOnly } = restoredData;
-              const cleanConfig = JSON.parse(JSON.stringify(configOnly));
-              await db.collection("jdg_teleco").doc("main_db").set(cleanConfig);
-          }
-
-          toast.success(`✅ Sistema restaurado correctamente al estado: ${backupId}\n\nSe han restaurado ${restoredData.reports?.length || 0} partes y ${restoredData.projectsDetailed?.length || 0} obras.`);
-
-      } catch (e: any) {
-          console.error("Restore error", e);
-          toast.error("Error restaurando copia: " + e.message);
+      if (onRestoreFullBackup) {
+          await onRestoreFullBackup(backupId);
       }
   };
 
