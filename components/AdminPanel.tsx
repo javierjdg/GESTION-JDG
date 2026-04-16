@@ -862,12 +862,12 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
 
           setData(restoredData);
           
-          // 4. Sincronizar con Firestore (Opcional pero recomendado)
+          // 4. Sincronizar con Firestore (CRÍTICO: Sincronizar todo para que otros usuarios lo vean)
           if (fb && fb.app().firestore()) {
               const db = fb.app().firestore();
-              const reportsRef = db.collection("jdg_teleco").doc("main_db").collection("reports");
               
-              // Subir reportes restaurados usando múltiples batches si es necesario
+              // A. Sincronizar Reportes
+              const reportsRef = db.collection("jdg_teleco").doc("main_db").collection("reports");
               if (restoredData.reports && restoredData.reports.length > 0) {
                   const reportsToSync = restoredData.reports;
                   const batchSize = 450;
@@ -880,9 +880,29 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                       await batch.commit();
                   }
               }
+
+              // B. Sincronizar Obras (Projects)
+              const projectsRef = db.collection("jdg_teleco").doc("main_db").collection("projects");
+              if (restoredData.projectsDetailed && restoredData.projectsDetailed.length > 0) {
+                  const projectsToSync = restoredData.projectsDetailed;
+                  const batchSize = 450;
+                  for (let i = 0; i < projectsToSync.length; i += batchSize) {
+                      const batch = db.batch();
+                      const currentBatch = projectsToSync.slice(i, i + batchSize);
+                      currentBatch.forEach(p => {
+                          batch.set(projectsRef.doc(p.id), p);
+                      });
+                      await batch.commit();
+                  }
+              }
+
+              // C. Sincronizar Configuración General (Técnicos, presupuestos, etc.)
+              const { reports, projectsDetailed, ...configOnly } = restoredData;
+              const cleanConfig = JSON.parse(JSON.stringify(configOnly));
+              await db.collection("jdg_teleco").doc("main_db").set(cleanConfig);
           }
 
-          toast.success(`✅ Sistema restaurado correctamente al estado: ${backupId}\n\nSe han restaurado ${restoredData.reports?.length || 0} partes de trabajo.`);
+          toast.success(`✅ Sistema restaurado correctamente al estado: ${backupId}\n\nSe han restaurado ${restoredData.reports?.length || 0} partes y ${restoredData.projectsDetailed?.length || 0} obras.`);
 
       } catch (e: any) {
           console.error("Restore error", e);
