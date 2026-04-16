@@ -308,20 +308,16 @@ const App: React.FC = () => {
             if (isSyncingRef.current) return; 
             if (snapshot.exists) {
                 const cloudConfig = snapshot.data();
-                // Verificación de seguridad: si viene vacío, no lo cargamos ciegamente si tenemos datos locales
                 if (Object.keys(cloudConfig).length > 0) {
                     isInternalUpdate.current = true;
                     setData(prev => {
-                        // Si la nube tiene proyectos (formato antiguo) y nosotros no, los cargamos para migrar
-                        const projectsToUse = (cloudConfig.projectsDetailed && cloudConfig.projectsDetailed.length > 0 && prev.projectsDetailed.length === 0)
-                            ? cloudConfig.projectsDetailed
-                            : prev.projectsDetailed;
-
+                        // Ignoramos projectsDetailed del documento principal ya que ahora usamos subcolección
+                        const { projectsDetailed, ...rest } = cloudConfig;
                         return {
                             ...prev,
-                            ...cloudConfig,
+                            ...rest,
                             reports: prev.reports,
-                            projectsDetailed: projectsToUse
+                            projectsDetailed: prev.projectsDetailed
                         };
                     });
                 }
@@ -341,11 +337,10 @@ const App: React.FC = () => {
                 cloudReports.push(doc.data() as WorkReport);
             });
             
-            // SEGURIDAD: Si la nube está vacía pero tenemos datos locales, no borramos todo sin avisar
-            // Esto previene borrados accidentales por fallos de sincronización inicial
             setData(prev => {
-                if (snapshot.empty && prev.reports && prev.reports.length > 0) {
-                    console.warn("Sincronización: La nube está vacía pero hay datos locales. Manteniendo datos locales.");
+                // Si la nube está vacía y ya hemos sincronizado antes, permitimos que se vacíe localmente
+                if (snapshot.empty && !hasSyncedWithCloud) {
+                    console.warn("Sincronización inicial: La nube está vacía. Manteniendo datos locales por seguridad.");
                     return prev;
                 }
 
@@ -375,23 +370,14 @@ const App: React.FC = () => {
             });
             
             setData(prev => {
-                // Si la subcolección está vacía, mantenemos lo que tenemos (podría estar en main_db o localStorage)
-                if (snapshot.empty) return prev;
+                // Si la subcolección está vacía y ya hemos sincronizado antes, permitimos que se vacíe localmente
+                // Si es la primera carga y está vacía, mantenemos lo local por seguridad
+                if (snapshot.empty && !hasSyncedWithCloud) return prev;
 
                 isInternalUpdate.current = true;
-                
-                // MEZCLA DE SEGURIDAD: Durante la migración, combinamos lo que hay en la subcolección 
-                // con lo que tenemos localmente para evitar desapariciones accidentales.
-                const merged = [...cloudProjects];
-                prev.projectsDetailed.forEach(p => {
-                    if (!merged.find(mp => mp.id === p.id)) {
-                        merged.push(p);
-                    }
-                });
-
                 return {
                     ...prev,
-                    projectsDetailed: merged.sort((a, b) => (b.id || '').localeCompare(a.id || ''))
+                    projectsDetailed: cloudProjects.sort((a, b) => (b.id || '').localeCompare(a.id || ''))
                 };
             });
         });
