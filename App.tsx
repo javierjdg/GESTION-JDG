@@ -974,7 +974,18 @@ const App: React.FC = () => {
         }
 
         // C. Sincronizar Configuración General
-        const { reports, projectsDetailed, ...configOnly } = restoredData;
+        const { reports, projectsDetailed, dailyOrgHistory, ...configOnly } = restoredData;
+        
+        // Limitar historial a 30 días para no saturar el documento principal
+        if (dailyOrgHistory) {
+            const keys = Object.keys(dailyOrgHistory).sort((a, b) => b.localeCompare(a));
+            const limitedHistory: any = {};
+            keys.slice(0, 30).forEach(k => {
+                limitedHistory[k] = dailyOrgHistory[k];
+            });
+            (configOnly as any).dailyOrgHistory = limitedHistory;
+        }
+
         const cleanConfig = JSON.parse(JSON.stringify(configOnly));
         await db.collection("jdg_teleco").doc("main_db").set(cleanConfig);
 
