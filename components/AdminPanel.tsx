@@ -1480,7 +1480,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                                                                                             <div className="flex gap-3 mt-1 overflow-x-auto pb-2 custom-scrollbar">
                                                                                                 {report.tickets?.map((t, idx) => (
                                                                                                     <div key={idx} className="relative group/img flex-shrink-0">
-                                                                                                        {t.data && <img src={t.data} onClick={() => setSelectedImage({data: t.data, type: t.type})} className="w-20 h-20 object-cover rounded-lg cursor-pointer hover:border-brand-lime border-2 border-gray-300 dark:border-gray-800 transition-all" />}
+                                                                                                        {t.data ? (
+                                                                                                            <img src={t.data} onClick={() => setSelectedImage({data: t.data, type: t.type})} className="w-20 h-20 object-cover rounded-lg cursor-pointer hover:border-brand-lime border-2 border-gray-300 dark:border-gray-800 transition-all" />
+                                                                                                        ) : (
+                                                                                                            <div className="w-20 h-20 bg-gray-100 dark:bg-gray-800 rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-700 flex flex-col items-center justify-center p-1 text-center">
+                                                                                                                <CloudIcon className="w-6 h-6 text-brand-teal mb-1" />
+                                                                                                                <span className="text-[7px] font-black text-gray-500 uppercase leading-none">En Drive</span>
+                                                                                                            </div>
+                                                                                                        )}
                                                                                                         <div className="absolute top-0 right-0 p-1 opacity-0 group-hover/img:opacity-100 transition-opacity"><span className="bg-brand-teal text-[8px] font-bold px-1 rounded text-white">{t.type}</span></div>
                                                                                                     </div>
                                                                                                 ))}

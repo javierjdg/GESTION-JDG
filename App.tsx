@@ -718,7 +718,7 @@ const App: React.FC = () => {
                 })
               });
               finalReport.tickets[i].driveUrl = '✅ Subido y Organizado';
-              finalReport.tickets[i].data = ''; // Limpiar base64 para liberar espacio
+              // Ya NO limpiamos t.data para que sea visible en el detalle
             } catch (e) {
               console.error("Error Drive:", e);
               finalReport.tickets[i].driveUrl = '❌ Error';
