@@ -31,6 +31,12 @@ export interface ExpenseTicket {
   driveUrl?: string; 
 }
 
+export interface MaterialItem {
+  id: number;       // timestamp usado como key única
+  quantity: string; // cantidad libre (ej: "3", "1.5", "2 cajas")
+  description: string; // descripción del material
+}
+
 export interface WorkReport {
   id: string;
   technician: string;
@@ -54,6 +60,7 @@ export interface WorkReport {
   };
   imageNames: string[];
   tickets?: ExpenseTicket[];
+  materials?: MaterialItem[];
 }
 
 export interface VacationRequest {

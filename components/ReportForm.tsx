@@ -32,7 +32,8 @@ const ReportForm: React.FC<ReportFormProps> = ({ projects, vehicles, initialData
       others: 0,
       othersDesc: ''
     },
-    tickets: [] as ExpenseTicket[]
+    tickets: [] as ExpenseTicket[],
+    materials: [] as MaterialItem[],
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -58,7 +59,8 @@ const ReportForm: React.FC<ReportFormProps> = ({ projects, vehicles, initialData
         isDriver: initialData.isDriver,
         driverTripType: initialData.driverTripType || '',
         expenses: { ...initialData.expenses },
-        tickets: initialData.tickets || []
+        tickets: initialData.tickets || [],
+        materials: initialData.materials || [],
       });
     }
   }, [initialData]);
@@ -146,7 +148,8 @@ const ReportForm: React.FC<ReportFormProps> = ({ projects, vehicles, initialData
       driverTripType: formData.isDriver ? (formData.driverTripType as any) : undefined,
       expenses: formData.expenses,
       imageNames: [],
-      tickets: formData.tickets
+      tickets: formData.tickets,
+      materials: formData.materials,
     });
   };
 
@@ -196,6 +199,30 @@ const ReportForm: React.FC<ReportFormProps> = ({ projects, vehicles, initialData
     setFormData(prev => ({
       ...prev,
       tickets: prev.tickets.filter(t => t.timestamp !== timestamp)
+    }));
+  };
+
+  // Añadir material
+  const addMaterial = () => {
+    setFormData(prev => ({
+      ...prev,
+      materials: [...prev.materials, { id: Date.now(), quantity: '', description: '' }]
+    }));
+  };
+
+  // Actualizar un campo de un material
+  const updateMaterial = (id: number, field: 'quantity' | 'description', value: string) => {
+    setFormData(prev => ({
+      ...prev,
+      materials: prev.materials.map(m => m.id === id ? { ...m, [field]: value } : m)
+    }));
+  };
+
+  // Eliminar un material
+  const removeMaterial = (id: number) => {
+    setFormData(prev => ({
+      ...prev,
+      materials: prev.materials.filter(m => m.id !== id)
     }));
   };
 
@@ -463,6 +490,56 @@ const ReportForm: React.FC<ReportFormProps> = ({ projects, vehicles, initialData
                 <p className="mt-3 text-[9px] text-gray-500 italic text-center">Imágenes comprimidas para el servidor.</p>
              </div>
            )}
+        </div>
+
+        {/* Sección de Materiales */}
+        <div className="bg-gray-50 dark:bg-gray-900/30 p-4 rounded-lg border border-gray-200 dark:border-gray-700">
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="text-gray-700 dark:text-gray-300 font-medium flex items-center gap-2 text-sm uppercase tracking-wide">
+              🔧 Materiales Utilizados
+            </h3>
+            <button
+              type="button"
+              onClick={addMaterial}
+              className="text-xs bg-brand-teal/10 hover:bg-brand-teal/20 text-brand-teal py-1.5 px-3 rounded-lg font-bold transition-colors"
+            >
+              + Añadir Material
+            </button>
+          </div>
+
+          {formData.materials.length > 0 ? (
+            <div className="space-y-3">
+              {formData.materials.map((m) => (
+                <div key={m.id} className="flex gap-2 items-center">
+                  <input
+                    type="text"
+                    placeholder="Cantidad"
+                    value={m.quantity}
+                    onChange={(e) => updateMaterial(m.id, 'quantity', e.target.value)}
+                    className="w-[30%] bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded p-2 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-brand-teal outline-none"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Descripción del material"
+                    value={m.description}
+                    onChange={(e) => updateMaterial(m.id, 'description', e.target.value)}
+                    className="flex-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded p-2 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-brand-teal outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removeMaterial(m.id)}
+                    className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                  >
+                    <TrashIcon className="w-4 h-4" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-4 border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-lg">
+                <p className="text-xs text-gray-400 italic">No se han añadido materiales aún.</p>
+            </div>
+          )}
         </div>
 
         <div className="flex gap-4 pt-4">

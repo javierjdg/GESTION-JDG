@@ -952,12 +952,22 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
   }, [filteredReports]);
 
   const downloadCSV = () => {
-    const headers = ['ID', 'Fecha', 'Técnico', 'Obra Completa', 'Num Obra', 'Entrada', 'Salida', 'Vehículo', 'Conductor', 'Trayecto', 'Desc. Trabajo', 'Gasto Comida', 'Gasto Gasolina', 'Gasto Parking', 'Gasto Otros', 'Desc. Otros', 'Horas Extra', 'Tipo Extra'].join(',');
+    const maxMaterials = filteredReports.reduce((max, r) => Math.max(max, (r.materials?.length || 0)), 0);
+    const materialHeaderCols = Array.from({ length: maxMaterials }, (_, i) => `Materiales ${i + 1}`);
+
+    const headers = ['ID', 'Fecha', 'Técnico', 'Obra Completa', 'Num Obra', 'Entrada', 'Salida', 'Vehículo', 'Conductor', 'Trayecto', 'Desc. Trabajo', 'Gasto Comida', 'Gasto Gasolina', 'Gasto Parking', 'Gasto Otros', 'Desc. Otros', 'Horas Extra', 'Tipo Extra', ...materialHeaderCols].join(',');
     const rows = filteredReports.map(r => {
       const cleanDesc = r.description.replace(/(\r\n|\n|\r)/gm, " ").replace(/,/g, ";");
       const cleanOtherDesc = r.expenses.othersDesc.replace(/,/g, ";");
       const fullName = resolveProjectFullName(r.projectNum).replace(/,/g, " -");
-      return [r.id, r.date, r.technician, `"${fullName}"`, r.projectNum, r.startTime, r.endTime, r.vehicle, r.isDriver ? 'SI' : 'NO', r.isDriver ? (r.driverTripType || '') : '', `"${cleanDesc}"`, r.expenses.food, r.expenses.gas, r.expenses.parking, r.expenses.others, `"${cleanOtherDesc}"`, r.overtimeHours || 0, r.overtimeType || 'NORMAL'].join(',');
+      
+      const materialCells = Array.from({ length: maxMaterials }, (_, i) => {
+        const m = r.materials?.[i];
+        if (!m) return '""';
+        return `"${m.quantity} - ${m.description}"`.replace(/,/g, ";");
+      });
+
+      return [r.id, r.date, r.technician, `"${fullName}"`, r.projectNum, r.startTime, r.endTime, r.vehicle, r.isDriver ? 'SI' : 'NO', r.isDriver ? (r.driverTripType || '') : '', `"${cleanDesc}"`, r.expenses.food, r.expenses.gas, r.expenses.parking, r.expenses.others, `"${cleanOtherDesc}"`, r.overtimeHours || 0, r.overtimeType || 'NORMAL', ...materialCells].join(',');
     });
     const csvContent = "data:text/csv;charset=utf-8," + ["sep=,", headers, ...rows].join('\n');
     const link = document.createElement("a");
