@@ -953,7 +953,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
 
   const downloadCSV = () => {
     const maxMaterials = filteredReports.reduce((max, r) => Math.max(max, (r.materials?.length || 0)), 0);
-    const materialHeaderCols = Array.from({ length: maxMaterials }, (_, i) => `Materiales ${i + 1}`);
+    const materialHeaderCols: string[] = [];
+    for (let i = 0; i < maxMaterials; i++) {
+      materialHeaderCols.push(`Cant Mat ${i + 1}`, `Desc Mat ${i + 1}`);
+    }
 
     const headers = ['ID', 'Fecha', 'Técnico', 'Obra Completa', 'Num Obra', 'Entrada', 'Salida', 'Vehículo', 'Conductor', 'Trayecto', 'Desc. Trabajo', 'Gasto Comida', 'Gasto Gasolina', 'Gasto Parking', 'Gasto Otros', 'Desc. Otros', 'Horas Extra', 'Tipo Extra', ...materialHeaderCols].join(',');
     const rows = filteredReports.map(r => {
@@ -961,11 +964,17 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
       const cleanOtherDesc = r.expenses.othersDesc.replace(/,/g, ";");
       const fullName = resolveProjectFullName(r.projectNum).replace(/,/g, " -");
       
-      const materialCells = Array.from({ length: maxMaterials }, (_, i) => {
+      const materialCells: string[] = [];
+      for (let i = 0; i < maxMaterials; i++) {
         const m = r.materials?.[i];
-        if (!m) return '""';
-        return `"${m.quantity} - ${m.description}"`.replace(/,/g, ";");
-      });
+        if (!m) {
+          materialCells.push('""', '""');
+        } else {
+          const cleanQty = String(m.quantity).replace(/,/g, ".");
+          const cleanMatDesc = String(m.description).replace(/,/g, ";");
+          materialCells.push(`"${cleanQty}"`, `"${cleanMatDesc}"`);
+        }
+      }
 
       return [r.id, r.date, r.technician, `"${fullName}"`, r.projectNum, r.startTime, r.endTime, r.vehicle, r.isDriver ? 'SI' : 'NO', r.isDriver ? (r.driverTripType || '') : '', `"${cleanDesc}"`, r.expenses.food, r.expenses.gas, r.expenses.parking, r.expenses.others, `"${cleanOtherDesc}"`, r.overtimeHours || 0, r.overtimeType || 'NORMAL', ...materialCells].join(',');
     });
