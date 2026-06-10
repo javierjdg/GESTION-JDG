@@ -404,8 +404,8 @@ const App: React.FC = () => {
 
   // HELPER: Guardado Seguro en Fragmentos (Chunking) para superar limite 1MB
   const saveBackupToFirestore = async (db: any, collectionName: string, docId: string, dataToSave: AppData) => {
-      // Separamos los datos pesados (Reports y History) de la configuración ligera
-      const { reports, dailyOrgHistory, ...coreData } = dataToSave;
+      // Separamos los datos pesados (Reports, Projects, History y Papelera) de la configuración ligera
+      const { reports, dailyOrgHistory, projectsDetailed, deletedReports, ...coreData } = dataToSave;
       
       // Limpiar datos pesados (imágenes base64) antes de guardar en la nube
       const cleanedReports = reports.map(r => {
@@ -421,6 +421,30 @@ const App: React.FC = () => {
           return r;
       });
       
+      // Limpiar y reducir deletedReports para evitar inflar el backup
+      const cleanedDeletedReports = (deletedReports || [])
+          .slice(0, 15)
+          .map(r => ({
+              ...r,
+              tickets: [] // Limpiamos tickets de la papelera en copia de seguridad
+          }));
+      
+      (coreData as any).deletedReports = cleanedDeletedReports;
+
+      // Limpiar datos de adjuntos pesados (base64) de obras en copias de seguridad
+      const cleanedProjectsDetailed = (projectsDetailed || []).map(p => {
+          if (p.attachments && p.attachments.length > 0) {
+              return {
+                  ...p,
+                  attachments: p.attachments.map(att => ({
+                      ...att,
+                      data: "" // Limpiamos el base64 de los adjuntos en la copia de seguridad para ahorrar espacio
+                  }))
+              };
+          }
+          return p;
+      });
+      
       const rootRef = db.collection(collectionName).doc(docId);
       
       let currentBatch = db.batch();
@@ -434,11 +458,11 @@ const App: React.FC = () => {
           }
       };
       
-      // 1. Guardar documento raíz (configuración, techs, projects, etc.)
+      // 1. Guardar documento raíz (configuración, techs, vehicles, etc.) 
       currentBatch.set(rootRef, coreData);
       operationCount++;
 
-      // 2. Guardar Reports en subcolección 'shards' (Chunking)
+      // 2. Guardar Reports en subcolección 'reports_shards' (Chunking)
       const CHUNK_SIZE_REPORTS = 25; // Reducido para evitar límite de 1MB por documento
       const reportsRef = rootRef.collection('reports_shards');
       
@@ -448,6 +472,20 @@ const App: React.FC = () => {
           const chunkRef = reportsRef.doc(`chunk_${Math.floor(i / CHUNK_SIZE_REPORTS)}`);
           currentBatch.set(chunkRef, { items: chunk });
           operationCount++;
+      }
+
+      // 2.5 Guardar Projects en subcolección 'projects_shards' (Chunking)
+      if (cleanedProjectsDetailed && cleanedProjectsDetailed.length > 0) {
+          const CHUNK_SIZE_PROJECTS = 10; // Reducido por el peso de los adjuntos/imágenes
+          const projectsShardsRef = rootRef.collection('projects_shards');
+          
+          for (let i = 0; i < cleanedProjectsDetailed.length; i += CHUNK_SIZE_PROJECTS) {
+              await commitBatchIfNeeded();
+              const chunk = cleanedProjectsDetailed.slice(i, i + CHUNK_SIZE_PROJECTS);
+              const chunkRef = projectsShardsRef.doc(`chunk_${Math.floor(i / CHUNK_SIZE_PROJECTS)}`);
+              currentBatch.set(chunkRef, { items: chunk });
+              operationCount++;
+          }
       }
 
       // 3. Guardar Historial en subcolección 'history_shards'
@@ -829,12 +867,25 @@ const App: React.FC = () => {
         }
 
         for (const bData of backups) {
-            if (bData.projectsDetailed && bData.projectsDetailed.length > 0) {
-                const count = bData.projectsDetailed.length;
+            let projectsToUse = (bData as any).projectsDetailed;
+            if (!projectsToUse || projectsToUse.length === 0) {
+                // Soportar el nuevo formato de backup donde projectsDetailed se guarda en shards
+                const projectsSnap = await db.collection('jdg_teleco_backups').doc(bData.id).collection('projects_shards').get();
+                if (!projectsSnap.empty) {
+                    let allProjects: ProjectData[] = [];
+                    projectsSnap.forEach((d: any) => {
+                        if (d.data().items) allProjects.push(...d.data().items);
+                    });
+                    projectsToUse = allProjects;
+                }
+            }
+
+            if (projectsToUse && projectsToUse.length > 0) {
+                const count = projectsToUse.length;
                 if (window.confirm(`He encontrado una copia (${bData.id}) con ${count} obras. ¿Deseas restaurar estas obras?\n\n(Esto recuperará las obras desaparecidas sin afectar a tus partes actuales)`)) {
                     
                     setData(prev => {
-                        const merged = [...bData.projectsDetailed];
+                        const merged = [...projectsToUse];
                         prev.projectsDetailed.forEach(p => {
                             if (!merged.find(mp => mp.id === p.id)) {
                                 merged.push(p);
@@ -849,7 +900,7 @@ const App: React.FC = () => {
                     // Migrar inmediatamente a la nueva colección para que no vuelvan a desaparecer
                     const projectsRef = db.collection("jdg_teleco").doc("main_db").collection("projects");
                     const batch = db.batch();
-                    bData.projectsDetailed.forEach((p: any) => {
+                    projectsToUse.forEach((p: any) => {
                         batch.set(projectsRef.doc(p.id), p);
                     });
                     await batch.commit();
@@ -910,6 +961,18 @@ const App: React.FC = () => {
                 if(d.data().items) Object.assign(fullHistory, d.data().items);
             });
             restoredData.dailyOrgHistory = fullHistory;
+        }
+
+        // 3.5 Reconstruir Projects desde Shards (con fallback por si es un backup antiguo donde projectsDetailed estaba en el documento raíz)
+        const projectsSnap = await db.collection('jdg_teleco_backups').doc(backupId).collection('projects_shards').get();
+        if (!projectsSnap.empty) {
+            let allProjects: ProjectData[] = [];
+            projectsSnap.forEach((d: any) => {
+                if(d.data().items) allProjects.push(...d.data().items);
+            });
+            restoredData.projectsDetailed = allProjects;
+        } else if (!restoredData.projectsDetailed) {
+            restoredData.projectsDetailed = [];
         }
 
         // 4. LIMPIEZA Y SINCRONIZACIÓN (CRÍTICO)

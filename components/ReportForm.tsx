@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { WorkReport, ExpenseTicket, ProjectData } from '../App';
+import { WorkReport, ExpenseTicket, ProjectData, MaterialItem } from '../App';
 import { SaveIcon, ChevronDownIcon, TrashIcon, CameraIcon, ImageIcon } from './icons';
 
 interface ReportFormProps {
