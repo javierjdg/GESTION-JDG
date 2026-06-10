@@ -958,7 +958,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
       materialHeaderCols.push(`Cant Mat ${i + 1}`, `Desc Mat ${i + 1}`);
     }
 
-    const headers = ['ID', 'Fecha', 'Técnico', 'Obra Completa', 'Num Obra', 'Entrada', 'Salida', 'Vehículo', 'Conductor', 'Trayecto', 'Desc. Trabajo', 'Gasto Comida', 'Gasto Gasolina', 'Gasto Parking', 'Gasto Otros', 'Desc. Otros', 'Horas Extra', 'Tipo Extra', 'Horas Trabajadas', ...materialHeaderCols].join(',');
+    const headers = ['ID', 'Fecha', 'Tecnico', 'Obra Completa', 'Num Obra', 'Entrada', 'Salida', 'Vehiculo', 'Conductor', 'Trayecto', 'Desc. Trabajo', 'Gasto Comida', 'Gasto Gasolina', 'Gasto Parking', 'Gasto Otros', 'Desc. Otros', 'Horas Extra', 'Tipo Extra', 'Horas Trabajadas', ...materialHeaderCols].join(',');
     
     let totalFood = 0;
     let totalGas = 0;
