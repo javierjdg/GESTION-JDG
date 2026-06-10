@@ -958,27 +958,128 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
       materialHeaderCols.push(`Cant Mat ${i + 1}`, `Desc Mat ${i + 1}`);
     }
 
-    const headers = ['ID', 'Fecha', 'Técnico', 'Obra Completa', 'Num Obra', 'Entrada', 'Salida', 'Vehículo', 'Conductor', 'Trayecto', 'Desc. Trabajo', 'Gasto Comida', 'Gasto Gasolina', 'Gasto Parking', 'Gasto Otros', 'Desc. Otros', 'Horas Extra', 'Tipo Extra', ...materialHeaderCols].join(',');
+    const headers = ['ID', 'Fecha', 'Técnico', 'Obra Completa', 'Num Obra', 'Entrada', 'Salida', 'Vehículo', 'Conductor', 'Trayecto', 'Desc. Trabajo', 'Gasto Comida', 'Gasto Gasolina', 'Gasto Parking', 'Gasto Otros', 'Desc. Otros', 'Horas Extra', 'Tipo Extra', 'Horas Trabajadas', ...materialHeaderCols].join(',');
+    
+    let totalFood = 0;
+    let totalGas = 0;
+    let totalParking = 0;
+    let totalOthers = 0;
+    let totalOvertime = 0;
+    let totalWorkedHours = 0;
+
     const rows = filteredReports.map(r => {
-      const cleanDesc = r.description.replace(/(\r\n|\n|\r)/gm, " ").replace(/,/g, ";");
-      const cleanOtherDesc = r.expenses.othersDesc.replace(/,/g, ";");
-      const fullName = resolveProjectFullName(r.projectNum).replace(/,/g, " -");
+      const id = r.id || '';
+      const date = r.date || '';
+      const technician = r.technician || '';
+      const prNum = r.projectNum || '';
+      const fullName = resolveProjectFullName(prNum).replace(/"/g, '""').replace(/,/g, " -");
       
+      const startTime = r.startTime || '';
+      const endTime = r.endTime || '';
+      const vehicle = r.vehicle || '';
+      const isDriverVal = r.isDriver ? 'SI' : 'NO';
+      const tripType = r.isDriver ? (r.driverTripType || '') : '';
+      
+      const cleanDesc = (r.description || '').replace(/(\r\n|\n|\r)/gm, " ").replace(/"/g, '""').replace(/,/g, ";");
+      
+      const exp = r.expenses || { food: 0, gas: 0, parking: 0, others: 0, othersDesc: '' };
+      const foodVal = Number(exp.food || 0);
+      const gasVal = Number(exp.gas || 0);
+      const parkingVal = Number(exp.parking || 0);
+      const othersVal = Number(exp.others || 0);
+      const cleanOtherDesc = (exp.othersDesc || '').replace(/(\r\n|\n|\r)/gm, " ").replace(/"/g, '""').replace(/,/g, ";");
+      
+      const otHours = Number(r.overtimeHours || 0);
+      const otType = r.overtimeType || 'NORMAL';
+      
+      const workedHours = calculateDuration(startTime, endTime);
+      
+      // Accumulate
+      totalFood += foodVal;
+      totalGas += gasVal;
+      totalParking += parkingVal;
+      totalOthers += othersVal;
+      totalOvertime += otHours;
+      totalWorkedHours += workedHours;
+
       const materialCells: string[] = [];
       for (let i = 0; i < maxMaterials; i++) {
         const m = r.materials?.[i];
         if (!m) {
           materialCells.push('""', '""');
         } else {
-          const cleanQty = String(m.quantity).replace(/,/g, ".");
-          const cleanMatDesc = String(m.description).replace(/,/g, ";");
+          const cleanQty = String(m.quantity || '').replace(/"/g, '""').replace(/,/g, ".");
+          const cleanMatDesc = String(m.description || '').replace(/(\r\n|\n|\r)/gm, " ").replace(/"/g, '""').replace(/,/g, ";");
           materialCells.push(`"${cleanQty}"`, `"${cleanMatDesc}"`);
         }
       }
 
-      return [r.id, r.date, r.technician, `"${fullName}"`, r.projectNum, r.startTime, r.endTime, r.vehicle, r.isDriver ? 'SI' : 'NO', r.isDriver ? (r.driverTripType || '') : '', `"${cleanDesc}"`, r.expenses.food, r.expenses.gas, r.expenses.parking, r.expenses.others, `"${cleanOtherDesc}"`, r.overtimeHours || 0, r.overtimeType || 'NORMAL', ...materialCells].join(',');
+      return [
+        id,
+        date,
+        technician,
+        `"${fullName}"`,
+        prNum,
+        startTime,
+        endTime,
+        vehicle,
+        isDriverVal,
+        tripType,
+        `"${cleanDesc}"`,
+        foodVal,
+        gasVal,
+        parkingVal,
+        othersVal,
+        `"${cleanOtherDesc}"`,
+        otHours,
+        otType,
+        workedHours.toFixed(2),
+        ...materialCells
+      ].join(',');
     });
-    const csvContent = ["sep=,", headers, ...rows].join('\n');
+
+    // Fila vacía separadora
+    const emptyRow = [
+      ...Array(19).fill(''),
+      ...Array(maxMaterials * 2).fill('')
+    ].join(',');
+
+    // Fila Total
+    const totalRow = [
+      'Total', // col 1 (ID)
+      '', '', '', '', '', '', '', '', '', '', // cols 2-11 vacíos
+      totalFood.toFixed(2), // col 12
+      totalGas.toFixed(2), // col 13
+      totalParking.toFixed(2), // col 14
+      totalOthers.toFixed(2), // col 15
+      '', // col 16
+      '', // col 17 (vaciada en la fila Total, para cumplir con el ejemplo visual del usuario)
+      '', // col 18
+      totalWorkedHours.toFixed(2), // col 19 (Horas Trabajadas)
+      ...Array(maxMaterials * 2).fill('')
+    ].join(',');
+
+    // Fila TOTAL HORAS
+    const totalHoursVal = totalWorkedHours + totalOvertime;
+    const hoursRow = [
+      ...Array(16).fill(''),
+      'TOTAL HORAS',
+      '',
+      totalHoursVal.toFixed(2),
+      ...Array(maxMaterials * 2).fill('')
+    ].join(',');
+
+    // Fila TOTAL GASTOS
+    const totalExpensesVal = totalFood + totalGas + totalParking + totalOthers;
+    const expensesRow = [
+      ...Array(16).fill(''),
+      'TOTAL GASTOS',
+      '',
+      totalExpensesVal.toFixed(2),
+      ...Array(maxMaterials * 2).fill('')
+    ].join(',');
+
+    const csvContent = ["sep=,", headers, ...rows, emptyRow, totalRow, hoursRow, expensesRow].join('\n');
     const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
