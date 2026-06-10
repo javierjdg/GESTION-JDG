@@ -1087,7 +1087,24 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.setAttribute("href", url);
-    link.setAttribute("download", `partes_${new Date().toISOString().split('T')[0]}.csv`);
+
+    let fileNameParts = ['partes'];
+    if (filterProject) {
+      const sanitizedProject = filterProject.replace(/[^a-zA-Z0-9_-]/g, '');
+      fileNameParts.push(`obra_${sanitizedProject}`);
+    }
+    if (filterDateStart) {
+      fileNameParts.push(`desde_${filterDateStart}`);
+    }
+    if (filterDateEnd) {
+      fileNameParts.push(`hasta_${filterDateEnd}`);
+    }
+    if (!filterProject && !filterDateStart && !filterDateEnd) {
+      fileNameParts.push(new Date().toISOString().split('T')[0]);
+    }
+    const fileName = `${fileNameParts.join('_')}.csv`;
+
+    link.setAttribute("download", fileName);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
