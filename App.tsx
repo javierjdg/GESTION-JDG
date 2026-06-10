@@ -463,7 +463,7 @@ const App: React.FC = () => {
       operationCount++;
 
       // 2. Guardar Reports en subcolección 'reports_shards' (Chunking)
-      const CHUNK_SIZE_REPORTS = 25; // Reducido para evitar límite de 1MB por documento
+      const CHUNK_SIZE_REPORTS = 15; // Reducido para evitar límite de 1MB por documento (muy seguro)
       const reportsRef = rootRef.collection('reports_shards');
       
       for (let i = 0; i < cleanedReports.length; i += CHUNK_SIZE_REPORTS) {
@@ -476,7 +476,7 @@ const App: React.FC = () => {
 
       // 2.5 Guardar Projects en subcolección 'projects_shards' (Chunking)
       if (cleanedProjectsDetailed && cleanedProjectsDetailed.length > 0) {
-          const CHUNK_SIZE_PROJECTS = 10; // Reducido por el peso de los adjuntos/imágenes
+          const CHUNK_SIZE_PROJECTS = 3; // Reducido a 3 para garantizar no superar el límite de 1MB por documento
           const projectsShardsRef = rootRef.collection('projects_shards');
           
           for (let i = 0; i < cleanedProjectsDetailed.length; i += CHUNK_SIZE_PROJECTS) {
@@ -491,7 +491,7 @@ const App: React.FC = () => {
       // 3. Guardar Historial en subcolección 'history_shards'
       if (dailyOrgHistory) {
           const historyKeys = Object.keys(dailyOrgHistory);
-          const CHUNK_SIZE_HISTORY = 30; // Aumentado
+          const CHUNK_SIZE_HISTORY = 15; // Reducido para evitar límite de 1MB por documento
           const historyRef = rootRef.collection('history_shards');
           
           for (let i = 0; i < historyKeys.length; i += CHUNK_SIZE_HISTORY) {
