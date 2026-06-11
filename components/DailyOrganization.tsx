@@ -49,6 +49,16 @@ const DailyOrganization: React.FC<DailyOrganizationProps> = ({ isReadOnly = fals
   const [editandoId, setEditandoId] = useState<number | null>(null);
   const [nombreEdit, setNombreEdit] = useState('');
 
+  // Para refrescar la advertencia de planificación activa en tiempo real (Técnicos)
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    if (!isReadOnly) return;
+    const interval = setInterval(() => {
+      setNow(Date.now());
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [isReadOnly]);
+
   // Limpiar timeout al desmontar
   useEffect(() => {
     return () => {
@@ -312,6 +322,23 @@ const DailyOrganization: React.FC<DailyOrganizationProps> = ({ isReadOnly = fals
               )}
             </div>
           </div>
+
+          {isReadOnly && localData.lastUpdated && (now - localData.lastUpdated < 300000) && (
+              <div className="mb-6 bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-200 p-4 rounded-xl border border-amber-200 dark:border-amber-800/60 flex items-start gap-3 shadow-md border-l-4 border-l-amber-500">
+                  <div className="flex h-4 w-4 mt-0.5 relative shrink-0">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-4 w-4 bg-amber-500"></span>
+                  </div>
+                  <div>
+                      <h4 className="font-extrabold text-[12px] uppercase tracking-wider text-amber-600 dark:text-amber-400 flex items-center gap-1.5 font-mono">
+                          ⚠️ PLANIFICACIÓN EN PROCESO / MODIFICACIÓN EN VIVO
+                      </h4>
+                      <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 mt-1 leading-relaxed">
+                          La administración está editando esta fecha en este momento o la ha actualizado hace menos de 5 minutos. Los cambios en las obras y asignación de personal se están actualizando automáticamente en tiempo real en tu pantalla.
+                      </p>
+                  </div>
+              </div>
+          )}
 
           {!isReadOnly && (
             <>
