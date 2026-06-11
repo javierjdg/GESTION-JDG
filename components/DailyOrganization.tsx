@@ -9,6 +9,7 @@ export interface WorkerOrg {
   nombre: string;
   color: string;
   asignado: boolean;
+  isManual?: boolean;
 }
 
 export interface JobOrg {
@@ -130,7 +131,7 @@ const DailyOrganization: React.FC<DailyOrganizationProps> = ({ isReadOnly = fals
 
   const addTrabajador = () => {
     if (nuevoT.trim()) {
-      const newWorker: WorkerOrg = { id: Date.now(), nombre: nuevoT, color: colors[colorIdx % colors.length], asignado: false };
+      const newWorker: WorkerOrg = { id: Date.now(), nombre: nuevoT, color: colors[colorIdx % colors.length], asignado: false, isManual: true };
       updateLocal({
         ...localData,
         trabajadores: [...localData.trabajadores, newWorker]

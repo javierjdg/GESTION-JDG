@@ -1111,7 +1111,7 @@ const App: React.FC = () => {
               ...w,
               asignado: isActuallyAssigned
           };
-      }).filter(w => registeredNames.has(w.nombre.trim().toUpperCase()) || assignedNames.has(w.nombre.trim().toUpperCase()));
+      }).filter(w => registeredNames.has(w.nombre.trim().toUpperCase()) || assignedNames.has(w.nombre.trim().toUpperCase()) || w.isManual);
 
       // Añadir técnicos nuevos que no existían en esta organización
       const existingNames = new Set(updatedWorkers.map(w => w.nombre.trim().toUpperCase()));

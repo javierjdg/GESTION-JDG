@@ -1165,7 +1165,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
         let updatedWorkers = (newOrg.trabajadores || []).map(w => {
             const isActuallyAssigned = assignedNames.has(w.nombre.trim().toUpperCase());
             return { ...w, asignado: isActuallyAssigned };
-        }).filter(w => registeredNames.has(w.nombre.trim().toUpperCase()) || assignedNames.has(w.nombre.trim().toUpperCase()));
+        }).filter(w => registeredNames.has(w.nombre.trim().toUpperCase()) || assignedNames.has(w.nombre.trim().toUpperCase()) || w.isManual);
         const existingNames = new Set(updatedWorkers.map(w => w.nombre.trim().toUpperCase()));
         (prev.technicians || []).forEach((t, i) => {
             const nameUpper = t.name.trim().toUpperCase();
@@ -1216,7 +1216,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
         let updatedWorkers = (orgToLoad.trabajadores || []).map(w => {
             const isActuallyAssigned = assignedNames.has(w.nombre.trim().toUpperCase());
             return { ...w, asignado: isActuallyAssigned };
-        }).filter(w => registeredNames.has(w.nombre.trim().toUpperCase()) || assignedNames.has(w.nombre.trim().toUpperCase()));
+        }).filter(w => registeredNames.has(w.nombre.trim().toUpperCase()) || assignedNames.has(w.nombre.trim().toUpperCase()) || w.isManual);
         const existingNames = new Set(updatedWorkers.map(w => w.nombre.trim().toUpperCase()));
         (prev.technicians || []).forEach((t, i) => {
             const nameUpper = t.name.trim().toUpperCase();
