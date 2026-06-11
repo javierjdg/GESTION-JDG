@@ -1090,15 +1090,62 @@ const App: React.FC = () => {
     }
   };
 
-  // Manejo de actualización de Daily Organization (GUARDADO MANUAL)
+  // Función para armonizar la lista de trabajadores de la organización con los técnicos del sistema
+  const harmonizeWorkers = (org: DailyOrgData, technicians: TechUser[]): DailyOrgData => {
+      if (!org) return org;
+      const colors = ['#E63946','#F77F00','#06D6A0','#118AB2','#073B4C','#D62828','#FCA311','#14213D','#00B4D8','#0077B6'];
+
+      const registeredNames = new Set((technicians || []).map(t => t.name.trim().toUpperCase()));
+      const assignedNames = new Set<string>();
+
+      (org.trabajos || []).forEach(job => {
+          (job.trabajadores || []).forEach(w => {
+              assignedNames.add(w.nombre.trim().toUpperCase());
+          });
+      });
+
+      // Mapeamos trabajadores existentes
+      let updatedWorkers = (org.trabajadores || []).map(w => {
+          const isActuallyAssigned = assignedNames.has(w.nombre.trim().toUpperCase());
+          return {
+              ...w,
+              asignado: isActuallyAssigned
+          };
+      }).filter(w => registeredNames.has(w.nombre.trim().toUpperCase()) || assignedNames.has(w.nombre.trim().toUpperCase()));
+
+      // Añadir técnicos nuevos que no existían en esta organización
+      const existingNames = new Set(updatedWorkers.map(w => w.nombre.trim().toUpperCase()));
+      
+      (technicians || []).forEach((t, i) => {
+          const nameUpper = t.name.trim().toUpperCase();
+          if (!existingNames.has(nameUpper)) {
+              updatedWorkers.push({
+                  id: Number(t.id) || Date.now() + i,
+                  nombre: nameUpper,
+                  color: colors[i % colors.length],
+                  asignado: assignedNames.has(nameUpper)
+              });
+          }
+      });
+
+      return {
+          ...org,
+          trabajadores: updatedWorkers
+      };
+  };
+
+  // Manejo de actualización de Daily Organization (CON ARMONIZACIÓN DE TRABAJADORES)
   const handleDailyOrgUpdate = (newOrg: DailyOrgData) => {
       isSyncingRef.current = true;
       isInternalUpdate.current = false; 
       setData(prev => {
           const history = { ...(prev.dailyOrgHistory || {}) };
-          // Guardamos explícitamente en el historial la organización que nos llega
-          if (newOrg && newOrg.fecha) {
-              history[newOrg.fecha] = newOrg;
+          
+          // Armonizamos la organización antes de archivarla en history
+          const harmonizedOrg = harmonizeWorkers(newOrg, prev.technicians);
+
+          if (harmonizedOrg && harmonizedOrg.fecha) {
+              history[harmonizedOrg.fecha] = harmonizedOrg;
           }
           
           // Limitar el historial a los últimos 30 días para evitar exceder el límite de 1MB en Firestore
@@ -1109,24 +1156,22 @@ const App: React.FC = () => {
 
           return {
               ...prev, 
-              dailyOrg: newOrg,
+              dailyOrg: harmonizedOrg,
               dailyOrgHistory: history
           };
       }); 
       setTimeout(() => { isSyncingRef.current = false; }, 2000);
   };
 
-  // Manejo de cambio de fecha en Daily Organization (CARGA DE DATOS)
+  // Manejo de cambio de fecha en Daily Organization (CARGA DE DATOS + ARMONIZACIÓN)
   const handleDailyOrgDateChange = (newDate: string) => {
-      // Al cambiar fecha, cargamos del historial o creamos nuevo, PERO NO GUARDAMOS la anterior automáticamente
-      // para respetar el "Guardado Manual".
       const existingData = data.dailyOrgHistory?.[newDate];
       let orgToLoad: DailyOrgData;
 
       if (existingData) {
           orgToLoad = existingData;
       } else {
-          // Nueva fecha: mantenemos trabajadores limpios
+          // Nueva fecha: mantenemos trabajadores de la organización activos pero limpios de asignaciones
           const currentWorkers = data.dailyOrg?.trabajadores || [];
           const cleanWorkers = currentWorkers.map(w => ({ ...w, asignado: false }));
           orgToLoad = {
@@ -1137,12 +1182,24 @@ const App: React.FC = () => {
           };
       }
 
-      // Solo actualizamos la vista (dailyOrg), no tocamos el historial aún
+      // Armonizamos técnicos registrados en el sistema
+      const harmonizedOrg = harmonizeWorkers(orgToLoad, data.technicians);
+
       isSyncingRef.current = true;
       isInternalUpdate.current = false;
-      setData(prev => ({ ...prev, dailyOrg: orgToLoad }));
+      setData(prev => ({ ...prev, dailyOrg: harmonizedOrg }));
       setTimeout(() => { isSyncingRef.current = false; }, 2000);
   };
+
+  // Estabilizador de Organización Diaria: Si la fecha está en el pasado,
+  // cambiamos automáticamente la fecha por defecto a HOY para forzar la consistencia de los datos del día
+  useEffect(() => {
+    if (isInitialLoading) return;
+    const today = new Date().toISOString().split('T')[0];
+    if (data.dailyOrg?.fecha && data.dailyOrg.fecha < today) {
+        handleDailyOrgDateChange(today);
+    }
+  }, [isInitialLoading]);
 
   return (
     <div className="min-h-screen bg-gray-100 dark:bg-brand-dark text-gray-900 dark:text-gray-100 font-sans pb-20 transition-colors duration-300">

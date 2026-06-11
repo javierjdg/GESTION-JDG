@@ -1152,8 +1152,43 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
   const handleDailyOrgUpdate = (newOrg: DailyOrgData) => {
     setData(prev => {
         const history = { ...(prev.dailyOrgHistory || {}) };
-        if (newOrg && newOrg.fecha) history[newOrg.fecha] = newOrg;
-        return { ...prev, dailyOrg: newOrg, dailyOrgHistory: history };
+        
+        // Armonización con los técnicos registrados del sistema
+        const colors = ['#E63946','#F77F00','#06D6A0','#118AB2','#073B4C','#D62828','#FCA311','#14213D','#00B4D8','#0077B6'];
+        const registeredNames = new Set((prev.technicians || []).map(t => t.name.trim().toUpperCase()));
+        const assignedNames = new Set<string>();
+        (newOrg.trabajos || []).forEach(job => {
+            (job.trabajadores || []).forEach(w => {
+                assignedNames.add(w.nombre.trim().toUpperCase());
+            });
+        });
+        let updatedWorkers = (newOrg.trabajadores || []).map(w => {
+            const isActuallyAssigned = assignedNames.has(w.nombre.trim().toUpperCase());
+            return { ...w, asignado: isActuallyAssigned };
+        }).filter(w => registeredNames.has(w.nombre.trim().toUpperCase()) || assignedNames.has(w.nombre.trim().toUpperCase()));
+        const existingNames = new Set(updatedWorkers.map(w => w.nombre.trim().toUpperCase()));
+        (prev.technicians || []).forEach((t, i) => {
+            const nameUpper = t.name.trim().toUpperCase();
+            if (!existingNames.has(nameUpper)) {
+                updatedWorkers.push({
+                    id: Number(t.id) || Date.now() + i,
+                    nombre: nameUpper,
+                    color: colors[i % colors.length],
+                    asignado: assignedNames.has(nameUpper)
+                });
+            }
+        });
+        const harmonizedOrg = { ...newOrg, trabajadores: updatedWorkers };
+
+        if (harmonizedOrg && harmonizedOrg.fecha) history[harmonizedOrg.fecha] = harmonizedOrg;
+
+        // Limita el historial a los últimos 30 días para evitar exceder el límite de 1MB en Firestore
+        const keys = Object.keys(history).sort((a, b) => b.localeCompare(a));
+        if (keys.length > 30) {
+            keys.slice(30).forEach(k => delete history[k]);
+        }
+
+        return { ...prev, dailyOrg: harmonizedOrg, dailyOrgHistory: history };
     }); 
   };
 
@@ -1166,9 +1201,37 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
         } else {
             const currentWorkers = prev.dailyOrg?.trabajadores || [];
             const cleanWorkers = currentWorkers.map(w => ({ ...w, asignado: false }));
-            orgToLoad = { fecha: newDate, trabajos: [], trabajadores: cleanWorkers };
+            orgToLoad = { fecha: newDate, trabajos: [], trabajadores: cleanWorkers, lastUpdated: Date.now() };
         }
-        return { ...prev, dailyOrg: orgToLoad };
+
+        // Armonización con los técnicos registrados del sistema
+        const colors = ['#E63946','#F77F00','#06D6A0','#118AB2','#073B4C','#D62828','#FCA311','#14213D','#00B4D8','#0077B6'];
+        const registeredNames = new Set((prev.technicians || []).map(t => t.name.trim().toUpperCase()));
+        const assignedNames = new Set<string>();
+        (orgToLoad.trabajos || []).forEach(job => {
+            (job.trabajadores || []).forEach(w => {
+                assignedNames.add(w.nombre.trim().toUpperCase());
+            });
+        });
+        let updatedWorkers = (orgToLoad.trabajadores || []).map(w => {
+            const isActuallyAssigned = assignedNames.has(w.nombre.trim().toUpperCase());
+            return { ...w, asignado: isActuallyAssigned };
+        }).filter(w => registeredNames.has(w.nombre.trim().toUpperCase()) || assignedNames.has(w.nombre.trim().toUpperCase()));
+        const existingNames = new Set(updatedWorkers.map(w => w.nombre.trim().toUpperCase()));
+        (prev.technicians || []).forEach((t, i) => {
+            const nameUpper = t.name.trim().toUpperCase();
+            if (!existingNames.has(nameUpper)) {
+                updatedWorkers.push({
+                    id: Number(t.id) || Date.now() + i,
+                    nombre: nameUpper,
+                    color: colors[i % colors.length],
+                    asignado: assignedNames.has(nameUpper)
+                });
+            }
+        });
+        const harmonizedOrg = { ...orgToLoad, trabajadores: updatedWorkers };
+
+        return { ...prev, dailyOrg: harmonizedOrg };
     });
   };
 

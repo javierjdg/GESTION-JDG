@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
 import { TrashIcon, CalendarIcon, SaveIcon, CheckCircleIcon } from './icons';
 
@@ -38,6 +38,8 @@ const DailyOrganization: React.FC<DailyOrganizationProps> = ({ isReadOnly = fals
   // ESTADO LOCAL para edición
   const [localData, setLocalData] = useState<DailyOrgData>(data);
   const [isDirty, setIsDirty] = useState(false); // Para saber hay cambios sin guardar
+  const [isSaving, setIsSaving] = useState(false);
+  const autoSaveTimeoutRef = useRef<any>(null);
 
   const [colorIdx, setColorIdx] = useState(14);
   const [nuevo, setNuevo] = useState('');
@@ -45,6 +47,15 @@ const DailyOrganization: React.FC<DailyOrganizationProps> = ({ isReadOnly = fals
   const [dragged, setDragged] = useState<WorkerOrg | null>(null);
   const [editandoId, setEditandoId] = useState<number | null>(null);
   const [nombreEdit, setNombreEdit] = useState('');
+
+  // Limpiar timeout al desmontar
+  useEffect(() => {
+    return () => {
+      if (autoSaveTimeoutRef.current) {
+        clearTimeout(autoSaveTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Cuando se monta el componente en modo lectura (Técnico), marcar como visto
   useEffect(() => {
@@ -60,7 +71,23 @@ const DailyOrganization: React.FC<DailyOrganizationProps> = ({ isReadOnly = fals
 
   const updateLocal = (newData: DailyOrgData) => {
       setLocalData(newData);
-      setIsDirty(true); // Marcar como modificado
+      setIsDirty(true);
+      setIsSaving(true);
+
+      if (autoSaveTimeoutRef.current) {
+          clearTimeout(autoSaveTimeoutRef.current);
+      }
+
+      // Guardado automático: Propagar cambios inmediatamente al componente padre
+      onUpdate({
+          ...newData,
+          lastUpdated: Date.now()
+      });
+
+      autoSaveTimeoutRef.current = setTimeout(() => {
+          setIsDirty(false);
+          setIsSaving(false);
+      }, 1000);
   };
 
   const handleSave = () => {
@@ -262,27 +289,34 @@ const DailyOrganization: React.FC<DailyOrganizationProps> = ({ isReadOnly = fals
 
               {/* Botón Guardar - SOLO ADMIN */}
               {!isReadOnly && (
-                  <button 
-                    onClick={handleSave}
-                    disabled={!isDirty}
-                    className={`px-6 py-3 rounded-xl font-black text-sm flex items-center gap-2 shadow-lg transition-all transform active:scale-95 ${
-                        isDirty 
-                        ? 'bg-green-600 hover:bg-green-500 text-white animate-pulse-slow' 
-                        : 'bg-gray-200 dark:bg-gray-800 text-gray-400 cursor-not-allowed'
-                    }`}
-                  >
-                    <SaveIcon className="w-5 h-5" />
-                    {isDirty ? 'GUARDAR CAMBIOS' : 'GUARDADO'}
-                  </button>
+                  <div className="flex items-center gap-3">
+                      <span className="text-[11px] font-bold text-gray-400 dark:text-gray-500 italic">
+                          {isSaving ? "⚡ Guardando en la nube..." : "✓ Autoguardado activo"}
+                      </span>
+                      <button 
+                        onClick={handleSave}
+                        disabled={!isDirty && !isSaving}
+                        className={`px-6 py-3 rounded-xl font-black text-sm flex items-center gap-2 shadow-lg transition-all transform active:scale-95 ${
+                            isSaving
+                            ? 'bg-orange-500 text-white animate-pulse'
+                            : isDirty 
+                            ? 'bg-green-600 hover:bg-green-500 text-white' 
+                            : 'bg-gray-200 dark:bg-gray-800 text-gray-400 cursor-not-allowed'
+                        }`}
+                      >
+                        <SaveIcon className="w-5 h-5" />
+                        {isSaving ? 'GUARDANDO...' : isDirty ? 'GUARDAR' : 'GUARDADO'}
+                      </button>
+                  </div>
               )}
             </div>
           </div>
 
           {!isReadOnly && (
             <>
-              {isDirty && (
+              {isDirty && !isSaving && (
                   <div className="mb-4 bg-orange-100 dark:bg-orange-900/30 text-orange-800 dark:text-orange-200 p-3 rounded-lg border border-orange-200 dark:border-orange-800 flex items-center justify-center gap-2 text-sm font-bold animate-pulse">
-                      ⚠️ Tienes cambios sin guardar. Pulsa "GUARDAR CAMBIOS" para confirmar.
+                      ⚠️ Tienes cambios temporales listos para sincronizar en la nube.
                   </div>
               )}
 
