@@ -191,6 +191,9 @@ const App: React.FC = () => {
   // Estado para notificaciones
   const [hasUnseenDailyOrg, setHasUnseenDailyOrg] = useState(false);
   
+  // Estado local para la visualización segura de organización diaria por parte de técnicos (copia local de lectura)
+  const [techViewOrg, setTechViewOrg] = useState<DailyOrgData | null>(null);
+  
   const isInternalUpdate = useRef(false);
   const isSyncingRef = useRef(false);
   const firebaseRef = useRef<any>(null);
@@ -1191,15 +1194,51 @@ const App: React.FC = () => {
       setTimeout(() => { isSyncingRef.current = false; }, 2000);
   };
 
-  // Estabilizador de Organización Diaria: Si la fecha está en el pasado,
-  // cambiamos automáticamente la fecha por defecto a HOY para forzar la consistencia de los datos del día
+  // Manejo de cambio de fecha en Daily Organization para TÉCNICOS (SOLO LOCAL - NO ESCRIBE NI MODIFICA LA BASE DE DATOS)
+  const handleTechDateChange = (newDate: string) => {
+      const existingData = data.dailyOrgHistory?.[newDate];
+      let orgToLoad: DailyOrgData;
+
+      if (existingData) {
+          orgToLoad = JSON.parse(JSON.stringify(existingData));
+      } else {
+          // Nueva fecha limpia local
+          const currentWorkers = techViewOrg?.trabajadores || data.dailyOrg?.trabajadores || [];
+          const cleanWorkers = currentWorkers.map(w => ({ ...w, asignado: false }));
+          orgToLoad = {
+              fecha: newDate,
+              trabajos: [],
+              trabajadores: cleanWorkers,
+              lastUpdated: Date.now()
+          };
+      }
+
+      const harmonizedOrg = harmonizeWorkers(orgToLoad, data.technicians);
+      setTechViewOrg(harmonizedOrg);
+  };
+
+  // Sincronizar en tiempo real los cambios del Admin para el Técnico si visualiza el mismo día
   useEffect(() => {
-    if (isInitialLoading) return;
+    if (userRole === 'admin' || !techViewOrg || view !== 'daily_org') return;
+    const currentViewDate = techViewOrg.fecha;
+    const updatedServerOrg = data.dailyOrgHistory?.[currentViewDate] || (data.dailyOrg?.fecha === currentViewDate ? data.dailyOrg : null);
+    if (updatedServerOrg) {
+        const harmonized = harmonizeWorkers(JSON.parse(JSON.stringify(updatedServerOrg)), data.technicians);
+        if (JSON.stringify(harmonized) !== JSON.stringify(techViewOrg)) {
+            setTechViewOrg(harmonized);
+        }
+    }
+  }, [data.dailyOrg, data.dailyOrgHistory, view, userRole, data.technicians]);
+
+  // Estabilizador de Organización Diaria: Si la fecha está en el pasado,
+  // cambiamos automáticamente la fecha por defecto a HOY para forzar la consistencia de los datos del día (SOLO PARA ADMINISTRADORES)
+  useEffect(() => {
+    if (isInitialLoading || userRole !== 'admin') return;
     const today = new Date().toISOString().split('T')[0];
     if (data.dailyOrg?.fecha && data.dailyOrg.fecha < today) {
         handleDailyOrgDateChange(today);
     }
-  }, [isInitialLoading]);
+  }, [isInitialLoading, userRole]);
 
   return (
     <div className="min-h-screen bg-gray-100 dark:bg-brand-dark text-gray-900 dark:text-gray-100 font-sans pb-20 transition-colors duration-300">
@@ -1285,12 +1324,24 @@ const App: React.FC = () => {
         <AnimatePresence mode="wait">
           {view === 'login' && (
             <motion.div key="login" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2 }}>
-              <UserLogin onLogin={handleLogin} technicians={data.technicians} adminPwd={data.adminPassword || 'admin'} onViewDailyOrg={() => setView('daily_org')} toggleTheme={toggleTheme} isDark={theme === 'dark'} hasUnreadOrg={hasUnseenDailyOrg} />
+              <UserLogin onLogin={handleLogin} technicians={data.technicians} adminPwd={data.adminPassword || 'admin'} onViewDailyOrg={() => {
+                const todayStr = new Date().toISOString().split('T')[0];
+                const existingOrg = data.dailyOrgHistory?.[todayStr];
+                const orgToLoad = existingOrg ? JSON.parse(JSON.stringify(existingOrg)) : JSON.parse(JSON.stringify(data.dailyOrg));
+                setTechViewOrg(harmonizeWorkers(orgToLoad, data.technicians));
+                setView('daily_org');
+              }} toggleTheme={toggleTheme} isDark={theme === 'dark'} hasUnreadOrg={hasUnseenDailyOrg} />
             </motion.div>
           )}
           {view === 'dashboard' && (
             <motion.div key="dashboard" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }}>
-              <TechDashboard reports={data.reports.filter(r => r.technician === currentUser)} projects={data.projectsDetailed} onNewReport={() => setView('form')} onEditReport={(r) => { setEditingReport(r); setView('form'); }} onViewDailyOrg={() => setView('daily_org')} onDeleteReport={deleteReport} hasUnreadOrg={hasUnseenDailyOrg} />
+              <TechDashboard reports={data.reports.filter(r => r.technician === currentUser)} projects={data.projectsDetailed} onNewReport={() => setView('form')} onEditReport={(r) => { setEditingReport(r); setView('form'); }} onViewDailyOrg={() => {
+                const todayStr = new Date().toISOString().split('T')[0];
+                const existingOrg = data.dailyOrgHistory?.[todayStr];
+                const orgToLoad = existingOrg ? JSON.parse(JSON.stringify(existingOrg)) : JSON.parse(JSON.stringify(data.dailyOrg));
+                setTechViewOrg(harmonizeWorkers(orgToLoad, data.technicians));
+                setView('daily_org');
+              }} onDeleteReport={deleteReport} hasUnreadOrg={hasUnseenDailyOrg} />
             </motion.div>
           )}
           {view === 'vacations' && (
@@ -1302,11 +1353,11 @@ const App: React.FC = () => {
           {view === 'daily_org' && (
             <motion.div key="daily_org" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.2 }}>
               <DailyOrganization 
-                  key={data.dailyOrg.fecha} 
+                  key={userRole === 'admin' ? data.dailyOrg.fecha : (techViewOrg?.fecha || 'tech_default')} 
                   isReadOnly={userRole !== 'admin'} 
-                  data={data.dailyOrg} 
-                  onUpdate={handleDailyOrgUpdate}
-                  onChangeDate={handleDailyOrgDateChange}
+                  data={userRole === 'admin' ? data.dailyOrg : (techViewOrg || data.dailyOrg)} 
+                  onUpdate={userRole === 'admin' ? handleDailyOrgUpdate : () => {}}
+                  onChangeDate={userRole === 'admin' ? handleDailyOrgDateChange : handleTechDateChange}
                   onBack={() => setView(userRole ? (userRole === 'admin' ? 'admin' : 'dashboard') : 'login')}
                   onMarkSeen={markDailyOrgAsSeen} 
               />
