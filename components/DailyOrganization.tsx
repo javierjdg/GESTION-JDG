@@ -24,6 +24,7 @@ export interface DailyOrgData {
   trabajadores: WorkerOrg[];
   fecha: string;
   lastUpdated?: number; // Timestamp para notificaciones
+  excluidos?: string[]; // Nombres de técnicos excluidos en este día
 }
 
 interface DailyOrganizationProps {
@@ -141,10 +142,14 @@ const DailyOrganization: React.FC<DailyOrganizationProps> = ({ isReadOnly = fals
 
   const addTrabajador = () => {
     if (nuevoT.trim()) {
-      const newWorker: WorkerOrg = { id: Date.now(), nombre: nuevoT, color: colors[colorIdx % colors.length], asignado: false, isManual: true };
+      const name = nuevoT.trim();
+      const newWorker: WorkerOrg = { id: Date.now(), nombre: name, color: colors[colorIdx % colors.length], asignado: false, isManual: true };
+      const excluidos = localData.excluidos || [];
+      const newExcluidos = excluidos.filter(e => e.trim().toUpperCase() !== name.toUpperCase());
       updateLocal({
         ...localData,
-        trabajadores: [...localData.trabajadores, newWorker]
+        trabajadores: [...localData.trabajadores, newWorker],
+        excluidos: newExcluidos
       });
       setColorIdx(colorIdx + 1);
       setNuevoT('');
@@ -161,9 +166,13 @@ const DailyOrganization: React.FC<DailyOrganizationProps> = ({ isReadOnly = fals
   };
 
   const delTrabajador = (id: number) => {
+    const worker = localData.trabajadores.find(x => x.id === id);
+    const name = worker ? worker.nombre : '';
     const newJobs = localData.trabajos.map(t => ({ ...t, trabajadores: t.trabajadores.filter(x => x.id !== id) }));
     const newWorkers = localData.trabajadores.filter(x => x.id !== id);
-    updateLocal({ ...localData, trabajos: newJobs, trabajadores: newWorkers });
+    const excluidos = localData.excluidos || [];
+    const newExcluidos = name ? [...excluidos.filter(e => e.trim().toUpperCase() !== name.trim().toUpperCase()), name] : excluidos;
+    updateLocal({ ...localData, trabajos: newJobs, trabajadores: newWorkers, excluidos: newExcluidos });
   };
 
   const drop = (e: React.DragEvent, trabajo: JobOrg) => {
@@ -243,7 +252,8 @@ const DailyOrganization: React.FC<DailyOrganizationProps> = ({ isReadOnly = fals
         updateLocal({
             trabajos: [],
             trabajadores: [],
-            fecha: localData.fecha 
+            fecha: localData.fecha,
+            excluidos: []
         });
     }
   };

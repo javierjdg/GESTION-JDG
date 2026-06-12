@@ -1431,6 +1431,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
         
         // Armonización con los técnicos registrados del sistema
         const colors = ['#E63946','#F77F00','#06D6A0','#118AB2','#073B4C','#D62828','#FCA311','#14213D','#00B4D8','#0077B6'];
+        const excludedNames = new Set((newOrg.excluidos || []).map(e => e.trim().toUpperCase()));
         const registeredNames = new Set((prev.technicians || []).map(t => t.name.trim().toUpperCase()));
         const assignedNames = new Set<string>();
         (newOrg.trabajos || []).forEach(job => {
@@ -1441,11 +1442,17 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
         let updatedWorkers = (newOrg.trabajadores || []).map(w => {
             const isActuallyAssigned = assignedNames.has(w.nombre.trim().toUpperCase());
             return { ...w, asignado: isActuallyAssigned };
-        }).filter(w => registeredNames.has(w.nombre.trim().toUpperCase()) || assignedNames.has(w.nombre.trim().toUpperCase()) || w.isManual);
+        }).filter(w => {
+            const nameUpper = w.nombre.trim().toUpperCase();
+            if (excludedNames.has(nameUpper) && !assignedNames.has(nameUpper)) {
+                return false;
+            }
+            return registeredNames.has(nameUpper) || assignedNames.has(nameUpper) || w.isManual;
+        });
         const existingNames = new Set(updatedWorkers.map(w => w.nombre.trim().toUpperCase()));
         (prev.technicians || []).forEach((t, i) => {
             const nameUpper = t.name.trim().toUpperCase();
-            if (!existingNames.has(nameUpper)) {
+            if (!existingNames.has(nameUpper) && !excludedNames.has(nameUpper)) {
                 updatedWorkers.push({
                     id: Number(t.id) || Date.now() + i,
                     nombre: nameUpper,
@@ -1482,6 +1489,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
 
         // Armonización con los técnicos registrados del sistema
         const colors = ['#E63946','#F77F00','#06D6A0','#118AB2','#073B4C','#D62828','#FCA311','#14213D','#00B4D8','#0077B6'];
+        const excludedNames = new Set((orgToLoad.excluidos || []).map(e => e.trim().toUpperCase()));
         const registeredNames = new Set((prev.technicians || []).map(t => t.name.trim().toUpperCase()));
         const assignedNames = new Set<string>();
         (orgToLoad.trabajos || []).forEach(job => {
@@ -1492,11 +1500,17 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
         let updatedWorkers = (orgToLoad.trabajadores || []).map(w => {
             const isActuallyAssigned = assignedNames.has(w.nombre.trim().toUpperCase());
             return { ...w, asignado: isActuallyAssigned };
-        }).filter(w => registeredNames.has(w.nombre.trim().toUpperCase()) || assignedNames.has(w.nombre.trim().toUpperCase()) || w.isManual);
+        }).filter(w => {
+            const nameUpper = w.nombre.trim().toUpperCase();
+            if (excludedNames.has(nameUpper) && !assignedNames.has(nameUpper)) {
+                return false;
+            }
+            return registeredNames.has(nameUpper) || assignedNames.has(nameUpper) || w.isManual;
+        });
         const existingNames = new Set(updatedWorkers.map(w => w.nombre.trim().toUpperCase()));
         (prev.technicians || []).forEach((t, i) => {
             const nameUpper = t.name.trim().toUpperCase();
-            if (!existingNames.has(nameUpper)) {
+            if (!existingNames.has(nameUpper) && !excludedNames.has(nameUpper)) {
                 updatedWorkers.push({
                     id: Number(t.id) || Date.now() + i,
                     nombre: nameUpper,
