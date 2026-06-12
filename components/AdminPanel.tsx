@@ -1111,6 +1111,282 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
     URL.revokeObjectURL(url);
   };
 
+  const downloadPDF = () => {
+    const doc = new jsPDF({
+      orientation: 'landscape',
+      unit: 'mm',
+      format: 'a4'
+    });
+
+    const drawHeader = (pageDoc: jsPDF) => {
+      // Top accent bar
+      pageDoc.setFillColor(0, 121, 123); // Teal #00797b
+      pageDoc.rect(0, 0, 297, 4, 'F');
+
+      // DRAW LOGO
+      // J text
+      pageDoc.setFont('helvetica', 'bold');
+      pageDoc.setFontSize(28);
+      pageDoc.setTextColor(176, 209, 42); // Lime #b0d12a
+      pageDoc.text('J', 15, 22);
+      
+      // DG text
+      pageDoc.setTextColor(0, 121, 123); // Teal #00797b
+      pageDoc.text('DG', 21, 22);
+
+      // TELECO Box
+      pageDoc.setFillColor(0, 121, 123); // Teal
+      pageDoc.rect(15, 26, 45, 6, 'F');
+      pageDoc.setFont('courier', 'bold');
+      pageDoc.setFontSize(10);
+      pageDoc.setTextColor(255, 255, 255); // White
+      pageDoc.text('TELECO', 37.5, 30.5, { align: 'center' });
+
+      // Draw Swirl Graphic
+      pageDoc.setDrawColor(0, 121, 123);
+      pageDoc.setLineWidth(0.8);
+      pageDoc.circle(70, 23, 7);
+      pageDoc.stroke();
+
+      pageDoc.setDrawColor(176, 209, 42);
+      pageDoc.circle(70, 23, 5);
+      pageDoc.stroke();
+
+      pageDoc.setFillColor(225, 29, 72); // Red/Rose
+      pageDoc.circle(70, 23, 1.5, 'F');
+
+      // Right Side metadata/title
+      pageDoc.setFont('helvetica', 'bold');
+      pageDoc.setFontSize(14);
+      pageDoc.setTextColor(31, 41, 55); // Gray-800
+      pageDoc.text('INFORME DE ACTIVIDAD INDUSTRIAL', 282, 17, { align: 'right' });
+
+      pageDoc.setFont('helvetica', 'normal');
+      pageDoc.setFontSize(8.5);
+      pageDoc.setTextColor(107, 114, 128); // Gray-500
+      const nowStr = new Date().toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+      pageDoc.text(`Generado el: ${nowStr}`, 282, 22, { align: 'right' });
+
+      // Filter subtitle
+      let filterText = 'Filtros: ';
+      const filtersActive: string[] = [];
+      if (filterTech) filtersActive.push(`Técnico: ${filterTech}`);
+      if (filterProject) filtersActive.push(`Obra: ${filterProject} (${resolveProjectFullName(filterProject)})`);
+      if (filterDateStart || filterDateEnd) {
+        if (filterDateStart && filterDateEnd) filtersActive.push(`Fechas: ${formatDateToSpanish(filterDateStart)} al ${formatDateToSpanish(filterDateEnd)}`);
+        else if (filterDateStart) filtersActive.push(`Desde: ${formatDateToSpanish(filterDateStart)}`);
+        else if (filterDateEnd) filtersActive.push(`Hasta: ${formatDateToSpanish(filterDateEnd)}`);
+      }
+      if (filtersActive.length === 0) {
+        filterText += 'Todos los registros';
+      } else {
+        filterText += filtersActive.join(' | ');
+      }
+      pageDoc.setFont('helvetica', 'oblique');
+      pageDoc.setFontSize(8.5);
+      pageDoc.setTextColor(75, 85, 99); // Gray-600
+      pageDoc.text(filterText, 282, 27, { align: 'right' });
+
+      // Decorative divider line
+      pageDoc.setDrawColor(229, 231, 235); // Border gray-200
+      pageDoc.setLineWidth(0.4);
+      pageDoc.line(15, 36, 282, 36);
+    };
+
+    const drawSummaryCards = (pageDoc: jsPDF) => {
+      let totalFood = 0;
+      let totalGas = 0;
+      let totalParking = 0;
+      let totalOthers = 0;
+      let totalOvertime = 0;
+      let totalWorkedHours = 0;
+
+      filteredReports.forEach(r => {
+        totalWorkedHours += calculateDuration(r.startTime, r.endTime);
+        totalOvertime += Number(r.overtimeHours || 0);
+        totalFood += Number(r.expenses?.food || 0);
+        totalGas += Number(r.expenses?.gas || 0);
+        totalParking += Number(r.expenses?.parking || 0);
+        totalOthers += Number(r.expenses?.others || 0);
+      });
+
+      const totalExpenses = totalFood + totalGas + totalParking + totalOthers;
+      const totalHours = totalWorkedHours + totalOvertime;
+
+      const cards = [
+        { label: 'PARTES REGISTRADOS', value: `${filteredReports.length} partes`, sub: 'Filtrados para el informe' },
+        { label: 'HORAS REGULARES', value: `${totalWorkedHours.toFixed(2)} h`, sub: 'Horario entrada/salida' },
+        { label: 'HORAS EXTRAORD.', value: `${totalOvertime.toFixed(2)} h`, sub: 'Pendientes o validadas' },
+        { label: 'DIETAS Y GASTOS', value: `${totalExpenses.toFixed(2)} €`, sub: `Comida: ${totalFood.toFixed(1)}€, Gas: ${totalGas.toFixed(1)}€` }
+      ];
+
+      const cardW = 63;
+      const cardH = 15;
+      const startX = 15;
+      const startY = 40;
+      const gap = 5;
+
+      cards.forEach((c, i) => {
+        const x = startX + i * (cardW + gap);
+        pageDoc.setFillColor(249, 250, 251); // background
+        pageDoc.setDrawColor(229, 231, 235); // border
+        pageDoc.setLineWidth(0.3);
+        pageDoc.roundedRect(x, startY, cardW, cardH, 2, 2, 'FD');
+
+        // Accent tag bar on the left of each card
+        const accentCol = i === 3 ? [176, 209, 42] : [0, 121, 123];
+        pageDoc.setFillColor(accentCol[0], accentCol[1], accentCol[2]); // Lime for expenses, Teal for others
+        pageDoc.rect(x, startY, 2, cardH, 'F');
+
+        pageDoc.setFont('helvetica', 'bold');
+        pageDoc.setFontSize(7.5);
+        pageDoc.setTextColor(107, 114, 128);
+        pageDoc.text(c.label, x + 5, startY + 4);
+
+        pageDoc.setFont('helvetica', 'bold');
+        pageDoc.setFontSize(11);
+        pageDoc.setTextColor(17, 24, 39);
+        pageDoc.text(c.value, x + 5, startY + 9.5);
+
+        pageDoc.setFont('helvetica', 'normal');
+        pageDoc.setFontSize(7);
+        pageDoc.setTextColor(156, 163, 175);
+        pageDoc.text(c.sub, x + 5, startY + 13.5);
+      });
+    };
+
+    // Prepare rows for the table
+    const rows = filteredReports.map(r => {
+      const dateStr = formatDateToSpanish(r.date);
+      const techStr = r.technician || '';
+      const projectStr = `${r.projectNum}\n${resolveProjectFullName(r.projectNum)}`;
+      const hoursStr = `${r.startTime} - ${r.endTime}`;
+      const durationStr = `${calculateDuration(r.startTime, r.endTime).toFixed(2)} h`;
+      const otStr = r.overtimeHours ? `${r.overtimeHours.toFixed(2)} h\n(${r.overtimeType})` : '0.00 h';
+      const vehStr = r.vehicle + (r.isDriver ? `\n(Cond. ${r.driverTripType || ''})` : '');
+      const descStr = r.description || '';
+      
+      const expenseList: string[] = [];
+      if (r.expenses.food > 0) expenseList.push(`Comida: ${r.expenses.food.toFixed(2)}€`);
+      if (r.expenses.gas > 0) expenseList.push(`Gas.: ${r.expenses.gas.toFixed(2)}€`);
+      if (r.expenses.parking > 0) expenseList.push(`Park.: ${r.expenses.parking.toFixed(2)}€`);
+      if (r.expenses.others > 0) {
+        const descOpt = r.expenses.othersDesc ? ` (${r.expenses.othersDesc})` : '';
+        expenseList.push(`Otros: ${r.expenses.others.toFixed(2)}€${descOpt}`);
+      }
+      const expStr = expenseList.length > 0 ? expenseList.join('\n') : '-';
+      
+      const matStr = (r.materials || []).length > 0
+        ? r.materials.map(m => `• ${m.quantity} ${m.description}`).join('\n')
+        : '-';
+
+      return {
+        date: dateStr,
+        tech: techStr,
+        project: projectStr,
+        hours: hoursStr,
+        duration: durationStr,
+        overtime: otStr,
+        vehicle: vehStr,
+        desc: descStr,
+        expenses: expStr,
+        materials: matStr
+      };
+    });
+
+    // Draw page 1 summary first
+    drawHeader(doc);
+    drawSummaryCards(doc);
+
+    // Call autoTable to draw the records
+    autoTable(doc, {
+      startY: 59,
+      margin: { top: 41, bottom: 15, left: 15, right: 15 },
+      columns: [
+        { header: 'Fecha', dataKey: 'date' },
+        { header: 'Técnico', dataKey: 'tech' },
+        { header: 'Obra', dataKey: 'project' },
+        { header: 'Horario', dataKey: 'hours' },
+        { header: 'Duración', dataKey: 'duration' },
+        { header: 'H. Extra', dataKey: 'overtime' },
+        { header: 'Vehículo', dataKey: 'vehicle' },
+        { header: 'Descripción de Trabajo', dataKey: 'desc' },
+        { header: 'Dietas / Gastos', dataKey: 'expenses' },
+        { header: 'Materiales', dataKey: 'materials' }
+      ],
+      body: rows,
+      theme: 'grid',
+      styles: {
+        fontSize: 7.5,
+        font: 'helvetica',
+        cellPadding: 2,
+        overflow: 'linebreak'
+      },
+      headStyles: {
+        fillColor: [0, 121, 123],
+        textColor: [255, 255, 255],
+        fontStyle: 'bold',
+        fontSize: 8,
+        halign: 'center',
+        valign: 'middle'
+      },
+      columnStyles: {
+        date: { cellWidth: 16, halign: 'center' },
+        tech: { cellWidth: 20 },
+        project: { cellWidth: 32 },
+        hours: { cellWidth: 18, halign: 'center' },
+        duration: { cellWidth: 15, halign: 'center' },
+        overtime: { cellWidth: 22, halign: 'center' },
+        vehicle: { cellWidth: 25 },
+        desc: { cellWidth: 55 },
+        expenses: { cellWidth: 32 },
+        materials: { cellWidth: 32 }
+      },
+      didDrawPage: (data) => {
+        // Draw standard page header for non-first pages (and first pages is handled by startY)
+        if (data.pageNumber > 1) {
+          drawHeader(doc);
+        }
+        
+        // Left footer banner
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(7.5);
+        doc.setTextColor(156, 163, 175);
+        doc.text('JDG TELECO S.L. - Sistema de Gestión Interna de Partes Industriales', 15, 202);
+      }
+    });
+
+    // Realize page number stamps on all pages
+    const totalPages = doc.getNumberOfPages();
+    for (let i = 1; i <= totalPages; i++) {
+      doc.setPage(i);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7.5);
+      doc.setTextColor(156, 163, 175);
+      doc.text(`Página ${i} de ${totalPages}`, 282, 202, { align: 'right' });
+    }
+
+    // Prepare filename
+    let fileNameParts = ['partes'];
+    if (filterProject) {
+      const sanitizedProject = filterProject.replace(/[^a-zA-Z0-9_-]/g, '');
+      fileNameParts.push(`obra_${sanitizedProject}`);
+    }
+    if (filterDateStart) {
+      fileNameParts.push(`desde_${filterDateStart}`);
+    }
+    if (filterDateEnd) {
+      fileNameParts.push(`hasta_${filterDateEnd}`);
+    }
+    if (!filterProject && !filterDateStart && !filterDateEnd) {
+      fileNameParts.push(new Date().toISOString().split('T')[0]);
+    }
+    const fileName = `${fileNameParts.join('_')}.pdf`;
+
+    // Save and download PDF
+    doc.save(fileName);
+  };
+
   const toggleExpandReport = (id: string) => setExpandedReportId(prev => prev === id ? null : id);
   const toggleWeekExpansion = (week: string) => setExpandedWeeks(prev => ({ ...prev, [week]: !prev[week] }));
   
@@ -1593,7 +1869,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                     <div className="flex flex-col sm:flex-row justify-between gap-4 mb-6">
                         <h3 className="text-lg font-bold text-gray-800 dark:text-white">Registro de Actividad</h3>
                         <div className="flex gap-2">
-                            <button onClick={downloadCSV} className="bg-brand-teal text-white px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-bold"><DownloadIcon className="w-4 h-4" /> CSV</button>
+                            <button onClick={downloadCSV} className="bg-brand-teal hover:bg-teal-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-bold shadow-sm transition-colors"><DownloadIcon className="w-4 h-4" /> CSV</button>
+                            <button onClick={downloadPDF} className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-bold shadow-sm transition-colors"><FileTextIcon className="w-4 h-4" /> PDF</button>
                             <label className="bg-brand-lime text-brand-dark px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-bold cursor-pointer hover:bg-lime-400">
                                 <UploadIcon className="w-4 h-4" /> Importar
                                 <input type="file" ref={reportImportInputRef} onChange={handleImportReports} accept=".csv" className="hidden" />
