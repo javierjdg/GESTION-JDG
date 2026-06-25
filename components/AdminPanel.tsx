@@ -1387,6 +1387,439 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
     doc.save(fileName);
   };
 
+  const downloadTechMonthPDF = (techName: string, monthKey: string, monthData: any, monthReports: WorkReport[]) => {
+    const doc = new jsPDF({
+      orientation: 'landscape',
+      unit: 'mm',
+      format: 'a4'
+    });
+
+    const drawHeader = (pageDoc: jsPDF) => {
+      // Top accent bar
+      pageDoc.setFillColor(0, 121, 123); // Teal #00797b
+      pageDoc.rect(0, 0, 297, 4, 'F');
+
+      // DRAW LOGO
+      pageDoc.setFont('helvetica', 'bold');
+      pageDoc.setFontSize(28);
+      pageDoc.setTextColor(176, 209, 42); // Lime #b0d12a
+      pageDoc.text('J', 15, 22);
+      
+      pageDoc.setTextColor(0, 121, 123); // Teal #00797b
+      pageDoc.text('DG', 21, 22);
+
+      // TELECO Box
+      pageDoc.setFillColor(0, 121, 123); // Teal
+      pageDoc.rect(15, 26, 45, 6, 'F');
+      pageDoc.setFont('courier', 'bold');
+      pageDoc.setFontSize(10);
+      pageDoc.setTextColor(255, 255, 255); // White
+      pageDoc.text('TELECO', 37.5, 30.5, { align: 'center' });
+
+      // Draw Swirl Graphic
+      pageDoc.setDrawColor(0, 121, 123);
+      pageDoc.setLineWidth(0.8);
+      pageDoc.circle(70, 23, 7);
+      pageDoc.stroke();
+
+      pageDoc.setDrawColor(176, 209, 42);
+      pageDoc.circle(70, 23, 5);
+      pageDoc.stroke();
+
+      pageDoc.setFillColor(225, 29, 72); // Red/Rose
+      pageDoc.circle(70, 23, 1.5, 'F');
+
+      // Right Side metadata/title
+      pageDoc.setFont('helvetica', 'bold');
+      pageDoc.setFontSize(14);
+      pageDoc.setTextColor(31, 41, 55); // Gray-800
+      pageDoc.text('INFORME DE HORAS EXTRAORDINARIAS', 282, 17, { align: 'right' });
+
+      pageDoc.setFont('helvetica', 'normal');
+      pageDoc.setFontSize(8.5);
+      pageDoc.setTextColor(107, 114, 128); // Gray-500
+      const nowStr = new Date().toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+      pageDoc.text(`Generado el: ${nowStr}`, 282, 22, { align: 'right' });
+
+      // Period and technician subtitle
+      pageDoc.setFont('helvetica', 'bold');
+      pageDoc.setFontSize(9);
+      pageDoc.setTextColor(75, 85, 99); // Gray-600
+      pageDoc.text(`Técnico: ${techName.toUpperCase()}  |  Período: ${monthData.label}`, 282, 27, { align: 'right' });
+
+      // Decorative divider line
+      pageDoc.setDrawColor(229, 231, 235); // Border gray-200
+      pageDoc.setLineWidth(0.4);
+      pageDoc.line(15, 36, 282, 36);
+    };
+
+    const drawSummaryCards = (pageDoc: jsPDF) => {
+      const cards = [
+        { label: 'HORAS EXTRA TOTALES', value: `${monthData.total.toFixed(2)} h`, sub: 'Total acumulado en el mes' },
+        { label: 'HORAS NORMALES', value: `${monthData.norm.toFixed(2)} h`, sub: 'Tipo NORMAL' },
+        { label: 'HORAS NOCTURNAS', value: `${monthData.noct.toFixed(2)} h`, sub: 'Tipo NOCTURNA' },
+        { label: 'FIN DE SEMANA', value: `${monthData.finde.toFixed(2)} h`, sub: 'Tipo FINDE SEMANA' }
+      ];
+
+      const cardW = 63;
+      const cardH = 15;
+      const startX = 15;
+      const startY = 40;
+      const gap = 5;
+
+      cards.forEach((c, i) => {
+        const x = startX + i * (cardW + gap);
+        pageDoc.setFillColor(249, 250, 251); // background
+        pageDoc.setDrawColor(229, 231, 235); // border
+        pageDoc.setLineWidth(0.3);
+        pageDoc.roundedRect(x, startY, cardW, cardH, 2, 2, 'FD');
+
+        // Accent tag bar on the left of each card
+        const accentCol = i === 0 ? [176, 209, 42] : [0, 121, 123];
+        pageDoc.setFillColor(accentCol[0], accentCol[1], accentCol[2]);
+        pageDoc.rect(x, startY, 2, cardH, 'F');
+
+        pageDoc.setFont('helvetica', 'bold');
+        pageDoc.setFontSize(7.5);
+        pageDoc.setTextColor(107, 114, 128);
+        pageDoc.text(c.label, x + 5, startY + 4);
+
+        pageDoc.setFont('helvetica', 'bold');
+        pageDoc.setFontSize(11);
+        pageDoc.setTextColor(17, 24, 39);
+        pageDoc.text(c.value, x + 5, startY + 9.5);
+
+        pageDoc.setFont('helvetica', 'normal');
+        pageDoc.setFontSize(7);
+        pageDoc.setTextColor(156, 163, 175);
+        pageDoc.text(c.sub, x + 5, startY + 13.5);
+      });
+    };
+
+    // Prepare rows for the table
+    const rows = monthReports.map(r => {
+      const dateStr = formatDateToSpanish(r.date);
+      const projectStr = `${r.projectNum} - ${resolveProjectFullName(r.projectNum)}`;
+      const durationStr = `${calculateDuration(r.startTime, r.endTime).toFixed(2)} h (${r.startTime} - ${r.endTime})`;
+      const otStr = `${r.overtimeHours.toFixed(2)} h`;
+      const otTypeStr = r.overtimeType || 'NORMAL';
+      const statusStr = r.overtimeStatus === 'validated' ? 'Validado' : 'Pendiente';
+      const descStr = r.description || '';
+
+      return {
+        date: dateStr,
+        project: projectStr,
+        duration: durationStr,
+        overtime: otStr,
+        overtimeType: otTypeStr,
+        status: statusStr,
+        desc: descStr
+      };
+    });
+
+    drawHeader(doc);
+    drawSummaryCards(doc);
+
+    autoTable(doc, {
+      startY: 59,
+      margin: { top: 41, bottom: 15, left: 15, right: 15 },
+      columns: [
+        { header: 'Fecha', dataKey: 'date' },
+        { header: 'Obra / Proyecto', dataKey: 'project' },
+        { header: 'Horario Jornada', dataKey: 'duration' },
+        { header: 'Horas Extra', dataKey: 'overtime' },
+        { header: 'Tipo Hora Extra', dataKey: 'overtimeType' },
+        { header: 'Estado', dataKey: 'status' },
+        { header: 'Descripción / Tareas', dataKey: 'desc' }
+      ],
+      body: rows,
+      theme: 'grid',
+      styles: {
+        fontSize: 8,
+        font: 'helvetica',
+        cellPadding: 2.5,
+        overflow: 'linebreak'
+      },
+      headStyles: {
+        fillColor: [0, 121, 123],
+        textColor: [255, 255, 255],
+        fontStyle: 'bold',
+        fontSize: 8.5,
+        halign: 'center',
+        valign: 'middle'
+      },
+      columnStyles: {
+        date: { cellWidth: 20, halign: 'center' },
+        project: { cellWidth: 50 },
+        duration: { cellWidth: 40, halign: 'center' },
+        overtime: { cellWidth: 22, halign: 'center' },
+        overtimeType: { cellWidth: 28, halign: 'center' },
+        status: { cellWidth: 22, halign: 'center' },
+        desc: { cellWidth: 85 }
+      },
+      didDrawPage: (data) => {
+        if (data.pageNumber > 1) {
+          drawHeader(doc);
+        }
+        
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(7.5);
+        doc.setTextColor(156, 163, 175);
+        doc.text('JDG TELECO S.L. - Sistema de Gestión Interna de Partes Industriales', 15, 202);
+      }
+    });
+
+    const totalPages = doc.getNumberOfPages();
+    for (let i = 1; i <= totalPages; i++) {
+      doc.setPage(i);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7.5);
+      doc.setTextColor(156, 163, 175);
+      doc.text(`Página ${i} de ${totalPages}`, 282, 202, { align: 'right' });
+    }
+
+    const sanitizedTech = techName.replace(/[^a-zA-Z0-9_-]/g, '').toLowerCase();
+    const fileName = `horas_extra_${sanitizedTech}_${monthKey}.pdf`;
+    doc.save(fileName);
+  };
+
+  const downloadOvertimePDF = () => {
+    const doc = new jsPDF({
+      orientation: 'landscape',
+      unit: 'mm',
+      format: 'a4'
+    });
+
+    const overtimeReports = data.reports.filter(r => {
+      if (r.overtimeHours <= 0) return false;
+      if (filterTech && r.technician !== filterTech) return false;
+      if (filterProject && r.projectNum !== filterProject) return false;
+      if (filterDateStart && r.date < filterDateStart) return false;
+      if (filterDateEnd && r.date > filterDateEnd) return false;
+      return true;
+    });
+
+    if (overtimeReports.length === 0) {
+      toast.error('No hay horas extra que coincidan con los filtros actuales para generar el PDF.');
+      return;
+    }
+
+    const drawHeader = (pageDoc: jsPDF) => {
+      // Top accent bar
+      pageDoc.setFillColor(0, 121, 123); // Teal #00797b
+      pageDoc.rect(0, 0, 297, 4, 'F');
+
+      // DRAW LOGO
+      pageDoc.setFont('helvetica', 'bold');
+      pageDoc.setFontSize(28);
+      pageDoc.setTextColor(176, 209, 42); // Lime #b0d12a
+      pageDoc.text('J', 15, 22);
+      
+      pageDoc.setTextColor(0, 121, 123); // Teal #00797b
+      pageDoc.text('DG', 21, 22);
+
+      // TELECO Box
+      pageDoc.setFillColor(0, 121, 123); // Teal
+      pageDoc.rect(15, 26, 45, 6, 'F');
+      pageDoc.setFont('courier', 'bold');
+      pageDoc.setFontSize(10);
+      pageDoc.setTextColor(255, 255, 255); // White
+      pageDoc.text('TELECO', 37.5, 30.5, { align: 'center' });
+
+      // Draw Swirl Graphic
+      pageDoc.setDrawColor(0, 121, 123);
+      pageDoc.setLineWidth(0.8);
+      pageDoc.circle(70, 23, 7);
+      pageDoc.stroke();
+
+      pageDoc.setDrawColor(176, 209, 42);
+      pageDoc.circle(70, 23, 5);
+      pageDoc.stroke();
+
+      pageDoc.setFillColor(225, 29, 72); // Red/Rose
+      pageDoc.circle(70, 23, 1.5, 'F');
+
+      // Right Side metadata/title
+      pageDoc.setFont('helvetica', 'bold');
+      pageDoc.setFontSize(14);
+      pageDoc.setTextColor(31, 41, 55); // Gray-800
+      pageDoc.text('REPORTE GENERAL DE HORAS EXTRA', 282, 17, { align: 'right' });
+
+      pageDoc.setFont('helvetica', 'normal');
+      pageDoc.setFontSize(8.5);
+      pageDoc.setTextColor(107, 114, 128); // Gray-500
+      const nowStr = new Date().toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+      pageDoc.text(`Generado el: ${nowStr}`, 282, 22, { align: 'right' });
+
+      // Filter subtitle
+      let filterText = 'Filtros: ';
+      const filtersActive: string[] = [];
+      if (filterTech) filtersActive.push(`Técnico: ${filterTech}`);
+      if (filterProject) filtersActive.push(`Obra: ${filterProject}`);
+      if (filterDateStart || filterDateEnd) {
+        if (filterDateStart && filterDateEnd) filtersActive.push(`Fechas: ${formatDateToSpanish(filterDateStart)} al ${formatDateToSpanish(filterDateEnd)}`);
+        else if (filterDateStart) filtersActive.push(`Desde: ${formatDateToSpanish(filterDateStart)}`);
+        else if (filterDateEnd) filtersActive.push(`Hasta: ${formatDateToSpanish(filterDateEnd)}`);
+      }
+      if (filtersActive.length === 0) {
+        filterText += 'Todos los registros de horas extra';
+      } else {
+        filterText += filtersActive.join(' | ');
+      }
+      pageDoc.setFont('helvetica', 'oblique');
+      pageDoc.setFontSize(8.5);
+      pageDoc.setTextColor(75, 85, 99); // Gray-600
+      pageDoc.text(filterText, 282, 27, { align: 'right' });
+
+      // Decorative divider line
+      pageDoc.setDrawColor(229, 231, 235); // Border gray-200
+      pageDoc.setLineWidth(0.4);
+      pageDoc.line(15, 36, 282, 36);
+    };
+
+    const drawSummaryCards = (pageDoc: jsPDF) => {
+      let totalOvertime = 0;
+      let totalNorm = 0;
+      let totalNoct = 0;
+      let totalFinde = 0;
+
+      overtimeReports.forEach(r => {
+        const ot = Number(r.overtimeHours || 0);
+        totalOvertime += ot;
+        if (r.overtimeType === 'NORMAL') totalNorm += ot;
+        else if (r.overtimeType === 'NOCTURNA') totalNoct += ot;
+        else if (r.overtimeType === 'FINDE SEMANA') totalFinde += ot;
+      });
+
+      const cards = [
+        { label: 'HORAS EXTRA EXTRAORDINARIAS', value: `${totalOvertime.toFixed(2)} h`, sub: `${overtimeReports.length} partes con Horas Extra` },
+        { label: 'HORAS NORMALES', value: `${totalNorm.toFixed(2)} h`, sub: 'Tipo NORMAL' },
+        { label: 'HORAS NOCTURNAS', value: `${totalNoct.toFixed(2)} h`, sub: 'Tipo NOCTURNA' },
+        { label: 'FIN DE SEMANA', value: `${totalFinde.toFixed(2)} h`, sub: 'Tipo FINDE SEMANA' }
+      ];
+
+      const cardW = 63;
+      const cardH = 15;
+      const startX = 15;
+      const startY = 40;
+      const gap = 5;
+
+      cards.forEach((c, i) => {
+        const x = startX + i * (cardW + gap);
+        pageDoc.setFillColor(249, 250, 251); // background
+        pageDoc.setDrawColor(229, 231, 235); // border
+        pageDoc.setLineWidth(0.3);
+        pageDoc.roundedRect(x, startY, cardW, cardH, 2, 2, 'FD');
+
+        const accentCol = i === 0 ? [176, 209, 42] : [0, 121, 123];
+        pageDoc.setFillColor(accentCol[0], accentCol[1], accentCol[2]);
+        pageDoc.rect(x, startY, 2, cardH, 'F');
+
+        pageDoc.setFont('helvetica', 'bold');
+        pageDoc.setFontSize(7.5);
+        pageDoc.setTextColor(107, 114, 128);
+        pageDoc.text(c.label, x + 5, startY + 4);
+
+        pageDoc.setFont('helvetica', 'bold');
+        pageDoc.setFontSize(11);
+        pageDoc.setTextColor(17, 24, 39);
+        pageDoc.text(c.value, x + 5, startY + 9.5);
+
+        pageDoc.setFont('helvetica', 'normal');
+        pageDoc.setFontSize(7);
+        pageDoc.setTextColor(156, 163, 175);
+        pageDoc.text(c.sub, x + 5, startY + 13.5);
+      });
+    };
+
+    const rows = overtimeReports.map(r => {
+      const dateStr = formatDateToSpanish(r.date);
+      const techStr = r.technician || '';
+      const projectStr = `${r.projectNum} - ${resolveProjectFullName(r.projectNum)}`;
+      const durationStr = `${calculateDuration(r.startTime, r.endTime).toFixed(2)} h (${r.startTime} - ${r.endTime})`;
+      const otStr = `${r.overtimeHours.toFixed(2)} h`;
+      const otTypeStr = r.overtimeType || 'NORMAL';
+      const statusStr = r.overtimeStatus === 'validated' ? 'Validado' : 'Pendiente';
+      const descStr = r.description || '';
+
+      return {
+        date: dateStr,
+        tech: techStr,
+        project: projectStr,
+        duration: durationStr,
+        overtime: otStr,
+        overtimeType: otTypeStr,
+        status: statusStr,
+        desc: descStr
+      };
+    });
+
+    drawHeader(doc);
+    drawSummaryCards(doc);
+
+    autoTable(doc, {
+      startY: 59,
+      margin: { top: 41, bottom: 15, left: 15, right: 15 },
+      columns: [
+        { header: 'Fecha', dataKey: 'date' },
+        { header: 'Técnico', dataKey: 'tech' },
+        { header: 'Obra / Proyecto', dataKey: 'project' },
+        { header: 'Horario', dataKey: 'duration' },
+        { header: 'Horas Extra', dataKey: 'overtime' },
+        { header: 'Tipo', dataKey: 'overtimeType' },
+        { header: 'Estado', dataKey: 'status' },
+        { header: 'Descripción / Tareas', dataKey: 'desc' }
+      ],
+      body: rows,
+      theme: 'grid',
+      styles: {
+        fontSize: 7.5,
+        font: 'helvetica',
+        cellPadding: 2,
+        overflow: 'linebreak'
+      },
+      headStyles: {
+        fillColor: [0, 121, 123],
+        textColor: [255, 255, 255],
+        fontStyle: 'bold',
+        fontSize: 8,
+        halign: 'center',
+        valign: 'middle'
+      },
+      columnStyles: {
+        date: { cellWidth: 16, halign: 'center' },
+        tech: { cellWidth: 20 },
+        project: { cellWidth: 42 },
+        duration: { cellWidth: 32, halign: 'center' },
+        overtime: { cellWidth: 20, halign: 'center' },
+        overtimeType: { cellWidth: 24, halign: 'center' },
+        status: { cellWidth: 20, halign: 'center' },
+        desc: { cellWidth: 93 }
+      },
+      didDrawPage: (data) => {
+        if (data.pageNumber > 1) {
+          drawHeader(doc);
+        }
+        
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(7.5);
+        doc.setTextColor(156, 163, 175);
+        doc.text('JDG TELECO S.L. - Sistema de Gestión Interna de Partes Industriales', 15, 202);
+      }
+    });
+
+    const totalPages = doc.getNumberOfPages();
+    for (let i = 1; i <= totalPages; i++) {
+      doc.setPage(i);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7.5);
+      doc.setTextColor(156, 163, 175);
+      doc.text(`Página ${i} de ${totalPages}`, 282, 202, { align: 'right' });
+    }
+
+    doc.save(`reporte_general_horas_extra_${new Date().toISOString().split('T')[0]}.pdf`);
+  };
+
   const toggleExpandReport = (id: string) => setExpandedReportId(prev => prev === id ? null : id);
   const toggleWeekExpansion = (week: string) => setExpandedWeeks(prev => ({ ...prev, [week]: !prev[week] }));
   
@@ -1710,22 +2143,30 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
               <div>
                 <div className="flex justify-between items-center mb-4">
                   <h3 className="text-lg font-bold text-gray-800 dark:text-white">Revisión de Horas Extra</h3>
-                  {data.reports.filter(r => r.overtimeHours > 0 && r.overtimeStatus !== 'validated').length > 0 && (
+                  <div className="flex gap-2">
                     <button 
-                      onClick={async () => {
-                        const pending = data.reports.filter(r => r.overtimeHours > 0 && r.overtimeStatus !== 'validated');
-                        if (window.confirm(`¿Validar los ${pending.length} partes pendientes?`)) {
-                          for (const r of pending) {
-                            await onUpdateReport({ ...r, overtimeStatus: 'validated' }, false);
-                          }
-                          toast.success(`${pending.length} partes validados`);
-                        }
-                      }}
-                      className="bg-brand-teal text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-teal-600 transition-colors"
+                      onClick={downloadOvertimePDF}
+                      className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-colors shadow-sm"
                     >
-                      Validar Todo
+                      <FileTextIcon className="w-4 h-4" /> PDF General
                     </button>
-                  )}
+                    {data.reports.filter(r => r.overtimeHours > 0 && r.overtimeStatus !== 'validated').length > 0 && (
+                      <button 
+                        onClick={async () => {
+                          const pending = data.reports.filter(r => r.overtimeHours > 0 && r.overtimeStatus !== 'validated');
+                          if (window.confirm(`¿Validar los ${pending.length} partes pendientes?`)) {
+                            for (const r of pending) {
+                              await onUpdateReport({ ...r, overtimeStatus: 'validated' }, false);
+                            }
+                            toast.success(`${pending.length} partes validados`);
+                          }
+                        }}
+                        className="bg-brand-teal text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-teal-600 transition-colors"
+                      >
+                        Validar Todo
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 <div className="mb-8">
@@ -1847,29 +2288,111 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                           <h4 className="font-black text-gray-800 dark:text-white uppercase tracking-wider">{tech.name}</h4>
                         </div>
                         <div className="p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                          {sortedMonths.map(([monthKey, monthData]) => (
-                            <div key={monthKey} className="bg-brand-dark p-4 rounded-2xl border border-white/5 shadow-xl relative overflow-hidden group">
-                              <div className="absolute top-0 right-0 w-1 h-full bg-brand-teal opacity-40 group-hover:opacity-100 transition-opacity"></div>
-                              <div className="flex justify-between items-start mb-4">
-                                <h5 className="text-white font-black text-sm tracking-widest uppercase">{monthData.label}</h5>
-                                <span className="text-brand-lime font-black text-2xl tracking-tighter">{monthData.total}h</span>
+                          {sortedMonths.map(([monthKey, monthData]) => {
+                            const monthReports = techReports.filter(r => {
+                              const date = new Date(r.date);
+                              const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+                              return key === monthKey;
+                            });
+                            const isMonthExpanded = !!expandedTechMonths[`${tech.name}_${monthKey}`];
+
+                            return (
+                              <div key={monthKey} className="bg-brand-dark p-4 rounded-2xl border border-white/5 shadow-xl relative overflow-hidden group flex flex-col justify-between">
+                                <div className="absolute top-0 right-0 w-1 h-full bg-brand-teal opacity-40 group-hover:opacity-100 transition-opacity"></div>
+                                <div>
+                                  <div className="flex justify-between items-start mb-4">
+                                    <div>
+                                      <h5 className="text-white font-black text-sm tracking-widest uppercase">{monthData.label}</h5>
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          downloadTechMonthPDF(tech.name, monthKey, monthData, monthReports);
+                                        }}
+                                        className="mt-2 flex items-center gap-1 bg-red-600 hover:bg-red-700 text-white px-2 py-1 rounded text-[10px] font-black uppercase tracking-wider transition-colors shadow-md"
+                                      >
+                                        <FileTextIcon className="w-3 h-3" /> PDF
+                                      </button>
+                                    </div>
+                                    <span className="text-brand-lime font-black text-2xl tracking-tighter">{monthData.total}h</span>
+                                  </div>
+                                  <div className="grid grid-cols-3 gap-2">
+                                    <div className="bg-white/5 p-2 rounded-lg text-center">
+                                      <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mb-1">Norm</p>
+                                      <p className="text-white font-black text-sm">{monthData.norm}</p>
+                                    </div>
+                                    <div className="bg-white/5 p-2 rounded-lg text-center">
+                                      <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mb-1">Noc</p>
+                                      <p className="text-white font-black text-sm">{monthData.noct}</p>
+                                    </div>
+                                    <div className="bg-white/5 p-2 rounded-lg text-center">
+                                      <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mb-1">Fin</p>
+                                      <p className="text-white font-black text-sm">{monthData.finde}</p>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <button
+                                  onClick={() => setExpandedTechMonths(prev => ({ ...prev, [`${tech.name}_${monthKey}`]: !isMonthExpanded }))}
+                                  className="mt-4 w-full flex items-center justify-center gap-1 bg-white/5 hover:bg-white/10 text-white border border-white/10 rounded-xl py-2 text-[10px] font-black uppercase tracking-widest transition-colors"
+                                >
+                                  {isMonthExpanded ? (
+                                    <>
+                                      <ChevronDownIcon className="w-4 h-4 rotate-180 transition-transform" />
+                                      Ocultar Partes
+                                    </>
+                                  ) : (
+                                    <>
+                                      <ChevronDownIcon className="w-4 h-4 transition-transform" />
+                                      Ver Partes ({monthReports.length})
+                                    </>
+                                  )}
+                                </button>
+
+                                {isMonthExpanded && (
+                                  <div className="mt-4 pt-4 border-t border-white/10 space-y-2 animate-fade-in text-left w-full">
+                                    <h6 className="text-[10px] font-black tracking-wider uppercase text-gray-400 mb-2">Partes de {tech.name} - {monthData.label}</h6>
+                                    <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                                      {monthReports.map(r => (
+                                        <div key={r.id} className="bg-white/5 p-3 rounded-lg border border-white/5 flex flex-col justify-between items-start gap-2 hover:bg-white/10 transition-colors">
+                                          <div className="w-full">
+                                            <div className="flex justify-between items-center gap-2">
+                                              <span className="text-[11px] font-black text-brand-lime">{formatDateToSpanish(r.date)}</span>
+                                              <span className={`text-[8px] px-1.5 py-0.5 rounded font-black uppercase tracking-wider ${r.overtimeStatus === 'validated' ? 'bg-green-500/20 text-green-400 border border-green-500/30' : 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'}`}>
+                                                {r.overtimeStatus === 'validated' ? 'Validado' : 'Pendiente'}
+                                              </span>
+                                            </div>
+                                            <p className="text-xs text-white font-bold mt-1 line-clamp-1">{r.projectNum} - {resolveProjectFullName(r.projectNum)}</p>
+                                            {r.description && <p className="text-[10px] text-gray-400 italic mt-0.5 line-clamp-2">{r.description}</p>}
+                                          </div>
+                                          <div className="flex items-center gap-2 w-full justify-between pt-1 border-t border-white/5">
+                                            <span className="text-white font-black text-[9px] bg-white/10 px-1.5 py-0.5 rounded uppercase tracking-wider">
+                                              +{r.overtimeHours}h ({r.overtimeType})
+                                            </span>
+                                            <button 
+                                              onClick={() => {
+                                                const week = getWeekRange(r.date);
+                                                setFilterTech('');
+                                                setFilterProject('');
+                                                setFilterDateStart('');
+                                                setFilterDateEnd('');
+                                                setExpandedWeeks({ [week]: true });
+                                                setReportViewMode('list');
+                                                setExpandedReportId(r.id);
+                                                window.scrollTo({ top: 0, behavior: 'smooth' });
+                                              }} 
+                                              className="text-brand-teal hover:text-brand-teal/80 hover:underline text-[10px] font-black uppercase tracking-wider whitespace-nowrap"
+                                            >
+                                              Ver Parte
+                                            </button>
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
                               </div>
-                              <div className="grid grid-cols-3 gap-2">
-                                <div className="bg-white/5 p-2 rounded-lg text-center">
-                                  <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mb-1">Norm</p>
-                                  <p className="text-white font-black text-sm">{monthData.norm}</p>
-                                </div>
-                                <div className="bg-white/5 p-2 rounded-lg text-center">
-                                  <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mb-1">Noc</p>
-                                  <p className="text-white font-black text-sm">{monthData.noct}</p>
-                                </div>
-                                <div className="bg-white/5 p-2 rounded-lg text-center">
-                                  <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mb-1">Fin</p>
-                                  <p className="text-white font-black text-sm">{monthData.finde}</p>
-                                </div>
-                              </div>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       </div>
                     );
