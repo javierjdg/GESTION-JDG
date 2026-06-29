@@ -327,6 +327,16 @@ const TechDashboard: React.FC<TechDashboardProps> = ({ reports, projects, onNewR
                                                 <div className="flex items-center gap-2">
                                                     <span className="font-black text-gray-900 dark:text-gray-100 text-sm">{formatDateToSpanish(report.date)}</span>
                                                     <span className="text-[10px] text-gray-500 dark:text-gray-600 font-mono">#{report.id.slice(-4)}</span>
+                                                    {report.isNightShift && (
+                                                        <span className="px-1.5 py-0.5 text-[8px] bg-indigo-100 dark:bg-indigo-950/40 text-indigo-800 dark:text-indigo-300 font-black rounded uppercase tracking-wider border border-indigo-200/30 dark:border-indigo-900/30">
+                                                            NOCHE
+                                                        </span>
+                                                    )}
+                                                    {report.isOvernight && (
+                                                        <span className="px-1.5 py-0.5 text-[8px] bg-purple-100 dark:bg-purple-950/40 text-purple-800 dark:text-purple-300 font-black rounded uppercase tracking-wider border border-purple-200/30 dark:border-purple-900/30">
+                                                            PERNOCTA
+                                                        </span>
+                                                    )}
                                                 </div>
                                                 <div className="text-xs text-brand-teal dark:text-brand-lime mt-1 font-black truncate uppercase tracking-wider">{resolveProjectFullName(report.projectNum)}</div>
                                                 <div className="text-xs text-gray-600 dark:text-gray-500 mt-1.5 italic truncate line-clamp-1">"{report.description || 'Sin descripción'}"</div>

@@ -208,6 +208,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
   const [expandedReportId, setExpandedReportId] = useState<string | null>(null);
   const [showValidatedOvertime, setShowValidatedOvertime] = useState(false);
   const [showPendingOvertime, setShowPendingOvertime] = useState(true);
+  const [selectedMonthForReport, setSelectedMonthForReport] = useState('');
   const [newItemName, setNewItemName] = useState('');
   const [newTechPwd, setNewTechPwd] = useState('');
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
@@ -1387,6 +1388,325 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
     doc.save(fileName);
   };
 
+  const getMonthYearLabelFromKey = (key: string) => {
+    const [year, month] = key.split('-');
+    const dateObj = new Date(Number(year), Number(month) - 1, 15);
+    return dateObj.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' }).toUpperCase();
+  };
+
+  const downloadMonthlyOvertimeAllTechsExcel = (monthKey: string) => {
+    if (!monthKey) return;
+    const monthLabel = getMonthYearLabelFromKey(monthKey);
+    const monthReports = data.reports.filter(r => {
+      if (r.overtimeHours <= 0) return false;
+      const date = new Date(r.date);
+      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      return key === monthKey;
+    });
+
+    if (monthReports.length === 0) {
+      toast.error(`No hay horas extra registradas para el mes de ${monthLabel}`);
+      return;
+    }
+
+    // Group by technician
+    const techGroups: Record<string, { norm: number, noct: number, finde: number, total: number, nights: number, overnights: number }> = {};
+    monthReports.forEach(r => {
+      const tech = r.technician;
+      if (!techGroups[tech]) {
+        techGroups[tech] = { norm: 0, noct: 0, finde: 0, total: 0, nights: 0, overnights: 0 };
+      }
+      const ot = Number(r.overtimeHours || 0);
+      techGroups[tech].total += ot;
+      if (r.overtimeType === 'NORMAL') techGroups[tech].norm += ot;
+      else if (r.overtimeType === 'NOCTURNA') techGroups[tech].noct += ot;
+      else if (r.overtimeType === 'FINDE SEMANA') techGroups[tech].finde += ot;
+
+      if (r.isNightShift) techGroups[tech].nights += 1;
+      if (r.isOvernight) techGroups[tech].overnights += 1;
+    });
+
+    const headers = [
+      'Técnico',
+      'Horas Normales',
+      'Horas Nocturnas',
+      'Horas Fin de Semana',
+      'Total Horas Extra',
+      'Noches (Recuento)',
+      'Pernoctas (Recuento)'
+    ].join(',');
+
+    const rows = Object.entries(techGroups)
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([techName, stats]) => {
+        const escape = (val: string) => `"${(val || '').replace(/"/g, '""')}"`;
+        return [
+          escape(techName),
+          stats.norm.toFixed(2),
+          stats.noct.toFixed(2),
+          stats.finde.toFixed(2),
+          stats.total.toFixed(2),
+          stats.nights,
+          stats.overnights
+        ].join(',');
+      });
+
+    const csvContent = ["sep=,", headers, ...rows].join('\n');
+    const encoder = new TextEncoder();
+    const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
+    const csvBytes = encoder.encode(csvContent);
+    const blob = new Blob([bom, csvBytes], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+
+    const label = monthLabel.replace(/\s+/g, '_').toLowerCase();
+    link.setAttribute("download", `resumen_horas_extra_tecnicos_${label}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    toast.success(`Excel exportado correctamente para el mes de ${monthLabel}`);
+  };
+
+  const downloadMonthlyOvertimeAllTechsPDF = (monthKey: string) => {
+    if (!monthKey) return;
+    const monthLabel = getMonthYearLabelFromKey(monthKey);
+    const monthReports = data.reports.filter(r => {
+      if (r.overtimeHours <= 0) return false;
+      const date = new Date(r.date);
+      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      return key === monthKey;
+    });
+
+    if (monthReports.length === 0) {
+      toast.error(`No hay horas extra registradas para el mes de ${monthLabel}`);
+      return;
+    }
+
+    const doc = new jsPDF({
+      orientation: 'landscape',
+      unit: 'mm',
+      format: 'a4'
+    });
+
+    const drawHeader = (pageDoc: jsPDF) => {
+      pageDoc.setFillColor(0, 121, 123); // Teal
+      pageDoc.rect(0, 0, 297, 4, 'F');
+
+      pageDoc.setFont('helvetica', 'bold');
+      pageDoc.setFontSize(28);
+      pageDoc.setTextColor(176, 209, 42); // Lime
+      pageDoc.text('J', 15, 22);
+      
+      pageDoc.setTextColor(0, 121, 123); // Teal
+      pageDoc.text('DG', 21, 22);
+
+      pageDoc.setFillColor(0, 121, 123); // Teal
+      pageDoc.rect(15, 26, 45, 6, 'F');
+      pageDoc.setFont('courier', 'bold');
+      pageDoc.setFontSize(10);
+      pageDoc.setTextColor(255, 255, 255);
+      pageDoc.text('TELECO', 37.5, 30.5, { align: 'center' });
+
+      pageDoc.setDrawColor(0, 121, 123);
+      pageDoc.setLineWidth(0.8);
+      pageDoc.circle(70, 23, 7);
+      pageDoc.stroke();
+
+      pageDoc.setDrawColor(176, 209, 42);
+      pageDoc.circle(70, 23, 5);
+      pageDoc.stroke();
+
+      pageDoc.setFillColor(225, 29, 72); // Red/Rose
+      pageDoc.circle(70, 23, 1.5, 'F');
+
+      pageDoc.setFont('helvetica', 'bold');
+      pageDoc.setFontSize(14);
+      pageDoc.setTextColor(31, 41, 55);
+      pageDoc.text('INFORME MENSUAL DE HORAS EXTRAORDINARIAS (RESUMEN)', 282, 17, { align: 'right' });
+
+      pageDoc.setFont('helvetica', 'normal');
+      pageDoc.setFontSize(8.5);
+      pageDoc.setTextColor(107, 114, 128);
+      const nowStr = new Date().toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+      pageDoc.text(`Generado el: ${nowStr}`, 282, 22, { align: 'right' });
+
+      pageDoc.setFont('helvetica', 'bold');
+      pageDoc.setFontSize(9);
+      pageDoc.setTextColor(75, 85, 99);
+      pageDoc.text(`Período: ${monthLabel}  |  Resumen por Técnico`, 282, 27, { align: 'right' });
+
+      pageDoc.setDrawColor(229, 231, 235);
+      pageDoc.setLineWidth(0.4);
+      pageDoc.line(15, 36, 282, 36);
+    };
+
+    const drawSummaryCards = (pageDoc: jsPDF) => {
+      let totalOt = 0;
+      let totalNorm = 0;
+      let totalNoct = 0;
+      let totalFinde = 0;
+      let nightsCount = 0;
+      let overnightsCount = 0;
+
+      monthReports.forEach(r => {
+        const ot = Number(r.overtimeHours || 0);
+        totalOt += ot;
+        if (r.overtimeType === 'NORMAL') totalNorm += ot;
+        else if (r.overtimeType === 'NOCTURNA') totalNoct += ot;
+        else if (r.overtimeType === 'FINDE SEMANA') totalFinde += ot;
+
+        if (r.isNightShift) nightsCount += 1;
+        if (r.isOvernight) overnightsCount += 1;
+      });
+
+      const cards = [
+        { label: 'HORAS EXTRA TOTALES', value: `${totalOt.toFixed(2)} h`, sub: 'Acumulado mes' },
+        { label: 'HORAS NORMALES', value: `${totalNorm.toFixed(2)} h`, sub: 'Tipo NORMAL' },
+        { label: 'HORAS NOCTURNAS', value: `${totalNoct.toFixed(2)} h`, sub: 'Tipo NOCTURNA' },
+        { label: 'FIN DE SEMANA', value: `${totalFinde.toFixed(2)} h`, sub: 'Tipo FINDE' },
+        { label: '🌙 NOCHES', value: `${nightsCount}`, sub: 'Recuento Noche' },
+        { label: '🏨 PERNOCTAS', value: `${overnightsCount}`, sub: 'Recuento Pernocta' }
+      ];
+
+      const cardW = 40;
+      const cardH = 15;
+      const startX = 15;
+      const startY = 40;
+      const gap = 5.4;
+
+      cards.forEach((c, i) => {
+        const x = startX + i * (cardW + gap);
+        pageDoc.setFillColor(249, 250, 251);
+        pageDoc.setDrawColor(229, 231, 235);
+        pageDoc.setLineWidth(0.3);
+        pageDoc.roundedRect(x, startY, cardW, cardH, 2, 2, 'FD');
+
+        let accentCol = [0, 121, 123];
+        if (i === 0) accentCol = [176, 209, 42];
+        else if (i === 4) accentCol = [99, 102, 241];
+        else if (i === 5) accentCol = [168, 85, 247];
+
+        pageDoc.setFillColor(accentCol[0], accentCol[1], accentCol[2]);
+        pageDoc.rect(x, startY, 2, cardH, 'F');
+
+        pageDoc.setFont('helvetica', 'bold');
+        pageDoc.setFontSize(6.5);
+        pageDoc.setTextColor(107, 114, 128);
+        pageDoc.text(c.label, x + 4, startY + 4);
+
+        pageDoc.setFont('helvetica', 'bold');
+        pageDoc.setFontSize(10.5);
+        if (i === 4) pageDoc.setTextColor(79, 70, 229);
+        else if (i === 5) pageDoc.setTextColor(147, 51, 234);
+        else pageDoc.setTextColor(17, 24, 39);
+        pageDoc.text(c.value, x + 4, startY + 9.5);
+
+        pageDoc.setFont('helvetica', 'normal');
+        pageDoc.setFontSize(6.5);
+        pageDoc.setTextColor(156, 163, 175);
+        pageDoc.text(c.sub, x + 4, startY + 13.5);
+      });
+    };
+
+    // Group by technician
+    const techGroups: Record<string, { norm: number, noct: number, finde: number, total: number, nights: number, overnights: number }> = {};
+    monthReports.forEach(r => {
+      const tech = r.technician;
+      if (!techGroups[tech]) {
+        techGroups[tech] = { norm: 0, noct: 0, finde: 0, total: 0, nights: 0, overnights: 0 };
+      }
+      const ot = Number(r.overtimeHours || 0);
+      techGroups[tech].total += ot;
+      if (r.overtimeType === 'NORMAL') techGroups[tech].norm += ot;
+      else if (r.overtimeType === 'NOCTURNA') techGroups[tech].noct += ot;
+      else if (r.overtimeType === 'FINDE SEMANA') techGroups[tech].finde += ot;
+
+      if (r.isNightShift) techGroups[tech].nights += 1;
+      if (r.isOvernight) techGroups[tech].overnights += 1;
+    });
+
+    const rows = Object.entries(techGroups)
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([techName, stats]) => {
+        return {
+          technician: techName,
+          norm: `${stats.norm.toFixed(2)} h`,
+          noct: `${stats.noct.toFixed(2)} h`,
+          finde: `${stats.finde.toFixed(2)} h`,
+          total: `${stats.total.toFixed(2)} h`,
+          nights: `${stats.nights}`,
+          overnights: `${stats.overnights}`
+        };
+      });
+
+    drawHeader(doc);
+    drawSummaryCards(doc);
+
+    autoTable(doc, {
+      startY: 59,
+      margin: { top: 41, bottom: 15, left: 15, right: 15 },
+      columns: [
+        { header: 'Técnico', dataKey: 'technician' },
+        { header: 'Horas Normales', dataKey: 'norm' },
+        { header: 'Horas Nocturnas', dataKey: 'noct' },
+        { header: 'Horas Fin de Semana', dataKey: 'finde' },
+        { header: 'Total Horas Extra', dataKey: 'total' },
+        { header: 'Noches (Recuento)', dataKey: 'nights' },
+        { header: 'Pernoctas (Recuento)', dataKey: 'overnights' }
+      ],
+      body: rows,
+      theme: 'grid',
+      styles: {
+        fontSize: 8.5,
+        font: 'helvetica',
+        cellPadding: 3,
+        overflow: 'linebreak'
+      },
+      headStyles: {
+        fillColor: [0, 121, 123],
+        textColor: [255, 255, 255],
+        fontStyle: 'bold',
+        fontSize: 9,
+        halign: 'center',
+        valign: 'middle'
+      },
+      columnStyles: {
+        technician: { cellWidth: 57, fontStyle: 'bold' },
+        norm: { cellWidth: 35, halign: 'center' },
+        noct: { cellWidth: 35, halign: 'center' },
+        finde: { cellWidth: 35, halign: 'center' },
+        total: { cellWidth: 35, halign: 'center', fontStyle: 'bold' },
+        nights: { cellWidth: 35, halign: 'center' },
+        overnights: { cellWidth: 35, halign: 'center' }
+      },
+      didDrawPage: (data) => {
+        if (data.pageNumber > 1) {
+          drawHeader(doc);
+        }
+        
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(7.5);
+        doc.setTextColor(156, 163, 175);
+        doc.text('JDG TELECO S.L. - Sistema de Gestión Interna de Partes Industriales', 15, 202);
+      }
+    });
+
+    const totalPages = doc.getNumberOfPages();
+    for (let i = 1; i <= totalPages; i++) {
+      doc.setPage(i);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(156, 163, 175);
+      doc.text(`Página ${i} de ${totalPages}`, 282, 202, { align: 'right' });
+    }
+
+    const label = monthLabel.replace(/\s+/g, '_').toLowerCase();
+    doc.save(`resumen_horas_extra_tecnicos_${label}.pdf`);
+    toast.success(`PDF exportado correctamente para el mes de ${monthLabel}`);
+  };
+
   const downloadTechMonthPDF = (techName: string, monthKey: string, monthData: any, monthReports: WorkReport[]) => {
     const doc = new jsPDF({
       orientation: 'landscape',
@@ -1454,18 +1774,23 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
     };
 
     const drawSummaryCards = (pageDoc: jsPDF) => {
+      const nightsCount = monthReports.filter(r => r.isNightShift).length;
+      const overnightsCount = monthReports.filter(r => r.isOvernight).length;
+
       const cards = [
-        { label: 'HORAS EXTRA TOTALES', value: `${monthData.total.toFixed(2)} h`, sub: 'Total acumulado en el mes' },
+        { label: 'HORAS EXTRA TOTALES', value: `${monthData.total.toFixed(2)} h`, sub: 'Acumulado mes' },
         { label: 'HORAS NORMALES', value: `${monthData.norm.toFixed(2)} h`, sub: 'Tipo NORMAL' },
         { label: 'HORAS NOCTURNAS', value: `${monthData.noct.toFixed(2)} h`, sub: 'Tipo NOCTURNA' },
-        { label: 'FIN DE SEMANA', value: `${monthData.finde.toFixed(2)} h`, sub: 'Tipo FINDE SEMANA' }
+        { label: 'FIN DE SEMANA', value: `${monthData.finde.toFixed(2)} h`, sub: 'Tipo FINDE' },
+        { label: '🌙 NOCHES', value: `${nightsCount}`, sub: 'Recuento Noche' },
+        { label: '🏨 PERNOCTAS', value: `${overnightsCount}`, sub: 'Recuento Pernocta' }
       ];
 
-      const cardW = 63;
+      const cardW = 40;
       const cardH = 15;
       const startX = 15;
       const startY = 40;
-      const gap = 5;
+      const gap = 5.4;
 
       cards.forEach((c, i) => {
         const x = startX + i * (cardW + gap);
@@ -1475,24 +1800,30 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
         pageDoc.roundedRect(x, startY, cardW, cardH, 2, 2, 'FD');
 
         // Accent tag bar on the left of each card
-        const accentCol = i === 0 ? [176, 209, 42] : [0, 121, 123];
+        let accentCol = [0, 121, 123]; // Teal
+        if (i === 0) accentCol = [176, 209, 42]; // Lime
+        else if (i === 4) accentCol = [99, 102, 241]; // Indigo for Noche
+        else if (i === 5) accentCol = [168, 85, 247]; // Purple for Pernocta
+
         pageDoc.setFillColor(accentCol[0], accentCol[1], accentCol[2]);
         pageDoc.rect(x, startY, 2, cardH, 'F');
 
         pageDoc.setFont('helvetica', 'bold');
-        pageDoc.setFontSize(7.5);
+        pageDoc.setFontSize(6.5);
         pageDoc.setTextColor(107, 114, 128);
-        pageDoc.text(c.label, x + 5, startY + 4);
+        pageDoc.text(c.label, x + 4, startY + 4);
 
         pageDoc.setFont('helvetica', 'bold');
-        pageDoc.setFontSize(11);
-        pageDoc.setTextColor(17, 24, 39);
-        pageDoc.text(c.value, x + 5, startY + 9.5);
+        pageDoc.setFontSize(10.5);
+        if (i === 4) pageDoc.setTextColor(79, 70, 229); // Indigo text for nights
+        else if (i === 5) pageDoc.setTextColor(147, 51, 234); // Purple text for overnights
+        else pageDoc.setTextColor(17, 24, 39);
+        pageDoc.text(c.value, x + 4, startY + 9.5);
 
         pageDoc.setFont('helvetica', 'normal');
-        pageDoc.setFontSize(7);
+        pageDoc.setFontSize(6.5);
         pageDoc.setTextColor(156, 163, 175);
-        pageDoc.text(c.sub, x + 5, startY + 13.5);
+        pageDoc.text(c.sub, x + 4, startY + 13.5);
       });
     };
 
@@ -1502,7 +1833,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
       const projectStr = `${r.projectNum} - ${resolveProjectFullName(r.projectNum)}`;
       const durationStr = `${calculateDuration(r.startTime, r.endTime).toFixed(2)} h (${r.startTime} - ${r.endTime})`;
       const otStr = `${r.overtimeHours.toFixed(2)} h`;
-      const otTypeStr = r.overtimeType || 'NORMAL';
+      let otTypeStr = r.overtimeType || 'NORMAL';
+      if (r.isNightShift) otTypeStr += ' (NOCHE)';
+      if (r.isOvernight) otTypeStr += ' (PERNOCTA)';
       const statusStr = r.overtimeStatus === 'validated' ? 'Validado' : 'Pendiente';
       const descStr = r.description || '';
 
@@ -1682,53 +2015,67 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
       let totalNorm = 0;
       let totalNoct = 0;
       let totalFinde = 0;
-
+      let nightsCount = 0;
+      let overnightsCount = 0;
+ 
       overtimeReports.forEach(r => {
         const ot = Number(r.overtimeHours || 0);
         totalOvertime += ot;
         if (r.overtimeType === 'NORMAL') totalNorm += ot;
         else if (r.overtimeType === 'NOCTURNA') totalNoct += ot;
         else if (r.overtimeType === 'FINDE SEMANA') totalFinde += ot;
+        
+        if (r.isNightShift) nightsCount += 1;
+        if (r.isOvernight) overnightsCount += 1;
       });
-
+ 
       const cards = [
-        { label: 'HORAS EXTRA EXTRAORDINARIAS', value: `${totalOvertime.toFixed(2)} h`, sub: `${overtimeReports.length} partes con Horas Extra` },
+        { label: 'HORAS EXTRA EXTRAORDINARIAS', value: `${totalOvertime.toFixed(2)} h`, sub: `${overtimeReports.length} partes` },
         { label: 'HORAS NORMALES', value: `${totalNorm.toFixed(2)} h`, sub: 'Tipo NORMAL' },
         { label: 'HORAS NOCTURNAS', value: `${totalNoct.toFixed(2)} h`, sub: 'Tipo NOCTURNA' },
-        { label: 'FIN DE SEMANA', value: `${totalFinde.toFixed(2)} h`, sub: 'Tipo FINDE SEMANA' }
+        { label: 'FIN DE SEMANA', value: `${totalFinde.toFixed(2)} h`, sub: 'Tipo FINDE' },
+        { label: '🌙 NOCHES', value: `${nightsCount}`, sub: 'Recuento Noche' },
+        { label: '🏨 PERNOCTAS', value: `${overnightsCount}`, sub: 'Recuento Pernocta' }
       ];
-
-      const cardW = 63;
+ 
+      const cardW = 40;
       const cardH = 15;
       const startX = 15;
       const startY = 40;
-      const gap = 5;
-
+      const gap = 5.4;
+ 
       cards.forEach((c, i) => {
         const x = startX + i * (cardW + gap);
         pageDoc.setFillColor(249, 250, 251); // background
         pageDoc.setDrawColor(229, 231, 235); // border
         pageDoc.setLineWidth(0.3);
         pageDoc.roundedRect(x, startY, cardW, cardH, 2, 2, 'FD');
-
-        const accentCol = i === 0 ? [176, 209, 42] : [0, 121, 123];
+ 
+        // Accent tag bar on the left of each card
+        let accentCol = [0, 121, 123]; // Teal
+        if (i === 0) accentCol = [176, 209, 42]; // Lime
+        else if (i === 4) accentCol = [99, 102, 241]; // Indigo for Noche
+        else if (i === 5) accentCol = [168, 85, 247]; // Purple for Pernocta
+ 
         pageDoc.setFillColor(accentCol[0], accentCol[1], accentCol[2]);
         pageDoc.rect(x, startY, 2, cardH, 'F');
-
+ 
         pageDoc.setFont('helvetica', 'bold');
-        pageDoc.setFontSize(7.5);
+        pageDoc.setFontSize(6.5);
         pageDoc.setTextColor(107, 114, 128);
-        pageDoc.text(c.label, x + 5, startY + 4);
-
+        pageDoc.text(c.label, x + 4, startY + 4);
+ 
         pageDoc.setFont('helvetica', 'bold');
-        pageDoc.setFontSize(11);
-        pageDoc.setTextColor(17, 24, 39);
-        pageDoc.text(c.value, x + 5, startY + 9.5);
-
+        pageDoc.setFontSize(10.5);
+        if (i === 4) pageDoc.setTextColor(79, 70, 229); // Indigo text for nights
+        else if (i === 5) pageDoc.setTextColor(147, 51, 234); // Purple text for overnights
+        else pageDoc.setTextColor(17, 24, 39);
+        pageDoc.text(c.value, x + 4, startY + 9.5);
+ 
         pageDoc.setFont('helvetica', 'normal');
-        pageDoc.setFontSize(7);
+        pageDoc.setFontSize(6.5);
         pageDoc.setTextColor(156, 163, 175);
-        pageDoc.text(c.sub, x + 5, startY + 13.5);
+        pageDoc.text(c.sub, x + 4, startY + 13.5);
       });
     };
 
@@ -1738,7 +2085,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
       const projectStr = `${r.projectNum} - ${resolveProjectFullName(r.projectNum)}`;
       const durationStr = `${calculateDuration(r.startTime, r.endTime).toFixed(2)} h (${r.startTime} - ${r.endTime})`;
       const otStr = `${r.overtimeHours.toFixed(2)} h`;
-      const otTypeStr = r.overtimeType || 'NORMAL';
+      let otTypeStr = r.overtimeType || 'NORMAL';
+      if (r.isNightShift) otTypeStr += ' (NOCHE)';
+      if (r.isOvernight) otTypeStr += ' (PERNOCTA)';
       const statusStr = r.overtimeStatus === 'validated' ? 'Validado' : 'Pendiente';
       const descStr = r.description || '';
 
@@ -2186,7 +2535,11 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                             <div className="flex justify-between items-center">
                               <div>
                                 <p className="font-bold text-gray-800 dark:text-white">{r.technician} - {r.projectNum}</p>
-                                <p className="text-sm text-gray-600 dark:text-gray-300">{r.date} | {r.overtimeHours}h ({r.overtimeType})</p>
+                                <p className="text-sm text-gray-600 dark:text-gray-300 flex flex-wrap items-center gap-1.5">
+                                  <span>{r.date} | {r.overtimeHours}h ({r.overtimeType})</span>
+                                  {r.isNightShift && <span className="px-1.5 py-0.5 text-[9px] bg-indigo-500/20 text-indigo-400 font-black rounded uppercase tracking-wider border border-indigo-500/30">NOCHE</span>}
+                                  {r.isOvernight && <span className="px-1.5 py-0.5 text-[9px] bg-purple-500/20 text-purple-400 font-black rounded uppercase tracking-wider border border-purple-500/30">PERNOCTA</span>}
+                                </p>
                               </div>
                               <div className="flex gap-2">
                                 <button onClick={() => { 
@@ -2227,7 +2580,11 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                             <div className="flex justify-between items-center">
                               <div>
                                 <p className="font-bold text-gray-800 dark:text-white">{r.technician} - {r.projectNum}</p>
-                                <p className="text-sm text-gray-600 dark:text-gray-300">{r.date} | {r.overtimeHours}h ({r.overtimeType})</p>
+                                <p className="text-sm text-gray-600 dark:text-gray-300 flex flex-wrap items-center gap-1.5">
+                                  <span>{r.date} | {r.overtimeHours}h ({r.overtimeType})</span>
+                                  {r.isNightShift && <span className="px-1.5 py-0.5 text-[9px] bg-indigo-500/20 text-indigo-400 font-black rounded uppercase tracking-wider border border-indigo-500/30">NOCHE</span>}
+                                  {r.isOvernight && <span className="px-1.5 py-0.5 text-[9px] bg-purple-500/20 text-purple-400 font-black rounded uppercase tracking-wider border border-purple-500/30">PERNOCTA</span>}
+                                </p>
                               </div>
                               <button onClick={() => { 
                                 const week = getWeekRange(r.date);
@@ -2251,53 +2608,121 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
               </div>
             )}
 
-            {reportViewMode === 'tech_overtime' && (
-              <div className="space-y-8">
-                <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-lg font-bold text-gray-800 dark:text-white flex items-center gap-2">
-                    <ClockIcon className="w-5 h-5 text-brand-teal" /> Historial Horas Extra por Técnico
-                  </h3>
-                </div>
-                <div className="grid grid-cols-1 gap-8">
-                  {data.technicians.map(tech => {
-                    // Agrupación por MESES para este técnico
-                    const techReports = data.reports.filter(r => r.technician === tech.name && r.overtimeHours > 0);
-                    if (techReports.length === 0) return null;
+            {reportViewMode === 'tech_overtime' && (() => {
+              const allOvertimeReports = data.reports.filter(r => r.overtimeHours > 0);
+              const availableMonths = (Array.from(new Set(allOvertimeReports.map(r => {
+                const d = new Date(r.date);
+                return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+              }))) as string[]).sort((a, b) => b.localeCompare(a));
 
-                    const monthlyGroups: Record<string, { label: string, total: number, norm: number, noct: number, finde: number }> = {};
-                    techReports.forEach(r => {
-                      const date = new Date(r.date);
-                      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-                      const label = getMonthYearLabel(r.date);
-                      if (!monthlyGroups[key]) monthlyGroups[key] = { label, total: 0, norm: 0, noct: 0, finde: 0 };
-                      const ot = r.overtimeHours;
-                      monthlyGroups[key].total += ot;
-                      if (r.overtimeType === 'NORMAL') monthlyGroups[key].norm += ot;
-                      else if (r.overtimeType === 'NOCTURNA') monthlyGroups[key].noct += ot;
-                      else if (r.overtimeType === 'FINDE SEMANA') monthlyGroups[key].finde += ot;
-                    });
+              const activeMonthKey = selectedMonthForReport || (availableMonths[0] || '');
 
-                    const sortedMonths = Object.entries(monthlyGroups).sort((a, b) => (b[0] || '').localeCompare(a[0] || ''));
+              return (
+                <div className="space-y-6">
+                  <div className="flex justify-between items-center">
+                    <h3 className="text-lg font-bold text-gray-800 dark:text-white flex items-center gap-2">
+                      <ClockIcon className="w-5 h-5 text-brand-teal" /> Historial Horas Extra por Técnico
+                    </h3>
+                  </div>
 
-                    return (
-                      <div key={tech.id} className="bg-white dark:bg-gray-800/40 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden shadow-sm">
-                        <div className="bg-gray-50 dark:bg-gray-800 p-4 border-b border-gray-200 dark:border-gray-700 flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-full bg-brand-teal/10 flex items-center justify-center text-brand-teal font-bold">
-                            {tech.name.charAt(0)}
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-gray-50 dark:bg-gray-800/60 p-4 rounded-xl border border-gray-200 dark:border-gray-700/80">
+                    <div className="space-y-1">
+                      <h4 className="font-bold text-gray-800 dark:text-white text-sm">Generar Informe Mensual (Todos los Técnicos)</h4>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">Descarga el resumen completo de horas extra, noches y pernoctas para el mes seleccionado.</p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-3">
+                      <select
+                        value={activeMonthKey}
+                        onChange={e => setSelectedMonthForReport(e.target.value)}
+                        className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-sm rounded-lg px-3 py-2 text-gray-900 dark:text-white outline-none font-bold"
+                      >
+                        <option value="">Seleccionar mes...</option>
+                        {availableMonths.map(monthKey => (
+                          <option key={monthKey} value={monthKey}>
+                            {getMonthYearLabelFromKey(monthKey)}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        onClick={() => {
+                          if (!activeMonthKey) {
+                            toast.error("Por favor selecciona un mes de la lista");
+                            return;
+                          }
+                          downloadMonthlyOvertimeAllTechsExcel(activeMonthKey);
+                        }}
+                        disabled={!activeMonthKey}
+                        className={`px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm ${
+                          activeMonthKey
+                            ? 'bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer'
+                            : 'bg-gray-200 dark:bg-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed'
+                        }`}
+                      >
+                        <FileTextIcon className="w-4 h-4" /> Exportar XLS
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (!activeMonthKey) {
+                            toast.error("Por favor selecciona un mes de la lista");
+                            return;
+                          }
+                          downloadMonthlyOvertimeAllTechsPDF(activeMonthKey);
+                        }}
+                        disabled={!activeMonthKey}
+                        className={`px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm ${
+                          activeMonthKey
+                            ? 'bg-red-600 hover:bg-red-700 text-white cursor-pointer'
+                            : 'bg-gray-200 dark:bg-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed'
+                        }`}
+                      >
+                        <FileTextIcon className="w-4 h-4" /> Exportar PDF
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-8 mt-4">
+                    {data.technicians.map(tech => {
+                      // Agrupación por MESES para este técnico
+                      const techReports = data.reports.filter(r => r.technician === tech.name && r.overtimeHours > 0);
+                      if (techReports.length === 0) return null;
+
+                      const monthlyGroups: Record<string, { label: string, total: number, norm: number, noct: number, finde: number, nights: number, overnights: number }> = {};
+                      techReports.forEach(r => {
+                        const date = new Date(r.date);
+                        const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+                        const label = getMonthYearLabel(r.date);
+                        if (!monthlyGroups[key]) monthlyGroups[key] = { label, total: 0, norm: 0, noct: 0, finde: 0, nights: 0, overnights: 0 };
+                        const ot = r.overtimeHours;
+                        monthlyGroups[key].total += ot;
+                        if (r.overtimeType === 'NORMAL') monthlyGroups[key].norm += ot;
+                        else if (r.overtimeType === 'NOCTURNA') monthlyGroups[key].noct += ot;
+                        else if (r.overtimeType === 'FINDE SEMANA') monthlyGroups[key].finde += ot;
+                        
+                        if (r.isNightShift) monthlyGroups[key].nights += 1;
+                        if (r.isOvernight) monthlyGroups[key].overnights += 1;
+                      });
+
+                      const sortedMonths = Object.entries(monthlyGroups).sort((a, b) => (b[0] || '').localeCompare(a[0] || ''));
+
+                      return (
+                        <div key={tech.id} className="bg-white dark:bg-gray-800/40 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden shadow-sm">
+                          <div className="bg-gray-50 dark:bg-gray-800 p-4 border-b border-gray-200 dark:border-gray-700 flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-full bg-brand-teal/10 flex items-center justify-center text-brand-teal font-bold">
+                              {tech.name.charAt(0)}
+                            </div>
+                            <h4 className="font-black text-gray-800 dark:text-white uppercase tracking-wider">{tech.name}</h4>
                           </div>
-                          <h4 className="font-black text-gray-800 dark:text-white uppercase tracking-wider">{tech.name}</h4>
-                        </div>
-                        <div className="p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                          {sortedMonths.map(([monthKey, monthData]) => {
-                            const monthReports = techReports.filter(r => {
-                              const date = new Date(r.date);
-                              const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-                              return key === monthKey;
-                            });
-                            const isMonthExpanded = !!expandedTechMonths[`${tech.name}_${monthKey}`];
+                          <div className="p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            {sortedMonths.map(([monthKey, monthData]) => {
+                              const monthReports = techReports.filter(r => {
+                                const date = new Date(r.date);
+                                const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+                                return key === monthKey;
+                              });
+                              const isMonthExpanded = !!expandedTechMonths[`${tech.name}_${monthKey}`];
 
-                            return (
-                              <div key={monthKey} className="bg-brand-dark p-4 rounded-2xl border border-white/5 shadow-xl relative overflow-hidden group flex flex-col justify-between">
+                              return (
+                                <div key={monthKey} className="bg-brand-dark p-4 rounded-2xl border border-white/5 shadow-xl relative overflow-hidden group flex flex-col justify-between">
                                 <div className="absolute top-0 right-0 w-1 h-full bg-brand-teal opacity-40 group-hover:opacity-100 transition-opacity"></div>
                                 <div>
                                   <div className="flex justify-between items-start mb-4">
@@ -2315,18 +2740,26 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                                     </div>
                                     <span className="text-brand-lime font-black text-2xl tracking-tighter">{monthData.total}h</span>
                                   </div>
-                                  <div className="grid grid-cols-3 gap-2">
-                                    <div className="bg-white/5 p-2 rounded-lg text-center">
-                                      <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mb-1">Norm</p>
-                                      <p className="text-white font-black text-sm">{monthData.norm}</p>
+                                  <div className="grid grid-cols-5 gap-1.5">
+                                    <div className="bg-white/5 p-1.5 rounded-lg text-center flex flex-col justify-center min-w-0">
+                                      <p className="text-[9px] text-gray-500 font-bold uppercase tracking-wider truncate mb-0.5" title="Horas Normales">Norm</p>
+                                      <p className="text-white font-black text-xs sm:text-sm">{monthData.norm}</p>
                                     </div>
-                                    <div className="bg-white/5 p-2 rounded-lg text-center">
-                                      <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mb-1">Noc</p>
-                                      <p className="text-white font-black text-sm">{monthData.noct}</p>
+                                    <div className="bg-white/5 p-1.5 rounded-lg text-center flex flex-col justify-center min-w-0">
+                                      <p className="text-[9px] text-gray-500 font-bold uppercase tracking-wider truncate mb-0.5" title="Horas Nocturnas">Noc</p>
+                                      <p className="text-white font-black text-xs sm:text-sm">{monthData.noct}</p>
                                     </div>
-                                    <div className="bg-white/5 p-2 rounded-lg text-center">
-                                      <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mb-1">Fin</p>
-                                      <p className="text-white font-black text-sm">{monthData.finde}</p>
+                                    <div className="bg-white/5 p-1.5 rounded-lg text-center flex flex-col justify-center min-w-0">
+                                      <p className="text-[9px] text-gray-500 font-bold uppercase tracking-wider truncate mb-0.5" title="Horas Fin de Semana">Fin</p>
+                                      <p className="text-white font-black text-xs sm:text-sm">{monthData.finde}</p>
+                                    </div>
+                                    <div className="bg-white/5 p-1.5 rounded-lg text-center flex flex-col justify-center min-w-0 border border-indigo-500/20">
+                                      <p className="text-[9px] text-indigo-400 font-bold uppercase tracking-wider truncate mb-0.5" title="Noches">🌙 Noc</p>
+                                      <p className="text-indigo-300 font-black text-xs sm:text-sm">{monthData.nights}</p>
+                                    </div>
+                                    <div className="bg-white/5 p-1.5 rounded-lg text-center flex flex-col justify-center min-w-0 border border-purple-500/20">
+                                      <p className="text-[9px] text-purple-400 font-bold uppercase tracking-wider truncate mb-0.5" title="Pernoctas">🏨 Per</p>
+                                      <p className="text-purple-300 font-black text-xs sm:text-sm">{monthData.overnights}</p>
                                     </div>
                                   </div>
                                 </div>
@@ -2365,9 +2798,21 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                                             {r.description && <p className="text-[10px] text-gray-400 italic mt-0.5 line-clamp-2">{r.description}</p>}
                                           </div>
                                           <div className="flex items-center gap-2 w-full justify-between pt-1 border-t border-white/5">
-                                            <span className="text-white font-black text-[9px] bg-white/10 px-1.5 py-0.5 rounded uppercase tracking-wider">
-                                              +{r.overtimeHours}h ({r.overtimeType})
-                                            </span>
+                                            <div className="flex flex-wrap gap-1 items-center">
+                                              <span className="text-white font-black text-[9px] bg-white/10 px-1.5 py-0.5 rounded uppercase tracking-wider">
+                                                +{r.overtimeHours}h ({r.overtimeType})
+                                              </span>
+                                              {r.isNightShift && (
+                                                <span className="text-[8px] bg-indigo-500/20 text-indigo-300 px-1.5 py-0.5 rounded font-black uppercase tracking-wider">
+                                                  Noche
+                                                </span>
+                                              )}
+                                              {r.isOvernight && (
+                                                <span className="text-[8px] bg-purple-500/20 text-purple-300 px-1.5 py-0.5 rounded font-black uppercase tracking-wider">
+                                                  Pernocta
+                                                </span>
+                                              )}
+                                            </div>
                                             <button 
                                               onClick={() => {
                                                 const week = getWeekRange(r.date);
@@ -2399,7 +2844,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                   })}
                 </div>
               </div>
-            )}
+            )})()}
 
             {reportViewMode === 'list' && (
                 <>
@@ -2496,6 +2941,20 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                                                                                                     <p className="text-xs text-gray-700 dark:text-white font-mono">{report.startTime} - {report.endTime}</p>
                                                                                                 </div>
                                                                                             </div>
+                                                                                            {(report.isNightShift || report.isOvernight) && (
+                                                                                                <div className="flex flex-wrap gap-2 mt-2">
+                                                                                                    {report.isNightShift && (
+                                                                                                        <span className="inline-flex items-center gap-1 bg-indigo-100 dark:bg-indigo-950/40 text-indigo-800 dark:text-indigo-300 text-[10px] font-black px-2 py-0.5 rounded-md uppercase tracking-wider border border-indigo-200 dark:border-indigo-900/30">
+                                                                                                            🌙 Noche
+                                                                                                        </span>
+                                                                                                    )}
+                                                                                                    {report.isOvernight && (
+                                                                                                        <span className="inline-flex items-center gap-1 bg-purple-100 dark:bg-purple-950/40 text-purple-800 dark:text-purple-300 text-[10px] font-black px-2 py-0.5 rounded-md uppercase tracking-wider border border-purple-200 dark:border-purple-900/30">
+                                                                                                            🏨 Pernocta
+                                                                                                        </span>
+                                                                                                    )}
+                                                                                                </div>
+                                                                                            )}
                                                                                         </div>
                                                                                         <div>
                                                                                             <p className="text-[10px] uppercase font-black text-gray-500 tracking-widest mb-3">Evidencias / Tickets</p>

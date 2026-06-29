@@ -51,6 +51,8 @@ export interface WorkReport {
   vehicle: string;
   isDriver: boolean;
   driverTripType?: 'IDA' | 'VUELTA' | 'IDA_Y_VUELTA';
+  isNightShift?: boolean;
+  isOvernight?: boolean;
   expenses: {
     food: number;
     gas: number;

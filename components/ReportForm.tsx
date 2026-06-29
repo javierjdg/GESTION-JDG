@@ -25,6 +25,8 @@ const ReportForm: React.FC<ReportFormProps> = ({ projects, vehicles, initialData
     vehicle: '',
     isDriver: false,
     driverTripType: '' as 'IDA' | 'VUELTA' | 'IDA_Y_VUELTA' | '',
+    isNightShift: false,
+    isOvernight: false,
     expenses: {
       food: 0,
       gas: 0,
@@ -58,6 +60,8 @@ const ReportForm: React.FC<ReportFormProps> = ({ projects, vehicles, initialData
         vehicle: initialData.vehicle,
         isDriver: initialData.isDriver,
         driverTripType: initialData.driverTripType || '',
+        isNightShift: !!initialData.isNightShift,
+        isOvernight: !!initialData.isOvernight,
         expenses: { ...initialData.expenses },
         tickets: initialData.tickets || [],
         materials: initialData.materials || [],
@@ -146,6 +150,8 @@ const ReportForm: React.FC<ReportFormProps> = ({ projects, vehicles, initialData
       vehicle: formData.vehicle,
       isDriver: formData.isDriver,
       driverTripType: formData.isDriver ? (formData.driverTripType as any) : undefined,
+      isNightShift: formData.isNightShift,
+      isOvernight: formData.isOvernight,
       expenses: formData.expenses,
       imageNames: [],
       tickets: formData.tickets,
@@ -356,6 +362,27 @@ const ReportForm: React.FC<ReportFormProps> = ({ projects, vehicles, initialData
                             </div>
                         </div>
                     </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 mt-3 pt-1">
+                    <label className="flex items-center space-x-2 cursor-pointer select-none">
+                        <input 
+                        type="checkbox" 
+                        checked={formData.isNightShift}
+                        onChange={e => setFormData({...formData, isNightShift: e.target.checked})}
+                        className="w-5 h-5 rounded border-gray-300 dark:border-gray-600 text-brand-teal focus:ring-brand-teal bg-white dark:bg-gray-800"
+                        />
+                        <span className="text-sm font-bold text-gray-700 dark:text-gray-300">NOCHE</span>
+                    </label>
+                    <label className="flex items-center space-x-2 cursor-pointer select-none">
+                        <input 
+                        type="checkbox" 
+                        checked={formData.isOvernight}
+                        onChange={e => setFormData({...formData, isOvernight: e.target.checked})}
+                        className="w-5 h-5 rounded border-gray-300 dark:border-gray-600 text-brand-teal focus:ring-brand-teal bg-white dark:bg-gray-800"
+                        />
+                        <span className="text-sm font-bold text-gray-700 dark:text-gray-300">PERNOCTA</span>
+                    </label>
                 </div>
             </div>
         </div>
