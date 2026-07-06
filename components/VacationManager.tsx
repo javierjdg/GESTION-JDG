@@ -483,41 +483,122 @@ const VacationManager: React.FC<VacationManagerProps> = ({ role, currentUser, cu
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Formulario Solicitud */}
-                <div className="bg-white dark:bg-brand-panel p-6 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-xl h-fit">
-                    <h3 className="text-lg font-bold text-gray-800 dark:text-white mb-6 flex items-center gap-2">
-                        <PlusIcon className="w-5 h-5 text-brand-teal" /> Nueva Solicitud
-                    </h3>
-                    <form onSubmit={handleRequest} className="space-y-4">
-                        <div>
-                            <label className="block text-xs text-gray-500 uppercase mb-1">Motivo de la ausencia</label>
-                            <select value={reqType} onChange={e => setReqType(e.target.value as any)} className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg p-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none">
-                                <option value="vacation">🌴 Vacaciones</option>
-                                <option value="sick">🤒 Enfermedad</option>
-                                <option value="personal">📋 Asuntos Propios</option>
-                            </select>
-                        </div>
-                        <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-6">
+                    {/* Formulario Solicitud */}
+                    <div className="bg-white dark:bg-brand-panel p-6 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-xl h-fit">
+                        <h3 className="text-lg font-bold text-gray-800 dark:text-white mb-6 flex items-center gap-2">
+                            <PlusIcon className="w-5 h-5 text-brand-teal" /> Nueva Solicitud
+                        </h3>
+                        <form onSubmit={handleRequest} className="space-y-4">
                             <div>
-                                <label className="block text-xs text-gray-500 uppercase mb-1">Inicio</label>
-                                <input type="date" required value={startDate} onChange={e => setStartDate(e.target.value)} className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg p-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none dark:[color-scheme:dark]" />
+                                <label className="block text-xs text-gray-500 uppercase mb-1">Motivo de la ausencia</label>
+                                <select value={reqType} onChange={e => setReqType(e.target.value as any)} className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg p-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none">
+                                    <option value="vacation">🌴 Vacaciones</option>
+                                    <option value="sick">🤒 Enfermedad</option>
+                                    <option value="personal">📋 Asuntos Propios</option>
+                                </select>
                             </div>
-                            <div>
-                                <label className="block text-xs text-gray-500 uppercase mb-1">Fin</label>
-                                <input type="date" required value={endDate} onChange={e => setEndDate(e.target.value)} className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg p-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none dark:[color-scheme:dark]" />
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-xs text-gray-500 uppercase mb-1">Inicio</label>
+                                    <input type="date" required value={startDate} onChange={e => setStartDate(e.target.value)} className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg p-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none dark:[color-scheme:dark]" />
+                                </div>
+                                <div>
+                                    <label className="block text-xs text-gray-500 uppercase mb-1">Fin</label>
+                                    <input type="date" required value={endDate} onChange={e => setEndDate(e.target.value)} className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg p-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none dark:[color-scheme:dark]" />
+                                </div>
+                            </div>
+                            {currentBusinessDays > 0 && (
+                                <div className="bg-brand-teal/10 p-3 rounded-lg border border-brand-teal/30 flex justify-between items-center">
+                                    <span className="text-xs text-brand-teal font-bold uppercase">Días laborables calculados:</span>
+                                    <span className="text-lg font-black text-brand-teal">{currentBusinessDays}</span>
+                                </div>
+                            )}
+                            {msg && <p className={`text-xs text-center p-2 rounded ${msg.includes('✓') ? 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400' : 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400'}`}>{msg}</p>}
+                            <button type="submit" disabled={currentBusinessDays <= 0} className="w-full bg-brand-teal hover:bg-teal-600 disabled:opacity-50 text-white font-bold py-4 rounded-xl shadow-lg transition-all flex items-center justify-center gap-2">
+                                <CalendarIcon className="w-5 h-5" /> ENVIAR PETICIÓN
+                            </button>
+                        </form>
+                    </div>
+
+                    {/* Calendario de Vacaciones (Solo Visualización) */}
+                    <div className="bg-white dark:bg-brand-panel rounded-2xl border border-gray-200 dark:border-gray-700 shadow-xl overflow-hidden">
+                        <div className="p-4 bg-gray-50 dark:bg-gray-800/50 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
+                            <div className="flex items-center gap-4">
+                                <h3 className="font-bold text-gray-800 dark:text-white text-xs uppercase tracking-widest flex items-center gap-2">
+                                    <CalendarIcon className="w-4 h-4 text-brand-teal" />
+                                    {viewDate.toLocaleString('es-ES', { month: 'long', year: 'numeric' }).toUpperCase()}
+                                </h3>
+                                <div className="flex gap-1">
+                                    <button onClick={() => changeMonth(-1)} className="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg text-gray-500 dark:text-gray-400 transition-colors"><ChevronLeftIcon className="w-4 h-4"/></button>
+                                    <button onClick={() => changeMonth(1)} className="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg text-gray-500 dark:text-gray-400 transition-colors"><ChevronRightIcon className="w-4 h-4"/></button>
+                                </div>
+                            </div>
+                            <div className="flex gap-2 text-[8px] text-gray-500 font-bold uppercase">
+                                <div className="flex items-center gap-0.5"><span className="font-black text-gray-700 dark:text-gray-300">V</span> Vac.</div>
+                                <div className="flex items-center gap-0.5"><span className="font-black text-gray-700 dark:text-gray-300">E</span> Enf.</div>
+                                <div className="flex items-center gap-0.5"><span className="font-black text-gray-700 dark:text-gray-300">A</span> A.P.</div>
                             </div>
                         </div>
-                        {currentBusinessDays > 0 && (
-                            <div className="bg-brand-teal/10 p-3 rounded-lg border border-brand-teal/30 flex justify-between items-center">
-                                <span className="text-xs text-brand-teal font-bold uppercase">Días laborables calculados:</span>
-                                <span className="text-lg font-black text-brand-teal">{currentBusinessDays}</span>
-                            </div>
-                        )}
-                        {msg && <p className={`text-xs text-center p-2 rounded ${msg.includes('✓') ? 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400' : 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400'}`}>{msg}</p>}
-                        <button type="submit" disabled={currentBusinessDays <= 0} className="w-full bg-brand-teal hover:bg-teal-600 disabled:opacity-50 text-white font-bold py-4 rounded-xl shadow-lg transition-all flex items-center justify-center gap-2">
-                            <CalendarIcon className="w-5 h-5" /> ENVIAR PETICIÓN
-                        </button>
-                    </form>
+
+                        <div className="overflow-x-auto custom-scrollbar">
+                            <table className="w-full border-collapse">
+                                <thead>
+                                    <tr className="bg-gray-50 dark:bg-gray-900/50 border-b border-gray-200 dark:border-gray-700">
+                                        <th className="sticky left-0 z-20 bg-gray-50 dark:bg-gray-900 px-3 py-1.5 text-left text-[9px] font-black text-gray-500 uppercase border-r border-gray-200 dark:border-gray-700 min-w-[100px]">Técnico</th>
+                                        {calendarDays.map(d => (
+                                            <th key={d.day} className={`px-0.5 py-1.5 text-center min-w-[24px] border-r border-gray-200 dark:border-gray-800/30 ${d.isWeekend || d.isHoliday ? 'bg-gray-100 dark:bg-gray-800/30' : ''}`}>
+                                                <p className={`text-[8px] font-bold ${d.isHoliday ? 'text-red-500' : 'text-gray-500'}`}>{d.label}</p>
+                                                <p className={`text-[10px] ${d.isHoliday ? 'text-red-400 font-black' : 'text-gray-600 dark:text-gray-300'}`}>{d.day}</p>
+                                            </th>
+                                        ))}
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {data.technicians.map((tech) => (
+                                        <tr key={tech.name} className="border-b border-gray-200 dark:border-gray-800/50 hover:bg-gray-50 dark:hover:bg-gray-800/20 group">
+                                            <td className="sticky left-0 z-20 bg-white dark:bg-brand-panel px-3 py-2 border-r border-gray-200 dark:border-gray-700">
+                                                <div className="flex items-center gap-1.5">
+                                                    <div className="w-2 h-2 rounded-full shadow-sm" style={{ backgroundColor: getTechColor(tech.name, data.technicians) }}></div>
+                                                    <span className="text-[10px] font-bold text-gray-700 dark:text-gray-300 group-hover:text-gray-900 dark:group-hover:text-white transition-colors truncate max-w-[80px]">{tech.name}</span>
+                                                </div>
+                                            </td>
+                                            {calendarDays.map(d => {
+                                                const activeRequest = (data.vacationRequests || []).find(r => 
+                                                    r.userName === tech.name && 
+                                                    r.status === 'approved' && 
+                                                    d.dateStr >= r.startDate && 
+                                                    d.dateStr <= r.endDate
+                                                );
+
+                                                if (!activeRequest) return (
+                                                    <td key={d.day} className={`p-0 border-r border-gray-200 dark:border-gray-800/30 h-8 relative ${d.isHoliday ? 'bg-red-100 dark:bg-red-900/10' : d.isWeekend ? 'bg-gray-50 dark:bg-gray-800/20' : ''}`}></td>
+                                                );
+
+                                                const config = getTypeConfig(activeRequest.type);
+                                                const color = getTechColor(tech.name, data.technicians);
+
+                                                return (
+                                                    <td 
+                                                        key={d.day} 
+                                                        className={`p-0 border-r border-gray-200 dark:border-gray-800/30 h-8 relative ${d.isHoliday ? 'bg-red-100 dark:bg-red-900/10' : d.isWeekend ? 'bg-gray-50 dark:bg-gray-800/20' : ''}`}
+                                                    >
+                                                        <div 
+                                                            className="absolute inset-y-0.5 left-0 right-0 shadow-xs transition-transform hover:scale-110 z-10 flex items-center justify-center"
+                                                            style={{ backgroundColor: color, opacity: 0.9 }}
+                                                            title={`${activeRequest.userName}: ${config.label}`}
+                                                        >
+                                                            <span className="text-[9px] font-black text-white drop-shadow-md select-none">{config.code}</span>
+                                                        </div>
+                                                    </td>
+                                                );
+                                            })}
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
                 </div>
 
                 {/* Historial Técnico */}
