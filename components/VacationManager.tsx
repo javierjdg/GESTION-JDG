@@ -210,7 +210,7 @@ const VacationManager: React.FC<VacationManagerProps> = ({ role, currentUser, cu
 
     if (role === 'admin') {
         const inbox = (data.vacationRequests || []).filter(r => r.status === 'pending' || r.status === 'cancel_requested');
-        const techSummary = data.technicians.map((t) => {
+        const techSummary = data.technicians.filter(t => t.active !== false).map((t) => {
             const reqs = (data.vacationRequests || []).filter(r => r.userName === t.name && r.status === 'approved');
             const used = reqs.reduce((s, r) => s + r.days, 0);
             return { name: t.name, used, color: getTechColor(t.name, data.technicians) };
@@ -235,7 +235,7 @@ const VacationManager: React.FC<VacationManagerProps> = ({ role, currentUser, cu
                                     <label className="block text-[10px] text-gray-500 uppercase mb-1 font-bold">Técnico</label>
                                     <select required value={adminSelectedTech} onChange={e => setAdminSelectedTech(e.target.value)} className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg p-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none">
                                         <option value="">Seleccionar técnico...</option>
-                                        {data.technicians.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
+                                        {data.technicians.filter(t => t.active !== false).map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
                                     </select>
                                 </div>
                                 <div>
@@ -357,7 +357,7 @@ const VacationManager: React.FC<VacationManagerProps> = ({ role, currentUser, cu
                                 </tr>
                             </thead>
                             <tbody>
-                                {data.technicians.map((tech) => (
+                                {data.technicians.filter(tech => tech.active !== false).map((tech) => (
                                     <tr key={tech.name} className="border-b border-gray-200 dark:border-gray-800/50 hover:bg-gray-50 dark:hover:bg-gray-800/20 group">
                                         <td className="sticky left-0 z-20 bg-white dark:bg-brand-panel px-4 py-3 border-r border-gray-200 dark:border-gray-700">
                                             <div className="flex items-center gap-2">
@@ -408,7 +408,7 @@ const VacationManager: React.FC<VacationManagerProps> = ({ role, currentUser, cu
                         <UserIcon className="w-4 h-4" /> Código de Colores Equipo
                     </h3>
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
-                        {data.technicians.map(t => (
+                        {data.technicians.filter(t => t.active !== false).map(t => (
                             <div key={t.id} className="flex items-center gap-2 bg-gray-50 dark:bg-gray-900/40 p-2 rounded-lg border border-gray-200 dark:border-gray-800">
                                 <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: getTechColor(t.name, data.technicians) }}></div>
                                 <span className="text-[10px] font-bold text-gray-700 dark:text-gray-300 truncate">{t.name}</span>
@@ -555,7 +555,7 @@ const VacationManager: React.FC<VacationManagerProps> = ({ role, currentUser, cu
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {data.technicians.map((tech) => (
+                                    {data.technicians.filter(tech => tech.active !== false).map((tech) => (
                                         <tr key={tech.name} className="border-b border-gray-200 dark:border-gray-800/50 hover:bg-gray-50 dark:hover:bg-gray-800/20 group">
                                             <td className="sticky left-0 z-20 bg-white dark:bg-brand-panel px-3 py-2 border-r border-gray-200 dark:border-gray-700">
                                                 <div className="flex items-center gap-1.5">

@@ -135,7 +135,7 @@ const UserLogin: React.FC<LoginProps> = ({ onLogin, technicians, adminPwd = 'adm
           <div>
             <label className="block text-sm font-medium text-brand-teal dark:text-brand-lime mb-3 uppercase tracking-wider">Selecciona tu perfil</label>
             <div className="space-y-2 mb-4 max-h-60 overflow-y-auto pr-1 custom-scrollbar">
-              {technicians.map(tech => (
+              {technicians.filter(tech => tech.active !== false).map(tech => (
                 <button
                   key={tech.id}
                   onClick={() => handleTechSelect(tech)}
@@ -145,7 +145,7 @@ const UserLogin: React.FC<LoginProps> = ({ onLogin, technicians, adminPwd = 'adm
                   <span className="text-gray-400 group-hover:text-brand-teal dark:group-hover:text-white">➜</span>
                 </button>
               ))}
-              {technicians.length === 0 && <p className="text-center py-4 text-gray-500 text-xs italic">No hay técnicos registrados</p>}
+              {technicians.filter(tech => tech.active !== false).length === 0 && <p className="text-center py-4 text-gray-500 text-xs italic">No hay técnicos activos registrados</p>}
             </div>
             <button onClick={() => setStep('role')} className="text-sm text-gray-500 hover:text-gray-800 dark:hover:text-white w-full text-center py-2">← Volver</button>
           </div>

@@ -460,7 +460,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
     if (!newItemName.trim()) return;
     setData(prev => {
       if (type === 'techs') {
-        const newTech: TechUser = { id: Date.now().toString(), name: newItemName, password: newTechPwd || '1234' };
+        const newTech: TechUser = { id: Date.now().toString(), name: newItemName, password: newTechPwd || '1234', active: true };
         return { ...prev, technicians: [...prev.technicians, newTech] };
       }
       if (type === 'vehicles') return { ...prev, vehicles: [...prev.vehicles, newItemName] };
@@ -2213,8 +2213,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
         
         // Armonización con los técnicos registrados del sistema
         const colors = ['#E63946','#F77F00','#06D6A0','#118AB2','#073B4C','#D62828','#FCA311','#14213D','#00B4D8','#0077B6'];
+        const activeTechs = (prev.technicians || []).filter(t => t.active !== false);
         const excludedNames = new Set((newOrg.excluidos || []).map(e => e.trim().toUpperCase()));
-        const registeredNames = new Set((prev.technicians || []).map(t => t.name.trim().toUpperCase()));
+        const registeredNames = new Set(activeTechs.map(t => t.name.trim().toUpperCase()));
         const assignedNames = new Set<string>();
         (newOrg.trabajos || []).forEach(job => {
             (job.trabajadores || []).forEach(w => {
@@ -2232,7 +2233,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
             return registeredNames.has(nameUpper) || assignedNames.has(nameUpper) || w.isManual;
         });
         const existingNames = new Set(updatedWorkers.map(w => w.nombre.trim().toUpperCase()));
-        (prev.technicians || []).forEach((t, i) => {
+        activeTechs.forEach((t, i) => {
             const nameUpper = t.name.trim().toUpperCase();
             if (!existingNames.has(nameUpper) && !excludedNames.has(nameUpper)) {
                 updatedWorkers.push({
@@ -2271,8 +2272,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
 
         // Armonización con los técnicos registrados del sistema
         const colors = ['#E63946','#F77F00','#06D6A0','#118AB2','#073B4C','#D62828','#FCA311','#14213D','#00B4D8','#0077B6'];
+        const activeTechs = (prev.technicians || []).filter(t => t.active !== false);
         const excludedNames = new Set((orgToLoad.excluidos || []).map(e => e.trim().toUpperCase()));
-        const registeredNames = new Set((prev.technicians || []).map(t => t.name.trim().toUpperCase()));
+        const registeredNames = new Set(activeTechs.map(t => t.name.trim().toUpperCase()));
         const assignedNames = new Set<string>();
         (orgToLoad.trabajos || []).forEach(job => {
             (job.trabajadores || []).forEach(w => {
@@ -2290,7 +2292,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
             return registeredNames.has(nameUpper) || assignedNames.has(nameUpper) || w.isManual;
         });
         const existingNames = new Set(updatedWorkers.map(w => w.nombre.trim().toUpperCase()));
-        (prev.technicians || []).forEach((t, i) => {
+        activeTechs.forEach((t, i) => {
             const nameUpper = t.name.trim().toUpperCase();
             if (!existingNames.has(nameUpper) && !excludedNames.has(nameUpper)) {
                 updatedWorkers.push({
@@ -2479,7 +2481,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
             <div className="bg-gray-50 dark:bg-gray-900/50 p-4 rounded-lg border border-gray-200 dark:border-gray-700 mb-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                  <select value={filterTech} onChange={e => setFilterTech(e.target.value)} className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-sm rounded-lg p-2.5 text-gray-900 dark:text-white outline-none">
                     <option value="">Técnicos...</option>
-                    {data.technicians.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
+                    {data.technicians.filter(t => t.active !== false).map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
                  </select>
                  <select value={filterProject} onChange={e => setFilterProject(e.target.value)} className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-sm rounded-lg p-2.5 text-gray-900 dark:text-white outline-none">
                     <option value="">Obras...</option>
@@ -3174,11 +3176,38 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                                         <div className="flex items-center gap-3">
                                             <div className="w-8 h-8 bg-brand-teal/10 dark:bg-brand-teal/20 rounded-full flex items-center justify-center text-brand-teal font-bold">{t.name.charAt(0)}</div>
                                             <div>
-                                                <p className="font-bold text-sm text-gray-800 dark:text-gray-200">{t.name}</p>
+                                                <div className="flex items-center gap-2">
+                                                    <p className="font-bold text-sm text-gray-800 dark:text-gray-200">{t.name}</p>
+                                                    {t.active === false ? (
+                                                        <span className="bg-red-100 dark:bg-red-950/40 text-red-600 dark:text-red-400 text-[9px] font-black px-1.5 py-0.5 rounded uppercase border border-red-200 dark:border-red-900/40">Inactivo</span>
+                                                    ) : (
+                                                        <span className="bg-green-100 dark:bg-green-950/40 text-green-600 dark:text-green-400 text-[9px] font-black px-1.5 py-0.5 rounded uppercase border border-green-200 dark:border-green-900/40">Activo</span>
+                                                    )}
+                                                </div>
                                                 <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">{techReports.length} partes registrados</p>
                                             </div>
                                         </div>
                                         <div className="flex items-center gap-4">
+                                            <label className="flex items-center gap-1.5 cursor-pointer bg-gray-50 dark:bg-gray-900 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-brand-teal/50 transition-all select-none">
+                                                <input 
+                                                    type="checkbox" 
+                                                    checked={t.active !== false} 
+                                                    onChange={() => {
+                                                        setData(prev => {
+                                                            const technicians = (prev.technicians || []).map(tech => {
+                                                                if (tech.id === t.id) {
+                                                                    return { ...tech, active: tech.active === false ? true : false };
+                                                                }
+                                                                return tech;
+                                                            });
+                                                            return { ...prev, technicians };
+                                                        });
+                                                        toast.success(`Estado de ${t.name} actualizado`);
+                                                    }}
+                                                    className="w-3.5 h-3.5 rounded border-gray-300 dark:border-gray-700 text-brand-teal focus:ring-brand-teal focus:ring-0 cursor-pointer" 
+                                                />
+                                                <span className="text-[10px] uppercase font-black text-gray-600 dark:text-gray-400">Activo</span>
+                                            </label>
                                             <button 
                                                 onClick={() => setExpandedTechId(isExpanded ? null : t.id)}
                                                 className={`text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-lg border transition-all ${isExpanded ? 'bg-brand-teal text-white border-brand-teal' : 'text-brand-teal border-brand-teal/30 hover:bg-brand-teal/5'}`}
@@ -3490,7 +3519,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                                  <label className="block text-[10px] text-gray-500 uppercase font-black mb-1">Técnico Responsable</label>
                                  <select value={projectForm.responsibleTech} onChange={e => setProjectForm({...projectForm, responsibleTech: e.target.value})} className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-xl p-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none">
                                      <option value="">Sin Asignar</option>
-                                     {data.technicians.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
+                                     {data.technicians.filter(t => t.active !== false).map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
                                  </select>
                             </div>
                         </div>

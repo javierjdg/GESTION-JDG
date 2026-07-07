@@ -36,9 +36,19 @@ interface DailyOrganizationProps {
   onMarkSeen?: () => void; // Prop para limpiar notificación
 }
 
+const normalizeDailyOrg = (org: any, defaultFecha?: string): DailyOrgData => {
+  return {
+    trabajos: Array.isArray(org?.trabajos) ? org.trabajos : [],
+    trabajadores: Array.isArray(org?.trabajadores) ? org.trabajadores : [],
+    fecha: org?.fecha || defaultFecha || new Date().toISOString().split('T')[0],
+    lastUpdated: org?.lastUpdated,
+    excluidos: Array.isArray(org?.excluidos) ? org.excluidos : []
+  };
+};
+
 const DailyOrganization: React.FC<DailyOrganizationProps> = ({ isReadOnly = false, onBack, data, onUpdate, onChangeDate, onMarkSeen }) => {
   // ESTADO LOCAL para edición
-  const [localData, setLocalData] = useState<DailyOrgData>(data);
+  const [localData, setLocalData] = useState<DailyOrgData>(() => normalizeDailyOrg(data));
   const [isDirty, setIsDirty] = useState(false); // Para saber hay cambios sin guardar
   const [isSaving, setIsSaving] = useState(false);
   const autoSaveTimeoutRef = useRef<any>(null);
@@ -78,7 +88,7 @@ const DailyOrganization: React.FC<DailyOrganizationProps> = ({ isReadOnly = fals
 
   // Sincronizar data externa si cambia
   useEffect(() => {
-      setLocalData(data);
+      setLocalData(normalizeDailyOrg(data));
   }, [data]);
 
   const updateLocal = (newData: DailyOrgData) => {
@@ -402,7 +412,7 @@ const DailyOrganization: React.FC<DailyOrganizationProps> = ({ isReadOnly = fals
         </div>
 
         <div className="grid lg:grid-cols-4 gap-6">
-          <div className="bg-white dark:bg-brand-panel rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 p-6">
+          <div className="bg-white dark:bg-brand-panel rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 p-6 order-2 lg:order-1">
             <h2 className="text-xl font-bold mb-4 text-gray-800 dark:text-white">👥 Disponibles <span className="text-sm bg-gray-200 dark:bg-gray-700 px-2 py-1 rounded-full text-gray-700 dark:text-white">{disponibles.length}</span></h2>
             <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
               {disponibles.map(t => (
@@ -428,7 +438,7 @@ const DailyOrganization: React.FC<DailyOrganizationProps> = ({ isReadOnly = fals
             </div>
           </div>
 
-          <div className="lg:col-span-3 grid md:grid-cols-2 xl:grid-cols-3 gap-6">
+          <div className="lg:col-span-3 grid md:grid-cols-2 xl:grid-cols-3 gap-6 order-1 lg:order-2">
             {localData.trabajos.map(trabajo => (
               <div 
                 key={trabajo.id} 

@@ -81,6 +81,7 @@ export interface TechUser {
   id: string;
   name: string;
   password: string;
+  active?: boolean;
 }
 
 export interface ProjectAttachment {
@@ -1099,9 +1100,10 @@ const App: React.FC = () => {
   const harmonizeWorkers = (org: DailyOrgData, technicians: TechUser[]): DailyOrgData => {
       if (!org) return org;
       const colors = ['#E63946','#F77F00','#06D6A0','#118AB2','#073B4C','#D62828','#FCA311','#14213D','#00B4D8','#0077B6'];
+      const activeTechs = (technicians || []).filter(t => t.active !== false);
 
       const excludedNames = new Set((org.excluidos || []).map(e => e.trim().toUpperCase()));
-      const registeredNames = new Set((technicians || []).map(t => t.name.trim().toUpperCase()));
+      const registeredNames = new Set(activeTechs.map(t => t.name.trim().toUpperCase()));
       const assignedNames = new Set<string>();
 
       (org.trabajos || []).forEach(job => {
@@ -1128,7 +1130,7 @@ const App: React.FC = () => {
       // Añadir técnicos nuevos que no existían en esta organización
       const existingNames = new Set(updatedWorkers.map(w => w.nombre.trim().toUpperCase()));
       
-      (technicians || []).forEach((t, i) => {
+      activeTechs.forEach((t, i) => {
           const nameUpper = t.name.trim().toUpperCase();
           if (!existingNames.has(nameUpper) && !excludedNames.has(nameUpper)) {
               updatedWorkers.push({
