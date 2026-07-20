@@ -82,19 +82,69 @@ const MapComponent = ({ projects, selectedProjectId, onSelectProject }: { projec
       const newMarkers: any[] = [];
       const projectsWithLocation = projects.filter(p => p.location);
       
-      if (projectsWithLocation.length === 0) return;
+      if (projectsWithLocation.length === 0) {
+        setMarkers([]);
+        return;
+      }
+
+      let processedCount = 0;
+
+      const checkCompletion = () => {
+        processedCount++;
+        if (processedCount === projectsWithLocation.length) {
+          setMarkers([...newMarkers]);
+        }
+      };
+
+      const parseCoordinates = (loc: string): { lat: number; lng: number } | null => {
+        if (!loc) return null;
+        
+        // 1. Match @latitude,longitude
+        const atMatch = loc.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
+        if (atMatch) {
+          const lat = parseFloat(atMatch[1]);
+          const lng = parseFloat(atMatch[2]);
+          if (!isNaN(lat) && !isNaN(lng)) return { lat, lng };
+        }
+        
+        // 2. Match q=latitude,longitude or ll=latitude,longitude
+        const qMatch = loc.match(/[?&](?:q|query|ll)=(-?\d+\.\d+),(-?\d+\.\d+)/);
+        if (qMatch) {
+          const lat = parseFloat(qMatch[1]);
+          const lng = parseFloat(qMatch[2]);
+          if (!isNaN(lat) && !isNaN(lng)) return { lat, lng };
+        }
+        
+        // 3. Match pure "latitude,longitude"
+        const simpleMatch = loc.match(/^\s*(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)\s*$/);
+        if (simpleMatch) {
+          const lat = parseFloat(simpleMatch[1]);
+          const lng = parseFloat(simpleMatch[2]);
+          if (!isNaN(lat) && !isNaN(lng)) return { lat, lng };
+        }
+
+        return null;
+      };
 
       projectsWithLocation.forEach(p => {
-        geocoder.geocode({ address: p.location }, (results, status) => {
-          if (status === 'OK' && results && results[0]) {
-            newMarkers.push({ id: p.id, position: results[0].geometry.location, name: p.name });
-            if (newMarkers.length === projectsWithLocation.length) {
-              setMarkers([...newMarkers]);
+        const directCoords = parseCoordinates(p.location);
+        if (directCoords) {
+          const pos = new window.google.maps.LatLng(directCoords.lat, directCoords.lng);
+          newMarkers.push({ id: p.id, position: pos, name: p.name });
+          checkCompletion();
+        } else if (p.location.startsWith('http://') || p.location.startsWith('https://') || p.location.startsWith('www.')) {
+          console.warn(`No se pudieron extraer coordenadas del enlace: ${p.location}`);
+          checkCompletion();
+        } else {
+          geocoder.geocode({ address: p.location }, (results, status) => {
+            if (status === 'OK' && results && results[0]) {
+              newMarkers.push({ id: p.id, position: results[0].geometry.location, name: p.name });
+            } else {
+              console.warn(`Geocode failed for ${p.location}: ${status}`);
             }
-          } else {
-            console.error(`Geocode failed for ${p.location}: ${status}`);
-          }
-        });
+            checkCompletion();
+          });
+        }
       });
     }
   }, [isLoaded, projects, apiKey]);
