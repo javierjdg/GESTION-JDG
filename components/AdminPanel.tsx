@@ -268,6 +268,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
   const [pwdMsg, setPwdMsg] = useState('');
   const [firebaseConfigInput, setFirebaseConfigInput] = useState('');
   const [filterTech, setFilterTech] = useState('');
+  const [filterClient, setFilterClient] = useState('');
   const [filterProject, setFilterProject] = useState('');
   const [filterDateStart, setFilterDateStart] = useState('');
   const [filterDateEnd, setFilterDateEnd] = useState('');
@@ -365,9 +366,15 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
       return num;
   };
 
+  const resolveProjectClient = (num: string) => {
+      const detailed = (data.projectsDetailed || []).find(p => p.id === num);
+      return detailed?.client || '';
+  };
+
   const viewProjectHistory = (projectId: string) => {
       setFilterProject(projectId);
       setFilterTech('');
+      setFilterClient('');
       setFilterDateStart('');
       setFilterDateEnd('');
       setReportViewMode('list');
@@ -936,6 +943,11 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
   const filteredReports = useMemo(() => {
     return data.reports.filter(r => {
         if (filterTech && r.technician !== filterTech) return false;
+        if (filterClient) {
+            const clientLower = filterClient.toLowerCase();
+            const projectClient = resolveProjectClient(r.projectNum).toLowerCase();
+            if (projectClient !== clientLower) return false;
+        }
         if (filterProject) {
             const projectFilter = filterProject.toLowerCase();
             const projectFull = resolveProjectFullName(r.projectNum).toLowerCase();
@@ -945,7 +957,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
         if (filterDateEnd && r.date > filterDateEnd) return false;
         return true;
     }).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-  }, [data.reports, filterTech, filterProject, filterDateStart, filterDateEnd, data.projectsDetailed]);
+  }, [data.reports, filterTech, filterClient, filterProject, filterDateStart, filterDateEnd, data.projectsDetailed]);
 
   const groupedReports = useMemo(() => {
     const months: Record<string, Record<string, WorkReport[]>> = {};
@@ -1222,6 +1234,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
       let filterText = 'Filtros: ';
       const filtersActive: string[] = [];
       if (filterTech) filtersActive.push(`Técnico: ${filterTech}`);
+      if (filterClient) filtersActive.push(`Cliente: ${filterClient}`);
       if (filterProject) filtersActive.push(`Obra: ${filterProject} (${resolveProjectFullName(filterProject)})`);
       if (filterDateStart || filterDateEnd) {
         if (filterDateStart && filterDateEnd) filtersActive.push(`Fechas: ${formatDateToSpanish(filterDateStart)} al ${formatDateToSpanish(filterDateEnd)}`);
@@ -2038,6 +2051,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
       let filterText = 'Filtros: ';
       const filtersActive: string[] = [];
       if (filterTech) filtersActive.push(`Técnico: ${filterTech}`);
+      if (filterClient) filtersActive.push(`Cliente: ${filterClient}`);
       if (filterProject) filtersActive.push(`Obra: ${filterProject}`);
       if (filterDateStart || filterDateEnd) {
         if (filterDateStart && filterDateEnd) filtersActive.push(`Fechas: ${formatDateToSpanish(filterDateStart)} al ${formatDateToSpanish(filterDateEnd)}`);
@@ -2528,14 +2542,20 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                 <button onClick={() => setReportViewMode('trash')} className={`px-3 py-1.5 text-xs font-bold rounded flex items-center gap-1 ${reportViewMode === 'trash' ? 'bg-red-600 text-white' : 'text-gray-500 dark:text-gray-400 hover:text-red-500'}`}><TrashIcon className="w-3 h-3" /> Papelera</button>
             </div>
             
-            <div className="bg-gray-50 dark:bg-gray-900/50 p-4 rounded-lg border border-gray-200 dark:border-gray-700 mb-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="bg-gray-50 dark:bg-gray-900/50 p-4 rounded-lg border border-gray-200 dark:border-gray-700 mb-6 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
                  <select value={filterTech} onChange={e => setFilterTech(e.target.value)} className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-sm rounded-lg p-2.5 text-gray-900 dark:text-white outline-none">
                     <option value="">Técnicos...</option>
                     {data.technicians.filter(t => t.active !== false).map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
                  </select>
+                 <select value={filterClient} onChange={e => setFilterClient(e.target.value)} className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-sm rounded-lg p-2.5 text-gray-900 dark:text-white outline-none">
+                    <option value="">Clientes...</option>
+                    {uniqueClients.map(c => <option key={c} value={c}>{c}</option>)}
+                 </select>
                  <select value={filterProject} onChange={e => setFilterProject(e.target.value)} className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-sm rounded-lg p-2.5 text-gray-900 dark:text-white outline-none">
                     <option value="">Obras...</option>
-                    {data.projectsDetailed.map(p => <option key={p.id} value={p.id}>{p.id} - {p.name}</option>)}
+                    {data.projectsDetailed
+                        .filter(p => !filterClient || (p.client && p.client.toLowerCase() === filterClient.toLowerCase()))
+                        .map(p => <option key={p.id} value={p.id}>{p.id} - {p.name}</option>)}
                  </select>
                  <input type="date" value={filterDateStart} onChange={e => setFilterDateStart(e.target.value)} className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-sm rounded-lg p-2.5 text-gray-900 dark:text-white outline-none dark:[color-scheme:dark]" />
                  <input type="date" value={filterDateEnd} onChange={e => setFilterDateEnd(e.target.value)} className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-sm rounded-lg p-2.5 text-gray-900 dark:text-white outline-none dark:[color-scheme:dark]" />
@@ -2599,6 +2619,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                                   console.log('Expanding week:', week, 'Report ID:', r.id);
                                   // Limpiamos filtros para asegurar que el parte sea visible
                                   setFilterTech('');
+                                  setFilterClient('');
                                   setFilterProject('');
                                   setFilterDateStart('');
                                   setFilterDateEnd('');
@@ -2644,6 +2665,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                                   console.log('Expanding week (validated):', week, 'Report ID:', r.id);
                                   // Limpiamos filtros para asegurar que el parte sea visible
                                   setFilterTech('');
+                                  setFilterClient('');
                                   setFilterProject('');
                                   setFilterDateStart('');
                                   setFilterDateEnd('');
