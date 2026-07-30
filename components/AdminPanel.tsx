@@ -2638,19 +2638,25 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                                   {r.isOvernight && <span className="px-1.5 py-0.5 text-[9px] bg-purple-500/20 text-purple-400 font-black rounded uppercase tracking-wider border border-purple-500/30">PERNOCTA</span>}
                                 </p>
                               </div>
-                              <button onClick={() => { 
-                                const week = getWeekRange(r.date);
-                                console.log('Expanding week (validated):', week, 'Report ID:', r.id);
-                                // Limpiamos filtros para asegurar que el parte sea visible
-                                setFilterTech('');
-                                setFilterProject('');
-                                setFilterDateStart('');
-                                setFilterDateEnd('');
-                                setExpandedWeeks({ [week]: true });
-                                setReportViewMode('list'); 
-                                setExpandedReportId(r.id); 
-                                console.log('Setting expandedReportId (validated) to:', r.id);
-                              }} className="text-brand-teal hover:underline text-sm font-bold">Ver Parte</button>
+                              <div className="flex items-center gap-3">
+                                <button onClick={() => { 
+                                  const week = getWeekRange(r.date);
+                                  console.log('Expanding week (validated):', week, 'Report ID:', r.id);
+                                  // Limpiamos filtros para asegurar que el parte sea visible
+                                  setFilterTech('');
+                                  setFilterProject('');
+                                  setFilterDateStart('');
+                                  setFilterDateEnd('');
+                                  setExpandedWeeks({ [week]: true });
+                                  setReportViewMode('list'); 
+                                  setExpandedReportId(r.id); 
+                                  console.log('Setting expandedReportId (validated) to:', r.id);
+                                }} className="text-brand-teal hover:underline text-sm font-bold">Ver Parte</button>
+                                <button onClick={async () => {
+                                  await onUpdateReport({ ...r, overtimeStatus: 'pending' }, false);
+                                  toast.info(`Las horas extra de ${r.technician} han vuelto a estado Pendiente de Validación.`);
+                                }} className="bg-amber-100 hover:bg-amber-200 text-amber-800 dark:bg-amber-950/50 dark:hover:bg-amber-900/60 dark:text-amber-300 px-3 py-1 rounded text-sm font-bold transition-colors">Desvalidar</button>
+                              </div>
                             </div>
                           </div>
                         ))}

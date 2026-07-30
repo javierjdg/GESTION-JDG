@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { toast } from 'sonner';
 import { WorkReport, ExpenseTicket, ProjectData, MaterialItem } from '../App';
 import { SaveIcon, ChevronDownIcon, TrashIcon, CameraIcon, ImageIcon } from './icons';
 
@@ -136,6 +137,27 @@ const ReportForm: React.FC<ReportFormProps> = ({ projects, vehicles, initialData
     e.preventDefault();
     if (!validate() || isCompressing) return;
 
+    const isOriginallyValidated = initialData?.overtimeStatus === 'validated' && (initialData?.overtimeHours || 0) > 0;
+    const isOvertimeModified = isOriginallyValidated && (
+      formData.overtimeHours !== initialData?.overtimeHours ||
+      formData.overtimeType !== initialData?.overtimeType
+    );
+
+    let finalOvertimeStatus: 'pending' | 'validated' | 'none' = 'none';
+    if (formData.overtimeHours > 0) {
+      if (isOriginallyValidated && !isOvertimeModified) {
+        finalOvertimeStatus = 'validated';
+      } else {
+        finalOvertimeStatus = 'pending';
+      }
+    } else {
+      finalOvertimeStatus = 'none';
+    }
+
+    if (isOvertimeModified) {
+      toast.info("Las horas extra validadas han sido modificadas y pasarán a requerir nueva validación.");
+    }
+
     onSave({
       id: formData.id || Date.now().toString(),
       technician: '',
@@ -145,7 +167,7 @@ const ReportForm: React.FC<ReportFormProps> = ({ projects, vehicles, initialData
       endTime: formData.endTime,
       overtimeHours: formData.overtimeHours,
       overtimeType: formData.overtimeType,
-      overtimeStatus: formData.overtimeHours > 0 ? (formData.overtimeStatus === 'validated' ? 'validated' : 'pending') : 'none',
+      overtimeStatus: finalOvertimeStatus,
       description: formData.description,
       vehicle: formData.vehicle,
       isDriver: formData.isDriver,
@@ -332,7 +354,32 @@ const ReportForm: React.FC<ReportFormProps> = ({ projects, vehicles, initialData
             </div>
             
             <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
-                 <h4 className="text-sm font-medium text-brand-teal dark:text-brand-lime mb-2 uppercase tracking-wide">Horas Extra</h4>
+                 <div className="flex items-center justify-between mb-2">
+                   <h4 className="text-sm font-medium text-brand-teal dark:text-brand-lime uppercase tracking-wide">Horas Extra</h4>
+                   {initialData?.overtimeStatus === 'validated' && (initialData?.overtimeHours || 0) > 0 && (
+                     formData.overtimeHours === initialData?.overtimeHours && formData.overtimeType === initialData?.overtimeType ? (
+                       <span className="px-2 py-0.5 text-[10px] font-black uppercase tracking-wider bg-green-100 text-green-800 dark:bg-green-950/50 dark:text-green-300 rounded-full border border-green-300 dark:border-green-800">
+                         ✓ Validadas
+                       </span>
+                     ) : (
+                       <span className="px-2 py-0.5 text-[10px] font-black uppercase tracking-wider bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300 rounded-full border border-amber-300 dark:border-amber-800 animate-pulse">
+                         ⚠️ Requerirá Revalidación
+                       </span>
+                     )
+                   )}
+                 </div>
+
+                 {initialData?.overtimeStatus === 'validated' && (initialData?.overtimeHours || 0) > 0 && (
+                   formData.overtimeHours !== initialData?.overtimeHours || formData.overtimeType !== initialData?.overtimeType
+                 ) && (
+                   <div className="mb-3 p-2.5 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/60 text-amber-800 dark:text-amber-300 text-xs">
+                     <p className="font-bold">⚠️ Atención: Horas extra previamente validadas</p>
+                     <p className="mt-0.5 opacity-90">
+                       Originalmente: {initialData?.overtimeHours}h ({initialData?.overtimeType}).
+                       Al modificar la cantidad o tipo, el parte volverá a estado <b>Pendiente de validación</b>.
+                     </p>
+                   </div>
+                 )}
                  <div className="grid grid-cols-2 gap-4">
                     <div>
                         <label className="block text-xs font-medium text-gray-500 mb-1">Nº Horas</label>

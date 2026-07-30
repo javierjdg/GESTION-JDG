@@ -324,9 +324,20 @@ const TechDashboard: React.FC<TechDashboardProps> = ({ reports, projects, onNewR
                                     {reportsInWeek.map(report => (
                                         <div key={report.id} className="bg-white dark:bg-brand-panel p-5 rounded-3xl border border-gray-200 dark:border-gray-800 flex justify-between items-center group shadow-md hover:border-brand-teal/30 dark:hover:border-gray-700 transition-all">
                                             <div className="flex-1 min-w-0 pr-4">
-                                                <div className="flex items-center gap-2">
+                                                <div className="flex items-center gap-2 flex-wrap">
                                                     <span className="font-black text-gray-900 dark:text-gray-100 text-sm">{formatDateToSpanish(report.date)}</span>
                                                     <span className="text-[10px] text-gray-500 dark:text-gray-600 font-mono">#{report.id.slice(-4)}</span>
+                                                    {report.overtimeHours > 0 && (
+                                                        report.overtimeStatus === 'validated' ? (
+                                                            <span className="px-1.5 py-0.5 text-[8px] bg-green-100 dark:bg-green-950/40 text-green-800 dark:text-green-300 font-black rounded uppercase tracking-wider border border-green-200/30 dark:border-green-900/30">
+                                                                +{report.overtimeHours}h EXTRA (VALIDADO)
+                                                            </span>
+                                                        ) : (
+                                                            <span className="px-1.5 py-0.5 text-[8px] bg-amber-100 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 font-black rounded uppercase tracking-wider border border-amber-200/30 dark:border-amber-900/30">
+                                                                +{report.overtimeHours}h EXTRA (PENDIENTE)
+                                                            </span>
+                                                        )
+                                                    )}
                                                     {report.isNightShift && (
                                                         <span className="px-1.5 py-0.5 text-[8px] bg-indigo-100 dark:bg-indigo-950/40 text-indigo-800 dark:text-indigo-300 font-black rounded uppercase tracking-wider border border-indigo-200/30 dark:border-indigo-900/30">
                                                             NOCHE
