@@ -82,6 +82,7 @@ export interface TechUser {
   name: string;
   password: string;
   active?: boolean;
+  hideInVacations?: boolean;
 }
 
 export interface ProjectAttachment {

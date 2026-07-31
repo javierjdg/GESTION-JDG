@@ -63,6 +63,38 @@ const VacationManager: React.FC<VacationManagerProps> = ({ role, currentUser, cu
     const [msg, setMsg] = useState('');
     
     const [viewDate, setViewDate] = useState(new Date());
+    const [showVisibilityConfig, setShowVisibilityConfig] = useState(false);
+
+    // Todos los técnicos activos ordenados alfabéticamente
+    const sortedTechnicians = useMemo(() => {
+        return [...(data.technicians || [])]
+            .filter(t => t.active !== false)
+            .sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }));
+    }, [data.technicians]);
+
+    // Técnicos visibles en el cuadrante de vacaciones (excluye ocultos)
+    const visibleTechnicians = useMemo(() => {
+        return sortedTechnicians.filter(t => !t.hideInVacations);
+    }, [sortedTechnicians]);
+
+    const hiddenCount = useMemo(() => {
+        return sortedTechnicians.filter(t => t.hideInVacations).length;
+    }, [sortedTechnicians]);
+
+    const toggleTechVisibility = (techId: string) => {
+        const updatedTechs = (data.technicians || []).map(t => {
+            if (t.id === techId) {
+                const nextState = !t.hideInVacations;
+                toast.info(`Técnico "${t.name}" ${nextState ? 'ocultado' : 'visible'} en vacaciones`);
+                return { ...t, hideInVacations: nextState };
+            }
+            return t;
+        });
+        onUpdate({
+            ...data,
+            technicians: updatedTechs
+        });
+    };
 
     const holidays = useMemo(() => data.holidays || [], [data.holidays]);
 
@@ -210,7 +242,7 @@ const VacationManager: React.FC<VacationManagerProps> = ({ role, currentUser, cu
 
     if (role === 'admin') {
         const inbox = (data.vacationRequests || []).filter(r => r.status === 'pending' || r.status === 'cancel_requested');
-        const techSummary = data.technicians.filter(t => t.active !== false).map((t) => {
+        const techSummary = visibleTechnicians.map((t) => {
             const reqs = (data.vacationRequests || []).filter(r => r.userName === t.name && r.status === 'approved');
             const used = reqs.reduce((s, r) => s + r.days, 0);
             return { name: t.name, used, color: getTechColor(t.name, data.technicians) };
@@ -218,9 +250,23 @@ const VacationManager: React.FC<VacationManagerProps> = ({ role, currentUser, cu
 
         return (
             <div className="space-y-6 animate-fade-in pb-10">
-                <div className="flex justify-between items-center bg-white dark:bg-gray-900/50 p-4 rounded-xl border border-gray-200 dark:border-gray-700">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-white dark:bg-gray-900/50 p-4 rounded-xl border border-gray-200 dark:border-gray-700">
                     <h2 className="text-xl font-bold text-brand-teal dark:text-brand-lime flex items-center gap-2">🌴 Gestión de Personal</h2>
-                    <button onClick={onBack} className="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-white underline">← Volver</button>
+                    <div className="flex items-center gap-3">
+                        <button 
+                            onClick={() => setShowVisibilityConfig(true)}
+                            className="bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 text-xs font-bold px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 transition-all flex items-center gap-1.5 shadow-sm"
+                            title="Ocultar o mostrar técnicos en el cuadrante"
+                        >
+                            <span>👁️ Visibilidad Técnicos</span>
+                            {hiddenCount > 0 && (
+                                <span className="bg-red-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full">
+                                    {hiddenCount} oculto{hiddenCount > 1 ? 's' : ''}
+                                </span>
+                            )}
+                        </button>
+                        <button onClick={onBack} className="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-white underline">← Volver</button>
+                    </div>
                 </div>
 
                 {/* Registro Manual y Stats */}
@@ -235,7 +281,11 @@ const VacationManager: React.FC<VacationManagerProps> = ({ role, currentUser, cu
                                     <label className="block text-[10px] text-gray-500 uppercase mb-1 font-bold">Técnico</label>
                                     <select required value={adminSelectedTech} onChange={e => setAdminSelectedTech(e.target.value)} className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg p-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none">
                                         <option value="">Seleccionar técnico...</option>
-                                        {data.technicians.filter(t => t.active !== false).map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
+                                        {sortedTechnicians.map(t => (
+                                            <option key={t.id} value={t.name}>
+                                                {t.name}{t.hideInVacations ? ' (Oculto en Vacaciones)' : ''}
+                                            </option>
+                                        ))}
                                     </select>
                                 </div>
                                 <div>
@@ -357,7 +407,7 @@ const VacationManager: React.FC<VacationManagerProps> = ({ role, currentUser, cu
                                 </tr>
                             </thead>
                             <tbody>
-                                {data.technicians.filter(tech => tech.active !== false).map((tech) => (
+                                {visibleTechnicians.map((tech) => (
                                     <tr key={tech.name} className="border-b border-gray-200 dark:border-gray-800/50 hover:bg-gray-50 dark:hover:bg-gray-800/20 group">
                                         <td className="sticky left-0 z-20 bg-white dark:bg-brand-panel px-4 py-3 border-r border-gray-200 dark:border-gray-700">
                                             <div className="flex items-center gap-2">
@@ -408,7 +458,7 @@ const VacationManager: React.FC<VacationManagerProps> = ({ role, currentUser, cu
                         <UserIcon className="w-4 h-4" /> Código de Colores Equipo
                     </h3>
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
-                        {data.technicians.filter(t => t.active !== false).map(t => (
+                        {visibleTechnicians.map(t => (
                             <div key={t.id} className="flex items-center gap-2 bg-gray-50 dark:bg-gray-900/40 p-2 rounded-lg border border-gray-200 dark:border-gray-800">
                                 <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: getTechColor(t.name, data.technicians) }}></div>
                                 <span className="text-[10px] font-bold text-gray-700 dark:text-gray-300 truncate">{t.name}</span>
@@ -555,7 +605,7 @@ const VacationManager: React.FC<VacationManagerProps> = ({ role, currentUser, cu
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {data.technicians.filter(tech => tech.active !== false).map((tech) => (
+                                    {visibleTechnicians.map((tech) => (
                                         <tr key={tech.name} className="border-b border-gray-200 dark:border-gray-800/50 hover:bg-gray-50 dark:hover:bg-gray-800/20 group">
                                             <td className="sticky left-0 z-20 bg-white dark:bg-brand-panel px-3 py-2 border-r border-gray-200 dark:border-gray-700">
                                                 <div className="flex items-center gap-1.5">
@@ -647,6 +697,51 @@ const VacationManager: React.FC<VacationManagerProps> = ({ role, currentUser, cu
                     </div>
                 </div>
             </div>
+
+            {/* Modal para configurar visibilidad de técnicos en vacaciones */}
+            {showVisibilityConfig && (
+                <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+                    <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 p-6 max-w-md w-full shadow-2xl space-y-4 animate-scale-in">
+                        <div className="flex justify-between items-center border-b border-gray-200 dark:border-gray-800 pb-3">
+                            <h3 className="text-base font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                                👁️ Visibilidad en Vacaciones
+                            </h3>
+                            <button onClick={() => setShowVisibilityConfig(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-white text-lg font-bold">✕</button>
+                        </div>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                            Los técnicos marcados como <strong>Oculto</strong> no se mostrarán en el cuadrante de vacaciones ni en la leyenda. Este ajuste se guarda y sincroniza para todos los administradores.
+                        </p>
+                        <div className="max-h-72 overflow-y-auto space-y-2 custom-scrollbar pr-1">
+                            {sortedTechnicians.map(t => (
+                                <div key={t.id} className="flex items-center justify-between bg-gray-50 dark:bg-gray-800/60 p-3 rounded-xl border border-gray-200 dark:border-gray-700/60">
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: getTechColor(t.name, data.technicians) }}></div>
+                                        <span className="text-xs font-bold text-gray-800 dark:text-gray-200">{t.name}</span>
+                                    </div>
+                                    <button
+                                        onClick={() => toggleTechVisibility(t.id)}
+                                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                                            t.hideInVacations 
+                                                ? 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-300 dark:hover:bg-gray-600'
+                                                : 'bg-green-100 dark:bg-green-950/60 text-green-700 dark:text-green-300 border border-green-300 dark:border-green-800'
+                                        }`}
+                                    >
+                                        {t.hideInVacations ? '🙈 Oculto' : '👁️ Visible'}
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                        <div className="pt-2 text-right">
+                            <button
+                                onClick={() => setShowVisibilityConfig(false)}
+                                className="bg-brand-teal hover:bg-teal-600 text-white font-bold px-5 py-2.5 rounded-xl text-xs transition-colors shadow-md"
+                            >
+                                Guardar y Cerrar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

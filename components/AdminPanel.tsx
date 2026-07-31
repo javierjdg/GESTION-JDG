@@ -3264,7 +3264,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                     <button onClick={() => handleAdd('techs')} className="bg-brand-teal text-white px-6 py-2 rounded-lg font-bold shadow-md hover:bg-teal-600 transition-colors">Añadir</button>
                 </div>
                 <div className="grid grid-cols-1 gap-4">
-                {(data.technicians || []).map((t, i) => {
+                {[...(data.technicians || [])].sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' })).map((t, i) => {
                     const techReports = data.reports.filter(r => r.technician === t.name);
                     const groupedByMonth: Record<string, { label: string, reports: WorkReport[] }> = {};
                     techReports.forEach(r => {
@@ -3299,11 +3299,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                                                     ) : (
                                                         <span className="bg-green-100 dark:bg-green-950/40 text-green-600 dark:text-green-400 text-[9px] font-black px-1.5 py-0.5 rounded uppercase border border-green-200 dark:border-green-900/40">Activo</span>
                                                     )}
+                                                    {t.hideInVacations && (
+                                                        <span className="bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 text-[9px] font-black px-1.5 py-0.5 rounded uppercase border border-amber-200 dark:border-amber-900/40">Oculto en Vacaciones</span>
+                                                    )}
                                                 </div>
                                                 <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">{techReports.length} partes registrados</p>
                                             </div>
                                         </div>
-                                        <div className="flex items-center gap-4">
+                                        <div className="flex items-center gap-3">
                                             <label className="flex items-center gap-1.5 cursor-pointer bg-gray-50 dark:bg-gray-900 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-brand-teal/50 transition-all select-none">
                                                 <input 
                                                     type="checkbox" 
@@ -3323,6 +3326,26 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                                                     className="w-3.5 h-3.5 rounded border-gray-300 dark:border-gray-700 text-brand-teal focus:ring-brand-teal focus:ring-0 cursor-pointer" 
                                                 />
                                                 <span className="text-[10px] uppercase font-black text-gray-600 dark:text-gray-400">Activo</span>
+                                            </label>
+                                            <label className="flex items-center gap-1.5 cursor-pointer bg-gray-50 dark:bg-gray-900 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-brand-teal/50 transition-all select-none">
+                                                <input 
+                                                    type="checkbox" 
+                                                    checked={!t.hideInVacations} 
+                                                    onChange={() => {
+                                                        setData(prev => {
+                                                            const technicians = (prev.technicians || []).map(tech => {
+                                                                if (tech.id === t.id) {
+                                                                    return { ...tech, hideInVacations: !tech.hideInVacations };
+                                                                }
+                                                                return tech;
+                                                            });
+                                                            return { ...prev, technicians };
+                                                        });
+                                                        toast.success(`Visibilidad en vacaciones de ${t.name} actualizada`);
+                                                    }}
+                                                    className="w-3.5 h-3.5 rounded border-gray-300 dark:border-gray-700 text-brand-teal focus:ring-brand-teal focus:ring-0 cursor-pointer" 
+                                                />
+                                                <span className="text-[10px] uppercase font-black text-gray-600 dark:text-gray-400">Vacaciones</span>
                                             </label>
                                             <button 
                                                 onClick={() => setExpandedTechId(isExpanded ? null : t.id)}
