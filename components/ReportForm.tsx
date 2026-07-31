@@ -1,20 +1,24 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { toast } from 'sonner';
-import { WorkReport, ExpenseTicket, ProjectData, MaterialItem } from '../App';
+import { WorkReport, ExpenseTicket, ProjectData, MaterialItem, TechUser } from '../App';
 import { SaveIcon, ChevronDownIcon, TrashIcon, CameraIcon, ImageIcon } from './icons';
 
 interface ReportFormProps {
   projects: ProjectData[];
   vehicles: string[];
+  technicians?: TechUser[];
+  currentUser?: string;
+  userRole?: 'admin' | 'tech' | null;
   initialData?: WorkReport | null;
   onSave: (report: WorkReport) => void;
   onCancel: () => void;
 }
 
-const ReportForm: React.FC<ReportFormProps> = ({ projects, vehicles, initialData, onSave, onCancel }) => {
+const ReportForm: React.FC<ReportFormProps> = ({ projects, vehicles, technicians, currentUser, userRole, initialData, onSave, onCancel }) => {
   const [formData, setFormData] = useState({
     id: '',
+    technician: initialData?.technician || (currentUser && currentUser !== 'ADMIN' ? currentUser : ''),
     projectNum: '',
     date: new Date().toISOString().split('T')[0],
     startTime: '07:30',
@@ -50,6 +54,7 @@ const ReportForm: React.FC<ReportFormProps> = ({ projects, vehicles, initialData
     if (initialData) {
       setFormData({
         id: initialData.id,
+        technician: initialData.technician || (currentUser && currentUser !== 'ADMIN' ? currentUser : ''),
         projectNum: initialData.projectNum,
         date: initialData.date,
         startTime: initialData.startTime,
@@ -68,7 +73,7 @@ const ReportForm: React.FC<ReportFormProps> = ({ projects, vehicles, initialData
         materials: initialData.materials || [],
       });
     }
-  }, [initialData]);
+  }, [initialData, currentUser]);
 
   // Filtramos las obras: Mostramos solo las NO terminadas, O la que ya está seleccionada (para ediciones)
   const availableProjects = useMemo(() => {
@@ -120,6 +125,7 @@ const ReportForm: React.FC<ReportFormProps> = ({ projects, vehicles, initialData
 
   const validate = () => {
     const newErrors: Record<string, string> = {};
+    if (!formData.technician || !formData.technician.trim()) newErrors.technician = 'El técnico es obligatorio';
     if (!formData.projectNum) newErrors.projectNum = 'Requerido';
     
     if (formData.isDriver) {
@@ -136,6 +142,12 @@ const ReportForm: React.FC<ReportFormProps> = ({ projects, vehicles, initialData
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!validate() || isCompressing) return;
+
+    const assignedTechnician = formData.technician.trim() || initialData?.technician || (currentUser && currentUser !== 'ADMIN' ? currentUser : '');
+    if (!assignedTechnician) {
+      toast.error("Debes seleccionar un técnico para el parte.");
+      return;
+    }
 
     const isOriginallyValidated = initialData?.overtimeStatus === 'validated' && (initialData?.overtimeHours || 0) > 0;
     const isOvertimeModified = isOriginallyValidated && (
@@ -160,7 +172,7 @@ const ReportForm: React.FC<ReportFormProps> = ({ projects, vehicles, initialData
 
     onSave({
       id: formData.id || Date.now().toString(),
-      technician: '',
+      technician: assignedTechnician,
       projectNum: formData.projectNum,
       date: formData.date,
       startTime: formData.startTime,
@@ -288,7 +300,37 @@ const ReportForm: React.FC<ReportFormProps> = ({ projects, vehicles, initialData
             onChange={onFileChange} 
         />
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-brand-teal dark:text-brand-lime mb-1">Técnico *</label>
+            {technicians && technicians.length > 0 ? (
+              <div className="relative">
+                <select
+                  value={formData.technician}
+                  onChange={e => setFormData({...formData, technician: e.target.value})}
+                  className={`w-full bg-gray-50 dark:bg-gray-900 border ${errors.technician ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'} rounded-lg pl-4 pr-10 py-3 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-teal outline-none appearance-none`}
+                >
+                  <option value="">Seleccionar Técnico...</option>
+                  {technicians.filter(t => t.active !== false).map(t => (
+                    <option key={t.id} value={t.name}>{t.name}</option>
+                  ))}
+                </select>
+                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-gray-400">
+                  <ChevronDownIcon className="w-5 h-5" />
+                </div>
+              </div>
+            ) : (
+              <input
+                type="text"
+                value={formData.technician}
+                onChange={e => setFormData({...formData, technician: e.target.value})}
+                placeholder="Nombre del técnico..."
+                className={`w-full bg-gray-50 dark:bg-gray-900 border ${errors.technician ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'} rounded-lg px-4 py-3 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-teal outline-none`}
+              />
+            )}
+            {errors.technician && <p className="text-red-400 text-xs mt-1">{errors.technician}</p>}
+          </div>
+
           <div>
             <label className="block text-sm font-medium text-brand-teal dark:text-brand-lime mb-1">Obra *</label>
             <div className="relative">

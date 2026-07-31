@@ -733,18 +733,24 @@ const App: React.FC = () => {
   };
 
   const saveReport = async (report: WorkReport, shouldRedirect: boolean = true) => {
-    // Evitamos window.confirm bloqueante si es posible, o lo manejamos rápido
-    const isDuplicate = data.reports.some(r => 
-        r.technician === currentUser && 
-        r.date === report.date && 
-        r.id !== report.id
-    );
-
-    if (isDuplicate) {
-        if (!window.confirm(`AVISO: Ya existe un parte a tu nombre para el ${report.date}.\n¿Quieres añadir otro?`)) return;
+    const techName = report.technician?.trim() || (currentUser && currentUser !== 'ADMIN' ? currentUser : '');
+    if (!techName) {
+      toast.error("Error: No se puede guardar un parte sin técnico asignado.");
+      return;
     }
 
-    const finalReport = { ...report, technician: report.technician || currentUser };
+    const finalReport = { ...report, technician: techName };
+
+    // Evitamos window.confirm bloqueante si es posible, o lo manejamos rápido
+    const isDuplicate = data.reports.some(r => 
+        r.technician === finalReport.technician && 
+        r.date === finalReport.date && 
+        r.id !== finalReport.id
+    );
+
+    if (isDuplicate && currentUser && currentUser !== 'ADMIN') {
+        if (!window.confirm(`AVISO: Ya existe un parte para ${finalReport.technician} en la fecha ${finalReport.date}.\n¿Quieres añadir otro?`)) return;
+    }
     
     isSyncingRef.current = true;
     isInternalUpdate.current = false;
@@ -1377,7 +1383,16 @@ const App: React.FC = () => {
           
           {view === 'form' && (
             <motion.div key="form" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} transition={{ duration: 0.2 }}>
-              <ReportForm projects={data.projectsDetailed} vehicles={data.vehicles} initialData={editingReport} onSave={saveReport} onCancel={() => setView('dashboard')} />
+              <ReportForm 
+                projects={data.projectsDetailed} 
+                vehicles={data.vehicles} 
+                technicians={data.technicians}
+                currentUser={currentUser}
+                userRole={userRole}
+                initialData={editingReport} 
+                onSave={saveReport} 
+                onCancel={() => setView(userRole === 'admin' ? 'admin' : 'dashboard')} 
+              />
             </motion.div>
           )}
           {view === 'admin' && (
@@ -1389,6 +1404,7 @@ const App: React.FC = () => {
                     onDeleteReport={deleteReport} 
                     onManualBackup={performManualBackup} 
                     onUpdateReport={saveReport}
+                    onEditReport={(r) => { setEditingReport(r); setView('form'); }}
                     onSaveProject={saveProject}
                     onDeleteProject={deleteProject}
                     onRecoverProjects={recoverProjectsFromBackup}

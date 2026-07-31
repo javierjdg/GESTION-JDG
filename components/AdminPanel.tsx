@@ -15,6 +15,7 @@ interface AdminPanelProps {
   onDeleteReport: (id: string) => void;
   onManualBackup?: () => void;
   onUpdateReport: (report: WorkReport, shouldRedirect: boolean) => Promise<void>;
+  onEditReport?: (report: WorkReport) => void;
   onSaveProject: (project: ProjectData) => Promise<void>;
   onDeleteProject: (id: string) => Promise<void>;
   onRecoverProjects?: () => Promise<void>;
@@ -248,7 +249,7 @@ const MapComponent = ({ projects, selectedProjectId, onSelectProject }: { projec
   ) : <div className="w-full h-[600px] bg-gray-100 dark:bg-gray-800 flex items-center justify-center rounded-xl border border-gray-200 dark:border-gray-700">Cargando mapa...</div>;
 };
 
-const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations, onDeleteReport, onManualBackup, onUpdateReport, onSaveProject, onDeleteProject, onRecoverProjects, onRestoreFullBackup }) => {
+const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations, onDeleteReport, onManualBackup, onUpdateReport, onEditReport, onSaveProject, onDeleteProject, onRecoverProjects, onRestoreFullBackup }) => {
   const [isPending, startTransition] = useTransition();
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [expandedTechId, setExpandedTechId] = useState<string | null>(null);
@@ -942,7 +943,13 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
 
   const filteredReports = useMemo(() => {
     return data.reports.filter(r => {
-        if (filterTech && r.technician !== filterTech) return false;
+        if (filterTech) {
+            if (filterTech === '__NO_TECH__') {
+                if (r.technician && r.technician.trim()) return false;
+            } else if (r.technician !== filterTech) {
+                return false;
+            }
+        }
         if (filterClient) {
             const clientLower = filterClient.toLowerCase();
             const projectClient = resolveProjectClient(r.projectNum).toLowerCase();
@@ -2545,6 +2552,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
             <div className="bg-gray-50 dark:bg-gray-900/50 p-4 rounded-lg border border-gray-200 dark:border-gray-700 mb-6 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
                  <select value={filterTech} onChange={e => setFilterTech(e.target.value)} className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-sm rounded-lg p-2.5 text-gray-900 dark:text-white outline-none">
                     <option value="">Técnicos...</option>
+                    <option value="__NO_TECH__">⚠️ Sin Técnico Asignado</option>
                     {data.technicians.filter(t => t.active !== false).map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
                  </select>
                  <select value={filterClient} onChange={e => setFilterClient(e.target.value)} className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-sm rounded-lg p-2.5 text-gray-900 dark:text-white outline-none">
@@ -2989,7 +2997,32 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                                                                                 <button onClick={() => toggleExpandReport(report.id)} className="text-gray-400 hover:text-brand-teal transition-colors"><EyeIcon className="w-4 h-4" /></button>
                                                                             </td>
                                                                             <td className="px-3 py-3 font-mono text-[11px] text-gray-500 dark:text-gray-400">{report.date}</td>
-                                                                            <td className="px-3 py-3 text-xs font-black text-gray-700 dark:text-gray-200">{report.technician}</td>
+                                                                            <td className="px-3 py-3 text-xs font-black text-gray-700 dark:text-gray-200">
+                                                                                {report.technician && report.technician.trim() ? (
+                                                                                    report.technician
+                                                                                ) : (
+                                                                                    <div className="flex items-center gap-1.5">
+                                                                                        <span className="px-2 py-0.5 text-[10px] bg-red-100 text-red-700 dark:bg-red-950/60 dark:text-red-300 font-bold rounded border border-red-300 dark:border-red-800 animate-pulse">
+                                                                                            ⚠️ Sin técnico
+                                                                                        </span>
+                                                                                        <select
+                                                                                            defaultValue=""
+                                                                                            onChange={async (e) => {
+                                                                                                const newTech = e.target.value;
+                                                                                                if (!newTech) return;
+                                                                                                await onUpdateReport({ ...report, technician: newTech }, false);
+                                                                                                toast.success(`Técnico ${newTech} asignado correctamente.`);
+                                                                                            }}
+                                                                                            className="text-xs bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded p-1 text-gray-900 dark:text-white outline-none cursor-pointer"
+                                                                                        >
+                                                                                            <option value="" disabled>Asignar...</option>
+                                                                                            {data.technicians.filter(t => t.active !== false).map(t => (
+                                                                                                <option key={t.id} value={t.name}>{t.name}</option>
+                                                                                            ))}
+                                                                                        </select>
+                                                                                    </div>
+                                                                                )}
+                                                                            </td>
                                                                             <td className="px-3 py-3 text-xs font-bold text-brand-teal/80">
                                                                                 {report.projectNum}
                                                                                 {resolveProjectFullName(report.projectNum) !== report.projectNum && (<span className="font-normal text-gray-500 dark:text-gray-400 ml-1">- {resolveProjectFullName(report.projectNum)}</span>)}
@@ -2998,7 +3031,12 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                                                                             <td className="px-3 py-3 text-right font-black text-xs text-yellow-600 dark:text-yellow-500">{report.overtimeHours > 0 ? `+${report.overtimeHours}h (${report.overtimeStatus === 'validated' ? 'Validado' : 'Pendiente'})` : '-'}</td>
                                                                             <td className="px-3 py-3 text-right text-xs font-black text-gray-800 dark:text-white">{total > 0 ? `${total.toFixed(2)}€` : '-'}</td>
                                                                             <td className="px-3 py-3 text-center">
-                                                                                <button onClick={() => onDeleteReport(report.id)} className="text-red-500/30 hover:text-red-500 transition-colors"><TrashIcon className="w-4 h-4" /></button>
+                                                                                {onEditReport && (
+                                                                                    <button onClick={() => onEditReport(report)} className="text-gray-400 hover:text-brand-teal transition-colors mr-2.5" title="Editar parte">
+                                                                                        <EditIcon className="w-4 h-4" />
+                                                                                    </button>
+                                                                                )}
+                                                                                <button onClick={() => onDeleteReport(report.id)} className="text-red-500/30 hover:text-red-500 transition-colors" title="Eliminar parte"><TrashIcon className="w-4 h-4" /></button>
                                                                             </td>
                                                                         </tr>
                                                                         {isReportExpanded && (
