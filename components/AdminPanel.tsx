@@ -278,6 +278,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
   const [backupsList, setBackupsList] = useState<any[]>([]);
   const [isLoadingBackups, setIsLoadingBackups] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [isSavingBudget, setIsSavingBudget] = useState(false);
+  const [isSavingProject, setIsSavingProject] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
@@ -544,38 +546,48 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
           finalProject.warningDate = '';
       }
 
-      startTransition(() => {
-          onSaveProject(finalProject);
-          resetProjectForm();
-      });
+      setIsSavingProject(true);
+      setTimeout(async () => {
+          try {
+              await onSaveProject(finalProject);
+              resetProjectForm();
+          } finally {
+              setIsSavingProject(false);
+          }
+      }, 10);
   };
 
   const handleSaveBudget = () => {
       if (!budgetForm.name || !budgetForm.client) { toast.error("Faltan datos obligatorios"); return; }
       const finalBudget = { ...budgetForm, id: budgetForm.id || Date.now().toString() };
 
-      startTransition(() => {
-          setData(prev => {
-              let updatedBudgets = [...(prev.budgets || [])];
-              const idx = updatedBudgets.findIndex(b => b.id === finalBudget.id);
-              if (idx >= 0) updatedBudgets[idx] = finalBudget;
-              else updatedBudgets = [finalBudget, ...updatedBudgets];
-              return { ...prev, budgets: updatedBudgets };
-          });
+      setIsSavingBudget(true);
+      setTimeout(async () => {
+          try {
+              setData(prev => {
+                  let updatedBudgets = [...(prev.budgets || [])];
+                  const idx = updatedBudgets.findIndex(b => b.id === finalBudget.id);
+                  if (idx >= 0) updatedBudgets[idx] = finalBudget;
+                  else updatedBudgets = [finalBudget, ...updatedBudgets];
+                  return { ...prev, budgets: updatedBudgets };
+              });
 
-          if (finalBudget.isAccepted) {
-              const newProjectId = generateNextProjectId();
-              const newProject: ProjectData = {
-                  id: newProjectId, name: finalBudget.name, client: finalBudget.client,
-                  budgetNum: finalBudget.budgetNum, valuation: 'PRESUPUESTO', responsibleTech: '',
-                  startDate: new Date().toISOString().split('T')[0], isFinished: false, isInvoiced: false,
-                  hasWarning: false, warningDate: '', notes: `Generado desde presupuesto: ${finalBudget.comments}`
-              };
-              onSaveProject(newProject);
-              toast.success(`✅ Obra creada automáticamente con ID: ${newProjectId}`);
+              if (finalBudget.isAccepted) {
+                  const newProjectId = generateNextProjectId();
+                  const newProject: ProjectData = {
+                      id: newProjectId, name: finalBudget.name, client: finalBudget.client,
+                      budgetNum: finalBudget.budgetNum, valuation: 'PRESUPUESTO', responsibleTech: '',
+                      startDate: new Date().toISOString().split('T')[0], isFinished: false, isInvoiced: false,
+                      hasWarning: false, warningDate: '', notes: `Generado desde presupuesto: ${finalBudget.comments}`
+                  };
+                  await onSaveProject(newProject);
+                  toast.success(`✅ Obra creada automáticamente con ID: ${newProjectId}`);
+              }
+              resetBudgetForm();
+          } finally {
+              setIsSavingBudget(false);
           }
-          resetBudgetForm();
-      });
+      }, 10);
   };
 
   const editBudget = (b: Budget) => { setBudgetForm(b); setIsEditingBudget(true); window.scrollTo({ top: 0, behavior: 'smooth' }); };
@@ -3534,8 +3546,21 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                             <textarea placeholder="Comentarios adicionales..." rows={3} value={budgetForm.comments} onChange={e => setBudgetForm({...budgetForm, comments: e.target.value})} className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg p-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none" />
                         </div>
                    </div>
-                   <button onClick={handleSaveBudget} className="w-full mt-6 bg-brand-teal hover:bg-teal-600 text-white font-bold py-3 rounded-xl shadow-lg transition-all flex items-center justify-center gap-2">
-                       <SaveIcon className="w-5 h-5" /> {isEditingBudget ? 'Actualizar Presupuesto' : 'Crear Presupuesto'}
+                   <button 
+                       onClick={handleSaveBudget} 
+                       disabled={isSavingBudget} 
+                       className="w-full mt-6 bg-brand-teal hover:bg-teal-600 disabled:opacity-50 text-white font-bold py-3 rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer"
+                   >
+                       {isSavingBudget ? (
+                           <>
+                               <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                               <span>Guardando Presupuesto...</span>
+                           </>
+                       ) : (
+                           <>
+                               <SaveIcon className="w-5 h-5" /> {isEditingBudget ? 'Actualizar Presupuesto' : 'Crear Presupuesto'}
+                           </>
+                       )}
                    </button>
                 </div>
 
@@ -3716,8 +3741,21 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                              </label>
                         </div>
 
-                        <button onClick={handleSaveProject} className="w-full mt-6 bg-brand-teal hover:bg-teal-600 text-white font-bold py-3 rounded-xl shadow-lg transition-all flex items-center justify-center gap-2">
-                             <SaveIcon className="w-5 h-5" /> {isEditingProject ? 'Actualizar Obra' : 'Crear Obra'}
+                        <button 
+                            onClick={handleSaveProject} 
+                            disabled={isSavingProject} 
+                            className="w-full mt-6 bg-brand-teal hover:bg-teal-600 disabled:opacity-50 text-white font-bold py-3 rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer"
+                        >
+                             {isSavingProject ? (
+                                 <>
+                                     <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                     <span>Guardando Obra...</span>
+                                 </>
+                             ) : (
+                                 <>
+                                     <SaveIcon className="w-5 h-5" /> {isEditingProject ? 'Actualizar Obra' : 'Crear Obra'}
+                                 </>
+                             )}
                         </button>
                    </div>
                 </div>

@@ -61,6 +61,7 @@ const VacationManager: React.FC<VacationManagerProps> = ({ role, currentUser, cu
     const [adminSelectedTech, setAdminSelectedTech] = useState('');
     const [newHoliday, setNewHoliday] = useState('');
     const [msg, setMsg] = useState('');
+    const [isSubmitting, setIsSubmitting] = useState(false);
     
     const [viewDate, setViewDate] = useState(new Date());
     const [showVisibilityConfig, setShowVisibilityConfig] = useState(false);
@@ -172,16 +173,23 @@ const VacationManager: React.FC<VacationManagerProps> = ({ role, currentUser, cu
             requestDate: toLocalISOString(new Date())
         };
 
-        onUpdate({
-            ...data,
-            vacationRequests: [newReq, ...(data.vacationRequests || [])]
-        });
+        setIsSubmitting(true);
+        setTimeout(async () => {
+            try {
+                await onUpdate({
+                    ...data,
+                    vacationRequests: [newReq, ...(data.vacationRequests || [])]
+                });
 
-        setStartDate('');
-        setEndDate('');
-        setAdminSelectedTech('');
-        setMsg(isManualAdmin ? '✓ Registro manual creado.' : '✓ Solicitud enviada correctamente.');
-        setTimeout(() => setMsg(''), 3000);
+                setStartDate('');
+                setEndDate('');
+                setAdminSelectedTech('');
+                setMsg(isManualAdmin ? '✓ Registro manual creado.' : '✓ Solicitud enviada correctamente.');
+                setTimeout(() => setMsg(''), 3000);
+            } finally {
+                setIsSubmitting(false);
+            }
+        }, 10);
     };
 
     const addHoliday = () => {
@@ -305,8 +313,17 @@ const VacationManager: React.FC<VacationManagerProps> = ({ role, currentUser, cu
                                     <input type="date" required value={endDate} onChange={e => setEndDate(e.target.value)} className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg p-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none dark:[color-scheme:dark]" />
                                 </div>
                             </div>
-                            <button type="submit" className="w-full bg-brand-teal hover:bg-teal-600 text-white font-bold py-3 rounded-xl shadow-lg transition-all flex items-center justify-center gap-2">
-                                <PlusIcon className="w-5 h-5" /> CREAR REGISTRO DIRECTO
+                            <button type="submit" disabled={isSubmitting} className="w-full bg-brand-teal hover:bg-teal-600 disabled:opacity-50 text-white font-bold py-3 rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer">
+                                {isSubmitting ? (
+                                    <>
+                                        <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                        <span>Procesando...</span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <PlusIcon className="w-5 h-5" /> CREAR REGISTRO DIRECTO
+                                    </>
+                                )}
                             </button>
                             {msg && <p className="text-center text-xs text-brand-teal dark:text-brand-lime font-bold">{msg}</p>}
                         </form>
@@ -565,8 +582,17 @@ const VacationManager: React.FC<VacationManagerProps> = ({ role, currentUser, cu
                                 </div>
                             )}
                             {msg && <p className={`text-xs text-center p-2 rounded ${msg.includes('✓') ? 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400' : 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400'}`}>{msg}</p>}
-                            <button type="submit" disabled={currentBusinessDays <= 0} className="w-full bg-brand-teal hover:bg-teal-600 disabled:opacity-50 text-white font-bold py-4 rounded-xl shadow-lg transition-all flex items-center justify-center gap-2">
-                                <CalendarIcon className="w-5 h-5" /> ENVIAR PETICIÓN
+                            <button type="submit" disabled={currentBusinessDays <= 0 || isSubmitting} className="w-full bg-brand-teal hover:bg-teal-600 disabled:opacity-50 text-white font-bold py-4 rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer">
+                                {isSubmitting ? (
+                                    <>
+                                        <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                        <span>Enviando Petición...</span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <CalendarIcon className="w-5 h-5" /> ENVIAR PETICIÓN
+                                    </>
+                                )}
                             </button>
                         </form>
                     </div>

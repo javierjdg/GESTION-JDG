@@ -45,6 +45,7 @@ const ReportForm: React.FC<ReportFormProps> = ({ projects, vehicles, technicians
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isCompressing, setIsCompressing] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [projectSearch, setProjectSearch] = useState('');
   
   const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -170,7 +171,7 @@ const ReportForm: React.FC<ReportFormProps> = ({ projects, vehicles, technicians
       toast.info("Las horas extra validadas han sido modificadas y pasarán a requerir nueva validación.");
     }
 
-    onSave({
+    const reportPayload: WorkReport = {
       id: formData.id || Date.now().toString(),
       technician: assignedTechnician,
       projectNum: formData.projectNum,
@@ -190,7 +191,16 @@ const ReportForm: React.FC<ReportFormProps> = ({ projects, vehicles, technicians
       imageNames: [],
       tickets: formData.tickets,
       materials: formData.materials,
-    });
+    };
+
+    setIsSubmitting(true);
+    setTimeout(async () => {
+      try {
+        await onSave(reportPayload);
+      } finally {
+        setIsSubmitting(false);
+      }
+    }, 10);
   };
 
   const handleExpenseChange = (field: string, value: string) => {
@@ -668,11 +678,20 @@ const ReportForm: React.FC<ReportFormProps> = ({ projects, vehicles, technicians
           </button>
           <button
             type="submit"
-            disabled={isCompressing}
-            className="flex-1 bg-brand-teal text-white py-3 rounded-lg hover:bg-teal-600 font-bold flex justify-center items-center gap-2 shadow-lg shadow-brand-teal/20 disabled:opacity-50"
+            disabled={isCompressing || isSubmitting}
+            className="flex-1 bg-brand-teal text-white py-3 rounded-lg hover:bg-teal-600 font-bold flex justify-center items-center gap-2 shadow-lg shadow-brand-teal/20 disabled:opacity-50 cursor-pointer"
           >
-            <SaveIcon className="w-5 h-5" />
-            {initialData ? 'Actualizar' : 'Guardar'}
+            {isSubmitting ? (
+              <>
+                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                <span>Guardando...</span>
+              </>
+            ) : (
+              <>
+                <SaveIcon className="w-5 h-5" />
+                {initialData ? 'Actualizar' : 'Guardar'}
+              </>
+            )}
           </button>
         </div>
       </form>
