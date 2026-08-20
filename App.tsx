@@ -118,6 +118,7 @@ export interface Budget {
   hasFolderData: boolean;
   isFinished: boolean;
   isAccepted: boolean;
+  isRejected?: boolean;
   comments: string;
 }
 

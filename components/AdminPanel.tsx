@@ -5,7 +5,7 @@ import { toast } from 'sonner';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { AppData, TechUser, WorkReport, ProjectData, Budget, ProjectAttachment } from '../App';
-import { TrashIcon, PlusIcon, DownloadIcon, UserIcon, TruckIcon, FileTextIcon, FilterIcon, EditIcon, SaveIcon, XIcon, LockIcon, UploadIcon, CloudIcon, CalendarIcon, ChartPieIcon, ClockIcon, EyeIcon, AlertIcon, ChevronDownIcon, ChevronRightIcon, BriefcaseIcon, SearchIcon, CheckCircleIcon, MapIcon, RefreshCwIcon, ShieldCheckIcon, ImageIcon } from './icons';
+import { TrashIcon, PlusIcon, DownloadIcon, UserIcon, TruckIcon, FileTextIcon, FilterIcon, EditIcon, SaveIcon, XIcon, LockIcon, UploadIcon, CloudIcon, CalendarIcon, ChartPieIcon, ClockIcon, EyeIcon, AlertIcon, ChevronDownIcon, ChevronRightIcon, BriefcaseIcon, SearchIcon, CheckCircleIcon, XCircleIcon, MapIcon, RefreshCwIcon, ShieldCheckIcon, ImageIcon } from './icons';
 import DailyOrganization, { DailyOrgData } from './DailyOrganization';
 
 interface AdminPanelProps {
@@ -308,10 +308,17 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
   // Estados para Presupuestos
   const [budgetForm, setBudgetForm] = useState<Budget>({
     id: '', budgetNum: '', name: '', client: '', deliveryDate: '',
-    excelName: '', hasFolderData: false, isFinished: false, isAccepted: false, comments: ''
+    excelName: '', hasFolderData: false, isFinished: false, isAccepted: false, isRejected: false, comments: ''
   });
   const [isEditingBudget, setIsEditingBudget] = useState(false);
   const [budgetSearchTerm, setBudgetSearchTerm] = useState('');
+  const [budgetFilterTab, setBudgetFilterTab] = useState<'all' | 'active' | 'finished' | 'accepted' | 'rejected'>('all');
+  const [expandedBudgetSections, setExpandedBudgetSections] = useState<Record<string, boolean>>({
+    active: true,
+    finished: true,
+    accepted: true,
+    rejected: true
+  });
   const [mapSearchTerm, setMapSearchTerm] = useState('');
 
   // Refs de inputs
@@ -495,26 +502,119 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
       setExpandedProjectSections(prev => ({ ...prev, [section]: !prev[section] }));
   };
 
+  const toggleBudgetSection = (section: string) => {
+      setExpandedBudgetSections(prev => ({ ...prev, [section]: !prev[section] }));
+  };
+
+  const categorizedBudgets = useMemo(() => {
+      const groups = {
+          active: [] as Budget[],
+          finished: [] as Budget[],
+          accepted: [] as Budget[],
+          rejected: [] as Budget[]
+      };
+
+      const lowerTerm = budgetSearchTerm.toLowerCase();
+      const filtered = (data.budgets || []).filter(b => 
+          (b.name && b.name.toLowerCase().includes(lowerTerm)) ||
+          (b.client && b.client.toLowerCase().includes(lowerTerm)) ||
+          (b.budgetNum && b.budgetNum.toLowerCase().includes(lowerTerm)) ||
+          (b.excelName && b.excelName.toLowerCase().includes(lowerTerm)) ||
+          (b.comments && b.comments.toLowerCase().includes(lowerTerm))
+      );
+
+      filtered.forEach(b => {
+          if (b.isRejected) {
+              groups.rejected.push(b);
+          } else if (b.isAccepted) {
+              groups.accepted.push(b);
+          } else if (b.isFinished) {
+              groups.finished.push(b);
+          } else {
+              groups.active.push(b);
+          }
+      });
+
+      // Ordenar cada grupo cronológicamente inverso (más nuevos primero)
+      Object.keys(groups).forEach(key => {
+          (groups as any)[key].sort((a: Budget, b: Budget) => (b.id || '').localeCompare(a.id || ''));
+      });
+
+      return groups;
+  }, [data.budgets, budgetSearchTerm]);
+
   const sortedBudgets = useMemo(() => {
       let result = [...(data.budgets || [])];
 
       if (budgetSearchTerm) {
           const lowerTerm = budgetSearchTerm.toLowerCase();
           result = result.filter(b => 
-              b.name.toLowerCase().includes(lowerTerm) ||
+              (b.name && b.name.toLowerCase().includes(lowerTerm)) ||
               (b.client && b.client.toLowerCase().includes(lowerTerm)) ||
-              (b.budgetNum && b.budgetNum.includes(lowerTerm)) ||
-              (b.excelName && b.excelName.toLowerCase().includes(lowerTerm))
+              (b.budgetNum && b.budgetNum.toLowerCase().includes(lowerTerm)) ||
+              (b.excelName && b.excelName.toLowerCase().includes(lowerTerm)) ||
+              (b.comments && b.comments.toLowerCase().includes(lowerTerm))
           );
       }
 
       return result.sort((a, b) => {
-          // 1. Terminados al final
           if (a.isFinished !== b.isFinished) return a.isFinished ? 1 : -1;
-          // 2. Orden cronológico inverso (más nuevos primero)
           return (b.id || '').localeCompare(a.id || '');
       });
   }, [data.budgets, budgetSearchTerm]);
+
+  const toggleBudgetAccepted = async (b: Budget) => {
+      const newAccepted = !b.isAccepted;
+      const updated: Budget = {
+          ...b,
+          isAccepted: newAccepted,
+          isRejected: newAccepted ? false : b.isRejected
+      };
+      setData(prev => ({
+          ...prev,
+          budgets: (prev.budgets || []).map(item => item.id === b.id ? updated : item)
+      }));
+      if (newAccepted) {
+          const newProjectId = generateNextProjectId();
+          const newProject: ProjectData = {
+              id: newProjectId, name: b.name, client: b.client,
+              budgetNum: b.budgetNum, valuation: 'PRESUPUESTO', responsibleTech: '',
+              startDate: new Date().toISOString().split('T')[0], isFinished: false, isInvoiced: false,
+              hasWarning: false, warningDate: '', notes: `Generado desde presupuesto: ${b.comments || ''}`
+          };
+          await onSaveProject(newProject);
+          toast.success(`✅ Presupuesto aceptado y Obra creada con ID: ${newProjectId}`);
+      } else {
+          toast.success("Presupuesto marcado como no aceptado");
+      }
+  };
+
+  const toggleBudgetRejected = (b: Budget) => {
+      const newRejected = !b.isRejected;
+      const updated: Budget = {
+          ...b,
+          isRejected: newRejected,
+          isAccepted: newRejected ? false : b.isAccepted
+      };
+      setData(prev => ({
+          ...prev,
+          budgets: (prev.budgets || []).map(item => item.id === b.id ? updated : item)
+      }));
+      toast.success(newRejected ? "Presupuesto marcado como Rechazado" : "Presupuesto desmarcado de Rechazado");
+  };
+
+  const toggleBudgetFinished = (b: Budget) => {
+      const newFinished = !b.isFinished;
+      const updated: Budget = {
+          ...b,
+          isFinished: newFinished
+      };
+      setData(prev => ({
+          ...prev,
+          budgets: (prev.budgets || []).map(item => item.id === b.id ? updated : item)
+      }));
+      toast.success(newFinished ? "Presupuesto marcado como Terminado" : "Presupuesto desmarcado de Terminado");
+  };
 
   const handleAdd = (type: 'techs' | 'vehicles') => {
     if (!newItemName.trim()) return;
@@ -592,7 +692,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
 
   const editBudget = (b: Budget) => { setBudgetForm(b); setIsEditingBudget(true); window.scrollTo({ top: 0, behavior: 'smooth' }); };
   const deleteBudget = (id: string) => { if (!window.confirm("¿Eliminar presupuesto?")) return; setData(prev => ({ ...prev, budgets: prev.budgets.filter(b => b.id !== id) })); };
-  const resetBudgetForm = () => { setBudgetForm({ id: '', budgetNum: '', name: '', client: '', deliveryDate: '', excelName: '', hasFolderData: false, isFinished: false, isAccepted: false, comments: '' }); setIsEditingBudget(false); };
+  const resetBudgetForm = () => { setBudgetForm({ id: '', budgetNum: '', name: '', client: '', deliveryDate: '', excelName: '', hasFolderData: false, isFinished: false, isAccepted: false, isRejected: false, comments: '' }); setIsEditingBudget(false); };
 
   const editProject = (p: ProjectData) => { setProjectForm(p); setIsEditingProject(true); setIdMode('AUTO'); window.scrollTo({ top: 0, behavior: 'smooth' }); };
   const deleteProject = (id: string) => { 
@@ -2271,13 +2371,11 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
   };
 
   const getBudgetStyle = (b: Budget) => {
-      if (b.isFinished || b.isAccepted || b.deliveryDate) return 'bg-white dark:bg-brand-panel border-gray-200 dark:border-gray-700';
-      const created = parseInt(b.id);
-      if (isNaN(created)) return 'bg-white dark:bg-brand-panel border-gray-200 dark:border-gray-700';
-      const diff = Math.floor((Date.now() - created) / (1000 * 60 * 60 * 24));
-      if (diff < 2) return 'bg-green-50 dark:bg-green-900/20 border-green-500 dark:border-green-600';
-      if (diff < 5) return 'bg-orange-50 dark:bg-orange-900/20 border-orange-500 dark:border-orange-600';
-      return 'bg-red-50 dark:bg-red-900/20 border-red-500 dark:border-red-600 animate-pulse-slow';
+      if (b.isRejected) return 'bg-red-50/60 dark:bg-red-950/20 border-red-200 dark:border-red-900/40 opacity-85';
+      if (b.isAccepted) return 'bg-green-50/60 dark:bg-green-950/20 border-green-200 dark:border-green-900/40';
+      if (b.isFinished) return 'bg-teal-50/60 dark:bg-teal-950/20 border-teal-200 dark:border-teal-900/40';
+      if (!b.deliveryDate) return 'bg-amber-50/60 dark:bg-amber-950/20 border-amber-300 dark:border-amber-800';
+      return 'bg-white dark:bg-brand-panel border-gray-200 dark:border-gray-700';
   };
 
   const openGoogleCalendar = (p: ProjectData) => {
@@ -2439,6 +2537,109 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                   <button onClick={() => generateProjectPDF(p)} className="p-2 text-gray-400 hover:text-brand-teal bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors" title="Generar PDF de Obra"><FileTextIcon className="w-4 h-4" /></button>
                   <button onClick={() => editProject(p)} className="p-2 text-gray-400 hover:text-brand-teal bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors"><EditIcon className="w-4 h-4" /></button>
                   <button onClick={() => deleteProject(p.id)} className="p-2 text-gray-400 hover:text-red-500 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors"><TrashIcon className="w-4 h-4" /></button>
+              </div>
+          </div>
+      );
+  };
+
+  // RENDER DE FILA DE PRESUPUESTO
+  const renderBudgetRow = (b: Budget) => {
+      const budgetStyle = getBudgetStyle(b);
+      return (
+          <div key={b.id} className={`p-5 rounded-xl border flex flex-col md:flex-row justify-between items-start md:items-center gap-4 group hover:border-brand-teal/50 transition-all shadow-sm ${budgetStyle}`}>
+              <div className="flex-1 min-w-0 w-full">
+                  <div className="flex flex-wrap items-center gap-2 mb-1.5">
+                      {b.budgetNum && (
+                          <span className="font-mono font-black px-2 py-0.5 rounded text-xs tracking-wider bg-brand-teal/10 dark:bg-brand-teal/20 text-brand-teal">
+                              #{b.budgetNum}
+                          </span>
+                      )}
+                      <span className="font-bold uppercase text-sm text-gray-900 dark:text-white truncate">
+                          {b.name}
+                      </span>
+                      {b.isAccepted && (
+                          <span className="bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300 text-[9px] font-black px-2 py-0.5 rounded uppercase border border-green-200 dark:border-green-800 flex items-center gap-1">
+                              ✓ Aceptado
+                          </span>
+                      )}
+                      {b.isRejected && (
+                          <span className="bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 text-[9px] font-black px-2 py-0.5 rounded uppercase border border-red-200 dark:border-red-800 flex items-center gap-1">
+                              ✕ Rechazado
+                          </span>
+                      )}
+                      {b.isFinished && !b.isAccepted && !b.isRejected && (
+                          <span className="bg-teal-100 dark:bg-teal-900/40 text-teal-700 dark:text-teal-300 text-[9px] font-black px-2 py-0.5 rounded uppercase border border-teal-200 dark:border-teal-800">
+                              Terminado
+                          </span>
+                      )}
+                      {b.hasFolderData && (
+                          <span className="bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 text-[9px] font-black px-2 py-0.5 rounded uppercase border border-blue-200 dark:border-blue-800">
+                              Datos Carpeta
+                          </span>
+                      )}
+                      {!b.isFinished && !b.isAccepted && !b.isRejected && !b.deliveryDate && (
+                          <span className="text-[9px] px-2 py-0.5 rounded bg-amber-100 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 font-bold border border-amber-200 dark:border-amber-900/40 animate-pulse">
+                              Sin fecha
+                          </span>
+                      )}
+                  </div>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-2 text-[10px] text-gray-400 uppercase font-medium">
+                      <div>
+                          <span className="block text-gray-500 dark:text-gray-600 mb-0.5">Cliente</span>
+                          <span className="text-gray-700 dark:text-gray-300 font-semibold truncate block">{b.client || '-'}</span>
+                      </div>
+                      <div>
+                          <span className="block text-gray-500 dark:text-gray-600 mb-0.5">Fecha Entrega</span>
+                          <span className="text-gray-700 dark:text-gray-300 font-semibold truncate block">{b.deliveryDate || 'No fijada'}</span>
+                      </div>
+                      <div className="col-span-2">
+                          <span className="block text-gray-500 dark:text-gray-600 mb-0.5">Archivo Excel</span>
+                          <span className="text-gray-700 dark:text-gray-300 font-mono truncate block">{b.excelName || '-'}</span>
+                      </div>
+                  </div>
+                  {b.comments && (
+                      <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-800">
+                          <p className="text-[10px] text-gray-500 italic truncate w-full">{b.comments}</p>
+                      </div>
+                  )}
+              </div>
+              <div className="flex items-center gap-2 self-end md:self-center flex-shrink-0">
+                  <button 
+                      onClick={() => toggleBudgetAccepted(b)} 
+                      className={`p-2 rounded-lg transition-colors text-xs font-bold flex items-center gap-1 cursor-pointer ${
+                          b.isAccepted 
+                              ? 'bg-green-600 text-white hover:bg-green-700' 
+                              : 'bg-gray-100 dark:bg-gray-800 text-gray-500 hover:text-green-600 hover:bg-green-50 dark:hover:bg-green-950/30'
+                      }`}
+                      title={b.isAccepted ? 'Desmarcar Aceptado' : 'Aceptar Presupuesto (Crear Obra)'}
+                  >
+                      <CheckCircleIcon className="w-4 h-4" />
+                  </button>
+                  <button 
+                      onClick={() => toggleBudgetRejected(b)} 
+                      className={`p-2 rounded-lg transition-colors text-xs font-bold flex items-center gap-1 cursor-pointer ${
+                          b.isRejected 
+                              ? 'bg-red-600 text-white hover:bg-red-700' 
+                              : 'bg-gray-100 dark:bg-gray-800 text-gray-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30'
+                      }`}
+                      title={b.isRejected ? 'Desmarcar Rechazado' : 'Marcar como Rechazado'}
+                  >
+                      <XCircleIcon className="w-4 h-4" />
+                  </button>
+                  <button 
+                      onClick={() => editBudget(b)} 
+                      className="p-2 text-gray-400 hover:text-brand-teal bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors cursor-pointer" 
+                      title="Editar presupuesto"
+                  >
+                      <EditIcon className="w-4 h-4" />
+                  </button>
+                  <button 
+                      onClick={() => deleteBudget(b.id)} 
+                      className="p-2 text-gray-400 hover:text-red-500 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors cursor-pointer" 
+                      title="Eliminar presupuesto"
+                  >
+                      <TrashIcon className="w-4 h-4" />
+                  </button>
               </div>
           </div>
       );
@@ -3527,18 +3728,46 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                                 <input type="text" value={budgetForm.excelName} onChange={e => setBudgetForm({...budgetForm, excelName: e.target.value})} className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg p-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none" />
                             </div>
                         </div>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 py-2">
-                             <label className="flex items-center gap-3 cursor-pointer bg-gray-100 dark:bg-gray-800/50 p-2 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-gray-400 dark:hover:border-gray-500 transition-colors">
-                                 <input type="checkbox" checked={budgetForm.hasFolderData} onChange={e => setBudgetForm({...budgetForm, hasFolderData: e.target.checked})} className="w-5 h-5 rounded border-gray-400 dark:border-gray-600 text-brand-teal bg-white dark:bg-gray-800 focus:ring-0" />
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 py-2">
+                             <label className="flex items-center gap-3 cursor-pointer bg-gray-100 dark:bg-gray-800/50 p-2.5 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-gray-400 dark:hover:border-gray-500 transition-colors">
+                                 <input type="checkbox" checked={budgetForm.hasFolderData} onChange={e => setBudgetForm({...budgetForm, hasFolderData: e.target.checked})} className="w-4 h-4 rounded border-gray-400 dark:border-gray-600 text-brand-teal bg-white dark:bg-gray-800 focus:ring-0 cursor-pointer" />
                                  <span className="text-xs font-bold uppercase text-gray-700 dark:text-white">Datos Carpeta</span>
                              </label>
-                             <label className="flex items-center gap-3 cursor-pointer bg-gray-100 dark:bg-gray-800/50 p-2 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-gray-400 dark:hover:border-gray-500 transition-colors">
-                                 <input type="checkbox" checked={budgetForm.isFinished} onChange={e => setBudgetForm({...budgetForm, isFinished: e.target.checked})} className="w-5 h-5 rounded border-gray-400 dark:border-gray-600 text-brand-teal bg-white dark:bg-gray-800 focus:ring-0" />
+                             <label className="flex items-center gap-3 cursor-pointer bg-gray-100 dark:bg-gray-800/50 p-2.5 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-gray-400 dark:hover:border-gray-500 transition-colors">
+                                 <input type="checkbox" checked={budgetForm.isFinished} onChange={e => setBudgetForm({...budgetForm, isFinished: e.target.checked})} className="w-4 h-4 rounded border-gray-400 dark:border-gray-600 text-brand-teal bg-white dark:bg-gray-800 focus:ring-0 cursor-pointer" />
                                  <span className="text-xs font-bold uppercase text-gray-700 dark:text-white">Terminado</span>
                              </label>
-                             <label className="flex items-center gap-3 cursor-pointer bg-gray-100 dark:bg-gray-800/50 p-2 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-gray-400 dark:hover:border-gray-500 transition-colors">
-                                 <input type="checkbox" checked={budgetForm.isAccepted} onChange={e => setBudgetForm({...budgetForm, isAccepted: e.target.checked})} className="w-5 h-5 rounded border-gray-400 dark:border-gray-600 text-brand-teal bg-white dark:bg-gray-800 focus:ring-0" />
+                             <label className="flex items-center gap-3 cursor-pointer bg-gray-100 dark:bg-gray-800/50 p-2.5 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-gray-400 dark:hover:border-gray-500 transition-colors">
+                                 <input 
+                                     type="checkbox" 
+                                     checked={budgetForm.isAccepted} 
+                                     onChange={e => {
+                                         const val = e.target.checked;
+                                         setBudgetForm({
+                                             ...budgetForm, 
+                                             isAccepted: val, 
+                                             isRejected: val ? false : budgetForm.isRejected
+                                         });
+                                     }} 
+                                     className="w-4 h-4 rounded border-gray-400 dark:border-gray-600 text-brand-teal bg-white dark:bg-gray-800 focus:ring-0 cursor-pointer" 
+                                 />
                                  <span className="text-xs font-bold uppercase text-gray-700 dark:text-white">Aceptado (Crear Obra)</span>
+                             </label>
+                             <label className="flex items-center gap-3 cursor-pointer bg-gray-100 dark:bg-gray-800/50 p-2.5 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-gray-400 dark:hover:border-gray-500 transition-colors">
+                                 <input 
+                                     type="checkbox" 
+                                     checked={budgetForm.isRejected || false} 
+                                     onChange={e => {
+                                         const val = e.target.checked;
+                                         setBudgetForm({
+                                             ...budgetForm, 
+                                             isRejected: val, 
+                                             isAccepted: val ? false : budgetForm.isAccepted
+                                         });
+                                     }} 
+                                     className="w-4 h-4 rounded border-gray-400 dark:border-gray-600 text-red-500 bg-white dark:bg-gray-800 focus:ring-0 cursor-pointer" 
+                                 />
+                                 <span className="text-xs font-bold uppercase text-red-600 dark:text-red-400">Rechazado</span>
                              </label>
                         </div>
                         <div>
@@ -3570,7 +3799,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                             <FileTextIcon className="w-4 h-4" /> Listado de Presupuestos
                         </h3>
                         <div className="flex gap-2">
-                            <button onClick={() => handleExportJSON('budgets')} className="text-[10px] font-bold uppercase bg-gray-200 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:text-brand-teal hover:bg-gray-300 dark:hover:bg-gray-700 px-3 py-1.5 rounded-full transition-colors flex items-center gap-1 shadow-sm">
+                            <button onClick={() => handleExportJSON('budgets')} className="text-[10px] font-bold uppercase bg-gray-200 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:text-brand-teal hover:bg-gray-300 dark:hover:bg-gray-700 px-3 py-1.5 rounded-full transition-colors flex items-center gap-1 shadow-sm cursor-pointer">
                                 <DownloadIcon className="w-3 h-3" /> Exportar
                             </button>
                             <label className="text-[10px] font-bold uppercase bg-brand-teal/10 dark:bg-brand-teal/20 text-brand-teal hover:bg-brand-teal hover:text-white px-3 py-1.5 rounded-full transition-colors flex items-center gap-1 cursor-pointer shadow-sm">
@@ -3580,43 +3809,204 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                         </div>
                     </div>
 
-                    <div className="relative">
-                        <input 
-                            type="text" 
-                            placeholder="🔍 Buscar presupuesto por Nombre, Cliente, Nº..." 
-                            value={budgetSearchTerm} 
-                            onChange={(e) => setBudgetSearchTerm(e.target.value)} 
-                            className="w-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl pl-10 pr-4 py-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none transition-colors shadow-sm" 
-                        />
-                        <div className="absolute left-3 top-3.5 text-gray-400"><SearchIcon className="w-4 h-4" /></div>
+                    <div className="flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
+                        <div className="relative flex-1">
+                            <input 
+                                type="text" 
+                                placeholder="🔍 Buscar presupuesto por Nombre, Cliente, Nº, Archivo..." 
+                                value={budgetSearchTerm} 
+                                onChange={(e) => setBudgetSearchTerm(e.target.value)} 
+                                className="w-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl pl-10 pr-4 py-2.5 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none transition-colors shadow-sm" 
+                            />
+                            <div className="absolute left-3 top-3 text-gray-400"><SearchIcon className="w-4 h-4" /></div>
+                        </div>
+
+                        {/* SUB-PESTAÑAS DE FILTRO */}
+                        <div className="flex flex-wrap gap-1.5 bg-gray-100 dark:bg-gray-900/60 p-1.5 rounded-xl border border-gray-200 dark:border-gray-800">
+                            <button
+                                onClick={() => setBudgetFilterTab('all')}
+                                className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase transition-all flex items-center gap-1.5 cursor-pointer ${
+                                    budgetFilterTab === 'all'
+                                        ? 'bg-brand-teal text-white shadow-sm'
+                                        : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-200/60 dark:hover:bg-gray-800'
+                                }`}
+                            >
+                                <span>Todos</span>
+                                <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${budgetFilterTab === 'all' ? 'bg-white/20 text-white' : 'bg-gray-200 dark:bg-gray-800 text-gray-600 dark:text-gray-400'}`}>
+                                    {(data.budgets || []).length}
+                                </span>
+                            </button>
+                            <button
+                                onClick={() => setBudgetFilterTab('active')}
+                                className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase transition-all flex items-center gap-1.5 cursor-pointer ${
+                                    budgetFilterTab === 'active'
+                                        ? 'bg-amber-600 text-white shadow-sm'
+                                        : 'text-amber-700 dark:text-amber-400 hover:bg-amber-100/60 dark:hover:bg-amber-950/40'
+                                }`}
+                            >
+                                <span>Pendientes</span>
+                                <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${budgetFilterTab === 'active' ? 'bg-white/20 text-white' : 'bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300'}`}>
+                                    {categorizedBudgets.active.length}
+                                </span>
+                            </button>
+                            <button
+                                onClick={() => setBudgetFilterTab('finished')}
+                                className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase transition-all flex items-center gap-1.5 cursor-pointer ${
+                                    budgetFilterTab === 'finished'
+                                        ? 'bg-teal-600 text-white shadow-sm'
+                                        : 'text-teal-700 dark:text-teal-400 hover:bg-teal-100/60 dark:hover:bg-teal-950/40'
+                                }`}
+                            >
+                                <span>Terminados</span>
+                                <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${budgetFilterTab === 'finished' ? 'bg-white/20 text-white' : 'bg-teal-100 dark:bg-teal-950/60 text-teal-800 dark:text-teal-300'}`}>
+                                    {categorizedBudgets.finished.length}
+                                </span>
+                            </button>
+                            <button
+                                onClick={() => setBudgetFilterTab('accepted')}
+                                className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase transition-all flex items-center gap-1.5 cursor-pointer ${
+                                    budgetFilterTab === 'accepted'
+                                        ? 'bg-green-600 text-white shadow-sm'
+                                        : 'text-green-700 dark:text-green-400 hover:bg-green-100/60 dark:hover:bg-green-950/40'
+                                }`}
+                            >
+                                <span>Aceptados</span>
+                                <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${budgetFilterTab === 'accepted' ? 'bg-white/20 text-white' : 'bg-green-100 dark:bg-green-950/60 text-green-800 dark:text-green-300'}`}>
+                                    {categorizedBudgets.accepted.length}
+                                </span>
+                            </button>
+                            <button
+                                onClick={() => setBudgetFilterTab('rejected')}
+                                className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase transition-all flex items-center gap-1.5 cursor-pointer ${
+                                    budgetFilterTab === 'rejected'
+                                        ? 'bg-red-600 text-white shadow-sm'
+                                        : 'text-red-700 dark:text-red-400 hover:bg-red-100/60 dark:hover:bg-red-950/40'
+                                }`}
+                            >
+                                <span>Rechazados</span>
+                                <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${budgetFilterTab === 'rejected' ? 'bg-white/20 text-white' : 'bg-red-100 dark:bg-red-950/60 text-red-800 dark:text-red-300'}`}>
+                                    {categorizedBudgets.rejected.length}
+                                </span>
+                            </button>
+                        </div>
                     </div>
 
-                    <div className="space-y-3">
-                        {sortedBudgets.map((b) => (
-                             <div key={b.id} className={`p-5 rounded-xl border flex flex-col md:flex-row justify-between items-start md:items-center gap-4 group hover:border-brand-teal/50 transition-all shadow-sm ${getBudgetStyle(b)}`}>
-                                  <div className="flex-1 w-full">
-                                      <div className="flex flex-wrap items-center gap-3 mb-2">
-                                          <span className="font-black uppercase text-sm text-gray-900 dark:text-white truncate">{b.name}</span>
-                                          {b.budgetNum && <span className="text-xs font-mono text-gray-500 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded">#{b.budgetNum}</span>}
-                                          {b.isAccepted && <span className="bg-green-100 dark:bg-green-900/40 text-green-600 dark:text-green-400 text-[9px] font-black px-2 py-0.5 rounded uppercase border border-green-200 dark:border-green-800">Aceptado</span>}
-                                          {b.isFinished && <span className="bg-teal-100 dark:bg-teal-900/40 text-teal-600 dark:text-teal-400 text-[9px] font-black px-2 py-0.5 rounded uppercase border border-teal-200 dark:border-teal-800">Terminado</span>}
-                                          {b.hasFolderData && <span className="bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 text-[9px] font-black px-2 py-0.5 rounded uppercase border border-blue-200 dark:border-blue-800">Datos Carpeta</span>}
-                                          {getBudgetStyle(b).includes('red') && <span className="text-[9px] px-2 py-0.5 rounded ml-2 bg-red-100 text-red-700 font-bold animate-pulse">Sin fecha</span>}
-                                      </div>
-                                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-[10px] text-gray-400 uppercase font-medium">
-                                          <div><span className="block text-gray-500 dark:text-gray-600 mb-0.5">Cliente</span><span className="text-gray-700 dark:text-gray-300">{b.client}</span></div>
-                                          <div><span className="block text-gray-500 dark:text-gray-600 mb-0.5">Entrega</span><span className="text-gray-700 dark:text-gray-300">{b.deliveryDate || '-'}</span></div>
-                                          <div className="col-span-2"><span className="block text-gray-500 dark:text-gray-600 mb-0.5">Excel</span><span className="text-gray-700 dark:text-gray-300 truncate">{b.excelName || '-'}</span></div>
-                                      </div>
-                                      {b.comments && <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-800"><p className="text-[10px] text-gray-500 italic truncate">{b.comments}</p></div>}
-                                  </div>
-                                  <div className="flex gap-2 self-end md:self-center">
-                                      <button onClick={() => editBudget(b)} className="p-2 text-gray-400 hover:text-brand-teal bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors"><EditIcon className="w-4 h-4" /></button>
-                                      <button onClick={() => deleteBudget(b.id)} className="p-2 text-gray-400 hover:text-red-500 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors"><TrashIcon className="w-4 h-4" /></button>
-                                  </div>
-                             </div>
-                        ))}
-                        {sortedBudgets.length === 0 && <p className="text-center py-8 text-gray-500 text-xs italic">No hay presupuestos registrados.</p>}
+                    <div className="space-y-6 pt-2">
+                        {/* SECCIÓN 1: PENDIENTES / EN ELABORACIÓN */}
+                        {(budgetFilterTab === 'all' || budgetFilterTab === 'active') && (
+                            <div className="space-y-3">
+                                <button 
+                                    onClick={() => toggleBudgetSection('active')}
+                                    className="w-full flex items-center justify-between p-3 rounded-xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40 text-amber-800 dark:text-amber-300 font-bold uppercase text-xs tracking-wider cursor-pointer hover:bg-amber-100/60 transition-colors"
+                                >
+                                    <div className="flex items-center gap-2">
+                                        <ChevronDownIcon className={`w-4 h-4 transition-transform duration-200 ${expandedBudgetSections.active ? '' : '-rotate-90'}`} />
+                                        <span>⏳ Presupuestos Pendientes / En Elaboración ({categorizedBudgets.active.length})</span>
+                                    </div>
+                                    <span className="text-[10px] font-normal lowercase text-amber-700 dark:text-amber-400">
+                                        {expandedBudgetSections.active ? 'Plegar' : 'Desplegar'}
+                                    </span>
+                                </button>
+                                {expandedBudgetSections.active && (
+                                    <div className="space-y-3 pl-1 sm:pl-2">
+                                        {categorizedBudgets.active.map(b => renderBudgetRow(b))}
+                                        {categorizedBudgets.active.length === 0 && (
+                                            <p className="text-center py-4 text-gray-400 text-xs italic bg-gray-50/50 dark:bg-gray-900/20 rounded-xl border border-dashed border-gray-200 dark:border-gray-800">
+                                                No hay presupuestos pendientes.
+                                            </p>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {/* SECCIÓN 2: TERMINADOS */}
+                        {(budgetFilterTab === 'all' || budgetFilterTab === 'finished') && (
+                            <div className="space-y-3">
+                                <button 
+                                    onClick={() => toggleBudgetSection('finished')}
+                                    className="w-full flex items-center justify-between p-3 rounded-xl bg-teal-50 dark:bg-teal-950/20 border border-teal-200 dark:border-teal-900/40 text-teal-800 dark:text-teal-300 font-bold uppercase text-xs tracking-wider cursor-pointer hover:bg-teal-100/60 transition-colors"
+                                >
+                                    <div className="flex items-center gap-2">
+                                        <ChevronDownIcon className={`w-4 h-4 transition-transform duration-200 ${expandedBudgetSections.finished ? '' : '-rotate-90'}`} />
+                                        <span>📋 Presupuestos Terminados ({categorizedBudgets.finished.length})</span>
+                                    </div>
+                                    <span className="text-[10px] font-normal lowercase text-teal-700 dark:text-teal-400">
+                                        {expandedBudgetSections.finished ? 'Plegar' : 'Desplegar'}
+                                    </span>
+                                </button>
+                                {expandedBudgetSections.finished && (
+                                    <div className="space-y-3 pl-1 sm:pl-2">
+                                        {categorizedBudgets.finished.map(b => renderBudgetRow(b))}
+                                        {categorizedBudgets.finished.length === 0 && (
+                                            <p className="text-center py-4 text-gray-400 text-xs italic bg-gray-50/50 dark:bg-gray-900/20 rounded-xl border border-dashed border-gray-200 dark:border-gray-800">
+                                                No hay presupuestos terminados.
+                                            </p>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {/* SECCIÓN 3: ACEPTADOS */}
+                        {(budgetFilterTab === 'all' || budgetFilterTab === 'accepted') && (
+                            <div className="space-y-3">
+                                <button 
+                                    onClick={() => toggleBudgetSection('accepted')}
+                                    className="w-full flex items-center justify-between p-3 rounded-xl bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-900/40 text-green-800 dark:text-green-300 font-bold uppercase text-xs tracking-wider cursor-pointer hover:bg-green-100/60 transition-colors"
+                                >
+                                    <div className="flex items-center gap-2">
+                                        <ChevronDownIcon className={`w-4 h-4 transition-transform duration-200 ${expandedBudgetSections.accepted ? '' : '-rotate-90'}`} />
+                                        <span>✅ Presupuestos Aceptados ({categorizedBudgets.accepted.length})</span>
+                                    </div>
+                                    <span className="text-[10px] font-normal lowercase text-green-700 dark:text-green-400">
+                                        {expandedBudgetSections.accepted ? 'Plegar' : 'Desplegar'}
+                                    </span>
+                                </button>
+                                {expandedBudgetSections.accepted && (
+                                    <div className="space-y-3 pl-1 sm:pl-2">
+                                        {categorizedBudgets.accepted.map(b => renderBudgetRow(b))}
+                                        {categorizedBudgets.accepted.length === 0 && (
+                                            <p className="text-center py-4 text-gray-400 text-xs italic bg-gray-50/50 dark:bg-gray-900/20 rounded-xl border border-dashed border-gray-200 dark:border-gray-800">
+                                                No hay presupuestos aceptados.
+                                            </p>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {/* SECCIÓN 4: RECHAZADOS */}
+                        {(budgetFilterTab === 'all' || budgetFilterTab === 'rejected') && (
+                            <div className="space-y-3">
+                                <button 
+                                    onClick={() => toggleBudgetSection('rejected')}
+                                    className="w-full flex items-center justify-between p-3 rounded-xl bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/40 text-red-800 dark:text-red-300 font-bold uppercase text-xs tracking-wider cursor-pointer hover:bg-red-100/60 transition-colors"
+                                >
+                                    <div className="flex items-center gap-2">
+                                        <ChevronDownIcon className={`w-4 h-4 transition-transform duration-200 ${expandedBudgetSections.rejected ? '' : '-rotate-90'}`} />
+                                        <span>❌ Presupuestos Rechazados ({categorizedBudgets.rejected.length})</span>
+                                    </div>
+                                    <span className="text-[10px] font-normal lowercase text-red-700 dark:text-red-400">
+                                        {expandedBudgetSections.rejected ? 'Plegar' : 'Desplegar'}
+                                    </span>
+                                </button>
+                                {expandedBudgetSections.rejected && (
+                                    <div className="space-y-3 pl-1 sm:pl-2">
+                                        {categorizedBudgets.rejected.map(b => renderBudgetRow(b))}
+                                        {categorizedBudgets.rejected.length === 0 && (
+                                            <p className="text-center py-4 text-gray-400 text-xs italic bg-gray-50/50 dark:bg-gray-900/20 rounded-xl border border-dashed border-gray-200 dark:border-gray-800">
+                                                No hay presupuestos rechazados.
+                                            </p>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {(data.budgets || []).length === 0 && (
+                            <p className="text-center py-8 text-gray-500 text-xs italic">No hay presupuestos registrados.</p>
+                        )}
                     </div>
                 </div>
             </div>
