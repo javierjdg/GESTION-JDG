@@ -292,15 +292,17 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
   const [projectForm, setProjectForm] = useState<ProjectData>({
     id: '', name: '', client: '', budgetNum: '', valuation: 'POR HORAS',
     responsibleTech: '', startDate: '', isFinished: false, isInvoiced: false,
+    invoiceNum: '',
     hasWarning: false, warningDate: '', notes: '', location: '', attachments: []
   });
   const [isEditingProject, setIsEditingProject] = useState(false);
   const [idMode, setIdMode] = useState<'AUTO' | 'MANUAL'>('AUTO');
   const [projectSearchTerm, setProjectSearchTerm] = useState('');
+  const [projectFilterTab, setProjectFilterTab] = useState<'all' | 'active' | 'warning' | 'finished' | 'invoiced'>('all');
   
   // Estado para las secciones desplegables de Obras
   const [expandedProjectSections, setExpandedProjectSections] = useState<Record<string, boolean>>({
-      green: true, orange: true, red: true, blue: true, finished: false, invoiced: false
+      green: true, orange: true, red: true, blue: true, finished: true, invoiced: true
   });
 
   const archiveRef = useRef<HTMLDivElement>(null);
@@ -472,7 +474,12 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
       const filtered = (data.projectsDetailed || []).filter(p => 
           p.id.toLowerCase().includes(lowerTerm) || 
           p.name.toLowerCase().includes(lowerTerm) ||
-          (p.client && p.client.toLowerCase().includes(lowerTerm))
+          (p.client && p.client.toLowerCase().includes(lowerTerm)) ||
+          (p.responsibleTech && p.responsibleTech.toLowerCase().includes(lowerTerm)) ||
+          (p.invoiceNum && p.invoiceNum.toLowerCase().includes(lowerTerm)) ||
+          (p.budgetNum && p.budgetNum.toLowerCase().includes(lowerTerm)) ||
+          (p.location && p.location.toLowerCase().includes(lowerTerm)) ||
+          (p.notes && p.notes.toLowerCase().includes(lowerTerm))
       );
 
       filtered.forEach(p => {
@@ -630,9 +637,43 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
     setNewTechPwd('');
   };
 
+  const handleQuickInvoice = async (p: ProjectData) => {
+      if (p.isInvoiced) {
+          const action = window.prompt(
+              `Obra ${p.id} ya está facturada con Factura Nº "${p.invoiceNum || ''}".\n\n- Escribe un nuevo número de factura para actualizarlo.\n- Escribe "BORRAR" para desmarcarla como facturada.\n- O pulsa Cancelar para salir sin cambios:`,
+              p.invoiceNum || ''
+          );
+          if (action === null) return;
+          if (action.trim().toUpperCase() === 'BORRAR' || action.trim() === '') {
+              await onSaveProject({ ...p, isInvoiced: false, invoiceNum: '' });
+              toast.success(`Obra ${p.id} desmarcada de facturada.`);
+          } else {
+              await onSaveProject({ ...p, isInvoiced: true, invoiceNum: action.trim() });
+              toast.success(`Factura actualizada para la obra ${p.id}: ${action.trim()}`);
+          }
+      } else {
+          const invNum = window.prompt(
+              `Introduce el NÚMERO DE FACTURA obligatorio para dar por facturada la obra ${p.id} (${p.name}):`,
+              p.invoiceNum || ''
+          );
+          if (invNum === null) return;
+          if (!invNum.trim()) {
+              toast.error("⚠️ Para dar la obra por facturada es OBLIGATORIO indicar el Número de Factura.");
+              return;
+          }
+          await onSaveProject({ ...p, isInvoiced: true, invoiceNum: invNum.trim(), isFinished: true });
+          toast.success(`✅ Obra ${p.id} marcada como FACTURADA (Factura: ${invNum.trim()})`);
+      }
+  };
+
   const handleSaveProject = () => {
-      if (!projectForm.name || !projectForm.client) { toast.error("Faltan datos obligatorios"); return; }
+      if (!projectForm.name || !projectForm.client) { toast.error("Faltan datos obligatorios (Nombre y Cliente)"); return; }
       if (!projectForm.id) { toast.error("El ID de obra es obligatorio."); return; }
+
+      if (projectForm.isInvoiced && !projectForm.invoiceNum?.trim()) {
+          toast.error("⚠️ Para dar por facturada la obra es OBLIGATORIO indicar el Número de Factura.");
+          return;
+      }
 
       if (!isEditingProject) {
           const exists = data.projectsDetailed.some(p => p.id === projectForm.id);
@@ -694,11 +735,11 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
   const deleteBudget = (id: string) => { if (!window.confirm("¿Eliminar presupuesto?")) return; setData(prev => ({ ...prev, budgets: prev.budgets.filter(b => b.id !== id) })); };
   const resetBudgetForm = () => { setBudgetForm({ id: '', budgetNum: '', name: '', client: '', deliveryDate: '', excelName: '', hasFolderData: false, isFinished: false, isAccepted: false, isRejected: false, comments: '' }); setIsEditingBudget(false); };
 
-  const editProject = (p: ProjectData) => { setProjectForm(p); setIsEditingProject(true); setIdMode('AUTO'); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+  const editProject = (p: ProjectData) => { setProjectForm({ invoiceNum: '', ...p }); setIsEditingProject(true); setIdMode('AUTO'); window.scrollTo({ top: 0, behavior: 'smooth' }); };
   const deleteProject = (id: string) => { 
       onDeleteProject(id);
   };
-  const resetProjectForm = () => { setProjectForm({ id: '', name: '', client: '', budgetNum: '', valuation: 'POR HORAS', responsibleTech: '', startDate: '', isFinished: false, isInvoiced: false, hasWarning: false, warningDate: '', notes: '', location: '', attachments: [] }); setIsEditingProject(false); setIdMode('AUTO'); };
+  const resetProjectForm = () => { setProjectForm({ id: '', name: '', client: '', budgetNum: '', valuation: 'POR HORAS', responsibleTech: '', startDate: '', isFinished: false, isInvoiced: false, invoiceNum: '', hasWarning: false, warningDate: '', notes: '', location: '', attachments: [] }); setIsEditingProject(false); setIdMode('AUTO'); };
   
   const handleProjectFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -762,7 +803,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
       ['FECHA INICIO', formatDateToSpanish(p.startDate)],
       ['UBICACIÓN', p.location || '-'],
       ['ESTADO', p.isFinished ? 'TERMINADA' : 'ACTIVA'],
-      ['FACTURADA', p.isInvoiced ? 'SÍ' : 'NO'],
+      ['FACTURADA', p.isInvoiced ? `SÍ ${p.invoiceNum ? `(Nº Factura: ${p.invoiceNum})` : ''}` : 'NO'],
     ];
 
     autoTable(doc, {
@@ -2496,26 +2537,36 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
       const warningStyle = !isInactive && p.hasWarning ? getWarningStyle(p.warningDate) : '';
       
       return (
-          <div key={p.id} className={`bg-white dark:bg-brand-panel p-5 rounded-xl border flex flex-col md:flex-row justify-between items-start md:items-center gap-4 group hover:border-brand-teal/50 transition-all ${isInactive ? 'opacity-60 border-gray-300 dark:border-gray-800 bg-gray-100 dark:bg-gray-900/20' : warningStyle ? warningStyle : 'border-gray-200 dark:border-gray-700'}`}>
+          <div key={p.id} className={`bg-white dark:bg-brand-panel p-5 rounded-xl border flex flex-col md:flex-row justify-between items-start md:items-center gap-4 group hover:border-brand-teal/50 transition-all ${isInactive ? 'opacity-70 border-gray-300 dark:border-gray-800 bg-gray-50/80 dark:bg-gray-900/20' : warningStyle ? warningStyle : 'border-gray-200 dark:border-gray-700'}`}>
               <div className="flex-1 min-w-0 w-full">
-                  <div className="flex items-center gap-3 mb-1">
+                  <div className="flex flex-wrap items-center gap-2 mb-1">
                       <button onClick={() => viewProjectHistory(p.id)} className={`font-black px-2 py-0.5 rounded text-sm tracking-wider hover:scale-105 transition-transform cursor-pointer ${isInactive ? 'bg-gray-200 dark:bg-gray-800 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300' : 'bg-brand-teal/10 dark:bg-brand-teal/20 text-brand-teal hover:bg-brand-teal hover:text-white'}`} title="Ver historial de partes">{p.id}</button>
-                      <span className={`font-bold uppercase text-sm truncate ${isInactive ? 'text-gray-500 line-through decoration-brand-teal/50' : 'text-gray-900 dark:text-white'}`}>{p.name}</span>
+                      <span className={`font-bold uppercase text-sm truncate ${isInactive ? 'text-gray-600 dark:text-gray-400 line-through decoration-brand-teal/50' : 'text-gray-900 dark:text-white'}`}>{p.name}</span>
                       {!isInactive && (
-                          <>
-                              <button onClick={(e) => { e.stopPropagation(); sendToDailyOrg(p); }} className="ml-2 bg-brand-teal/10 dark:bg-brand-teal/20 hover:bg-brand-teal hover:text-white text-brand-teal dark:text-brand-lime p-1.5 rounded-lg transition-colors shadow-sm" title="Enviar a Organización Diaria"><CalendarIcon className="w-4 h-4" /></button>
-                              <button onClick={(e) => { e.stopPropagation(); openGoogleCalendar(p); }} className="ml-2 bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-600 hover:text-white text-blue-600 dark:text-blue-400 p-1.5 rounded-lg transition-colors shadow-sm" title="Agendar en Google Calendar"><CalendarIcon className="w-4 h-4" /></button>
-                          </>
+                          <div className="flex items-center gap-1">
+                              <button onClick={(e) => { e.stopPropagation(); sendToDailyOrg(p); }} className="bg-brand-teal/10 dark:bg-brand-teal/20 hover:bg-brand-teal hover:text-white text-brand-teal dark:text-brand-lime p-1.5 rounded-lg transition-colors shadow-sm" title="Enviar a Organización Diaria"><CalendarIcon className="w-4 h-4" /></button>
+                              <button onClick={(e) => { e.stopPropagation(); openGoogleCalendar(p); }} className="bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-600 hover:text-white text-blue-600 dark:text-blue-400 p-1.5 rounded-lg transition-colors shadow-sm" title="Agendar en Google Calendar"><CalendarIcon className="w-4 h-4" /></button>
+                          </div>
                       )}
-                      {p.isFinished && <span className="bg-green-100 dark:bg-green-900/40 text-green-600 dark:text-green-400 text-[9px] font-black px-2 py-0.5 rounded uppercase border border-green-200 dark:border-green-800">Terminada</span>}
-                      {p.isInvoiced && <span className="bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 text-[9px] font-black px-2 py-0.5 rounded uppercase border border-blue-200 dark:border-blue-800">Facturada</span>}
+                      {p.isFinished && <span className="bg-teal-100 dark:bg-teal-900/40 text-teal-700 dark:text-teal-300 text-[9px] font-black px-2 py-0.5 rounded uppercase border border-teal-200 dark:border-teal-800">Terminada</span>}
+                      {p.isInvoiced && (
+                          <span className="bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 text-[9px] font-black px-2 py-0.5 rounded uppercase border border-purple-200 dark:border-purple-800 flex items-center gap-1">
+                              <span>💰 Facturada</span>
+                              {p.invoiceNum && <span className="font-mono underline">({p.invoiceNum})</span>}
+                          </span>
+                      )}
                       {!isInactive && p.hasWarning && getWarningBadge(p.warningDate)}
                   </div>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-2 text-[10px] text-gray-400 uppercase font-medium">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 mt-2 text-[10px] text-gray-400 uppercase font-medium">
                       <div><span className="block text-gray-500 dark:text-gray-600 mb-0.5">Cliente</span><span className="text-gray-700 dark:text-gray-300 truncate block">{p.client}</span></div>
                       <div><span className="block text-gray-500 dark:text-gray-600 mb-0.5">Responsable</span><span className="text-gray-700 dark:text-gray-300 truncate block">{p.responsibleTech || '-'}</span></div>
                       <div><span className="block text-gray-500 dark:text-gray-600 mb-0.5">Valoración</span><span className="text-gray-700 dark:text-gray-300 truncate block">{p.valuation}</span></div>
                       <div><span className="block text-gray-500 dark:text-gray-600 mb-0.5">Presupuesto</span><span className="text-gray-700 dark:text-gray-300 truncate block">{p.budgetNum || '-'}</span></div>
+                      {p.invoiceNum ? (
+                          <div><span className="block text-purple-600 dark:text-purple-400 mb-0.5 font-bold">Nº Factura</span><span className="text-purple-700 dark:text-purple-300 font-mono font-bold truncate block">{p.invoiceNum}</span></div>
+                      ) : p.location ? (
+                          <div><span className="block text-gray-500 dark:text-gray-600 mb-0.5">Ubicación</span><span className="text-gray-700 dark:text-gray-300 truncate block">{p.location}</span></div>
+                      ) : null}
                   </div>
                   {p.notes && <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-800"><p className="text-[10px] text-gray-500 italic truncate w-full">{p.notes}</p></div>}
                   {p.attachments && p.attachments.length > 0 && (
@@ -2533,10 +2584,21 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                       </div>
                   )}
               </div>
-              <div className="flex gap-2 self-end md:self-center flex-shrink-0">
+              <div className="flex items-center gap-2 self-end md:self-center flex-shrink-0">
+                  <button 
+                      onClick={() => handleQuickInvoice(p)} 
+                      className={`p-2 rounded-lg transition-all cursor-pointer ${
+                          p.isInvoiced 
+                              ? 'text-purple-700 bg-purple-100 dark:bg-purple-900/40 hover:bg-purple-200 dark:hover:bg-purple-900/60 border border-purple-300 dark:border-purple-800' 
+                              : 'text-gray-400 hover:text-purple-600 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700'
+                      }`} 
+                      title={p.isInvoiced ? `Obra Facturada (Factura Nº ${p.invoiceNum || '-'}). Clic para editar/desmarcar` : "Dar obra por facturada (requiere Nº Factura)"}
+                  >
+                      <CheckCircleIcon className="w-4 h-4" />
+                  </button>
                   <button onClick={() => generateProjectPDF(p)} className="p-2 text-gray-400 hover:text-brand-teal bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors" title="Generar PDF de Obra"><FileTextIcon className="w-4 h-4" /></button>
-                  <button onClick={() => editProject(p)} className="p-2 text-gray-400 hover:text-brand-teal bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors"><EditIcon className="w-4 h-4" /></button>
-                  <button onClick={() => deleteProject(p.id)} className="p-2 text-gray-400 hover:text-red-500 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors"><TrashIcon className="w-4 h-4" /></button>
+                  <button onClick={() => editProject(p)} className="p-2 text-gray-400 hover:text-brand-teal bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors" title="Editar Obra"><EditIcon className="w-4 h-4" /></button>
+                  <button onClick={() => deleteProject(p.id)} className="p-2 text-gray-400 hover:text-red-500 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors" title="Eliminar Obra"><TrashIcon className="w-4 h-4" /></button>
               </div>
           </div>
       );
@@ -4015,7 +4077,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
         {tab === 'projects' && (
             <div className="space-y-6">
                 <div className="bg-white dark:bg-gray-900/50 p-6 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-xl">
-                   {/* ... Formulario Project ... */}
+                   {/* Formulario Obra */}
                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4 border-b border-gray-200 dark:border-gray-800 pb-4">
                         <h3 className="text-xl font-bold text-gray-800 dark:text-white flex items-center gap-2">
                             <span className="text-brand-teal dark:text-brand-lime">{isEditingProject ? '✏️' : '+'}</span> 
@@ -4078,26 +4140,51 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                             </div>
                         </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4 md:col-span-2">
                              <div>
                                  <label className="block text-[10px] text-gray-500 uppercase font-black mb-1">Fecha Inicio</label>
                                  <input type="date" value={projectForm.startDate} onChange={e => setProjectForm({...projectForm, startDate: e.target.value})} className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-xl p-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none dark:[color-scheme:dark]" />
                              </div>
                              <div className="flex flex-wrap gap-4 items-center h-full">
-                                 <label className="flex items-center gap-2 cursor-pointer bg-white dark:bg-gray-800 p-2 rounded border border-gray-200 dark:border-gray-700">
-                                     <input type="checkbox" checked={projectForm.isFinished} onChange={e => setProjectForm({...projectForm, isFinished: e.target.checked})} className="w-4 h-4 text-brand-teal rounded focus:ring-0" />
+                                 <label className="flex items-center gap-2 cursor-pointer bg-white dark:bg-gray-800 p-2 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">
+                                     <input type="checkbox" checked={projectForm.isFinished} onChange={e => setProjectForm({...projectForm, isFinished: e.target.checked})} className="w-4 h-4 text-teal-600 rounded focus:ring-0" />
                                      <span className="text-xs font-bold uppercase text-gray-700 dark:text-gray-300">Terminada</span>
                                  </label>
-                                 <label className="flex items-center gap-2 cursor-pointer bg-white dark:bg-gray-800 p-2 rounded border border-gray-200 dark:border-gray-700">
-                                     <input type="checkbox" checked={projectForm.isInvoiced} onChange={e => setProjectForm({...projectForm, isInvoiced: e.target.checked})} className="w-4 h-4 text-blue-500 rounded focus:ring-0" />
+                                 <label className="flex items-center gap-2 cursor-pointer bg-white dark:bg-gray-800 p-2 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">
+                                     <input type="checkbox" checked={projectForm.isInvoiced} onChange={e => setProjectForm({...projectForm, isInvoiced: e.target.checked, isFinished: e.target.checked ? true : projectForm.isFinished})} className="w-4 h-4 text-purple-600 rounded focus:ring-0" />
                                      <span className="text-xs font-bold uppercase text-gray-700 dark:text-gray-300">Facturada</span>
                                  </label>
-                                 <label className="flex items-center gap-2 cursor-pointer bg-white dark:bg-gray-800 p-2 rounded border border-gray-200 dark:border-gray-700">
+                                 <label className="flex items-center gap-2 cursor-pointer bg-white dark:bg-gray-800 p-2 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">
                                      <input type="checkbox" checked={projectForm.hasWarning} onChange={e => setProjectForm({...projectForm, hasWarning: e.target.checked})} className="w-4 h-4 text-orange-500 rounded focus:ring-0" />
                                      <span className="text-xs font-bold uppercase text-gray-700 dark:text-gray-300">Aviso (2m)</span>
                                  </label>
                              </div>
                         </div>
+
+                        {/* Campo obligatorio de Número de Factura si la obra está marcada como facturada */}
+                        {projectForm.isInvoiced && (
+                            <div className="md:col-span-2 p-4 rounded-xl bg-purple-50 dark:bg-purple-950/30 border-2 border-purple-300 dark:border-purple-800 animate-fade-in shadow-sm">
+                                <label className="block text-[11px] text-purple-800 dark:text-purple-300 uppercase font-black mb-1.5 flex items-center justify-between">
+                                    <span className="flex items-center gap-1.5">
+                                        <span>📄 Número de Factura</span>
+                                        <span className="text-red-500 font-black text-xs">* (Obligatorio para facturar)</span>
+                                    </span>
+                                    <span className="text-[10px] font-normal text-purple-600 dark:text-purple-400 lowercase">Requerido</span>
+                                </label>
+                                <input 
+                                    type="text" 
+                                    placeholder="Ej: F-2026/001, FACT-105..." 
+                                    value={projectForm.invoiceNum || ''} 
+                                    onChange={e => setProjectForm({...projectForm, invoiceNum: e.target.value})} 
+                                    className="w-full bg-white dark:bg-gray-800 border-2 border-purple-400 dark:border-purple-600 rounded-xl p-3 text-sm text-gray-900 dark:text-white font-mono font-bold focus:border-brand-teal outline-none shadow-sm" 
+                                    autoFocus
+                                    required
+                                />
+                                <p className="text-[10px] text-purple-700/80 dark:text-purple-400/80 mt-1 font-medium">
+                                    Indica el número de la factura emitida para poder dar por facturada la obra.
+                                </p>
+                            </div>
+                        )}
 
                         <div className="mt-4">
                              <label className="block text-[10px] text-gray-500 uppercase font-black mb-1">Ubicación (Ciudad/Pueblo)</label>
@@ -4109,7 +4196,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                              <textarea rows={2} value={projectForm.notes} onChange={e => setProjectForm({...projectForm, notes: e.target.value})} className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-xl p-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none" placeholder="Detalles extra de la obra..."></textarea>
                         </div>
 
-                        <div className="mt-4">
+                        <div className="mt-4 md:col-span-2">
                              <label className="block text-[10px] text-gray-500 uppercase font-black mb-2 ml-1">Documentación Adjunta (PDF / Imágenes)</label>
                              <div className="flex flex-wrap gap-3 mb-3">
                                  {projectForm.attachments?.map((att, idx) => (
@@ -4134,7 +4221,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                         <button 
                             onClick={handleSaveProject} 
                             disabled={isSavingProject} 
-                            className="w-full mt-6 bg-brand-teal hover:bg-teal-600 disabled:opacity-50 text-white font-bold py-3 rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer"
+                            className="w-full mt-6 md:col-span-2 bg-brand-teal hover:bg-teal-600 disabled:opacity-50 text-white font-bold py-3 rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer"
                         >
                              {isSavingProject ? (
                                  <>
@@ -4150,19 +4237,139 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                    </div>
                 </div>
 
-                <div className="space-y-4 pt-4">
-                    <div className="relative">
-                        <input type="text" placeholder="🔍 Buscar obra por ID, Nombre, Cliente..." value={projectSearchTerm} onChange={(e) => setProjectSearchTerm(e.target.value)} className="w-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl pl-10 pr-4 py-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none transition-colors shadow-sm" />
-                        <div className="absolute left-3 top-3.5 text-gray-400"><SearchIcon className="w-4 h-4" /></div>
+                {/* Listado de Obras con Menú de Estado y Acordeones Desplegables */}
+                <div className="bg-white dark:bg-gray-900/50 p-6 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-xl space-y-6">
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-gray-200 dark:border-gray-800 pb-4">
+                        <div>
+                            <h3 className="text-xl font-bold text-gray-800 dark:text-white flex items-center gap-2">
+                                <span>📁 Listado de Obras</span>
+                                <span className="text-xs bg-brand-teal/10 text-brand-teal px-2.5 py-1 rounded-full font-bold">
+                                    Total: {data.projectsDetailed?.length || 0}
+                                </span>
+                            </h3>
+                            <p className="text-xs text-gray-500 mt-1">Organización estructurada por estado operativo y facturación</p>
+                        </div>
+
+                        <div className="flex items-center gap-2 flex-wrap">
+                            <button 
+                                onClick={() => {
+                                    const allExpanded = Object.values(expandedProjectSections).every(v => v);
+                                    setExpandedProjectSections({
+                                        green: !allExpanded,
+                                        orange: !allExpanded,
+                                        red: !allExpanded,
+                                        blue: !allExpanded,
+                                        finished: !allExpanded,
+                                        invoiced: !allExpanded
+                                    });
+                                }}
+                                className="text-xs bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 px-3 py-1.5 rounded-lg text-gray-600 dark:text-gray-300 font-bold transition-colors cursor-pointer"
+                            >
+                                {Object.values(expandedProjectSections).every(v => v) ? 'Plegar Todas' : 'Desplegar Todas'}
+                            </button>
+                        </div>
                     </div>
 
-                    {/* Categorized Lists */}
+                    {/* Menú de Filtro por Estado (Pestañas de Obras) */}
+                    <div className="flex flex-wrap gap-2 border-b border-gray-200 dark:border-gray-800 pb-4">
+                        <button
+                            onClick={() => setProjectFilterTab('all')}
+                            className={`px-4 py-2 rounded-xl text-xs font-bold uppercase transition-all flex items-center gap-2 cursor-pointer ${
+                                projectFilterTab === 'all'
+                                    ? 'bg-brand-teal text-white shadow-md'
+                                    : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
+                            }`}
+                        >
+                            <span>Todas</span>
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${projectFilterTab === 'all' ? 'bg-white/20 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'}`}>
+                                {data.projectsDetailed?.length || 0}
+                            </span>
+                        </button>
+
+                        <button
+                            onClick={() => setProjectFilterTab('active')}
+                            className={`px-4 py-2 rounded-xl text-xs font-bold uppercase transition-all flex items-center gap-2 cursor-pointer ${
+                                projectFilterTab === 'active'
+                                    ? 'bg-blue-600 text-white shadow-md'
+                                    : 'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/40'
+                            }`}
+                        >
+                            <span>🟢 Activas</span>
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${projectFilterTab === 'active' ? 'bg-white/20 text-white' : 'bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300'}`}>
+                                {categorizedProjects.green.length + categorizedProjects.orange.length + categorizedProjects.red.length + categorizedProjects.blue.length}
+                            </span>
+                        </button>
+
+                        <button
+                            onClick={() => setProjectFilterTab('warning')}
+                            className={`px-4 py-2 rounded-xl text-xs font-bold uppercase transition-all flex items-center gap-2 cursor-pointer ${
+                                projectFilterTab === 'warning'
+                                    ? 'bg-orange-500 text-white shadow-md'
+                                    : 'bg-orange-50 dark:bg-orange-950/40 text-orange-700 dark:text-orange-300 hover:bg-orange-100 dark:hover:bg-orange-900/40'
+                            }`}
+                        >
+                            <span>⚠️ Con Aviso</span>
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${projectFilterTab === 'warning' ? 'bg-white/20 text-white' : 'bg-orange-100 dark:bg-orange-900/60 text-orange-700 dark:text-orange-300'}`}>
+                                {categorizedProjects.green.length + categorizedProjects.orange.length + categorizedProjects.red.length}
+                            </span>
+                        </button>
+
+                        <button
+                            onClick={() => setProjectFilterTab('finished')}
+                            className={`px-4 py-2 rounded-xl text-xs font-bold uppercase transition-all flex items-center gap-2 cursor-pointer ${
+                                projectFilterTab === 'finished'
+                                    ? 'bg-teal-600 text-white shadow-md'
+                                    : 'bg-teal-50 dark:bg-teal-950/40 text-teal-700 dark:text-teal-300 hover:bg-teal-100 dark:hover:bg-teal-900/40'
+                            }`}
+                        >
+                            <span>🏁 Terminadas</span>
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${projectFilterTab === 'finished' ? 'bg-white/20 text-white' : 'bg-teal-100 dark:bg-teal-900/60 text-teal-700 dark:text-teal-300'}`}>
+                                {categorizedProjects.finished.length}
+                            </span>
+                        </button>
+
+                        <button
+                            onClick={() => setProjectFilterTab('invoiced')}
+                            className={`px-4 py-2 rounded-xl text-xs font-bold uppercase transition-all flex items-center gap-2 cursor-pointer ${
+                                projectFilterTab === 'invoiced'
+                                    ? 'bg-purple-600 text-white shadow-md'
+                                    : 'bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 hover:bg-purple-100 dark:hover:bg-purple-900/40'
+                            }`}
+                        >
+                            <span>💰 Facturadas</span>
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${projectFilterTab === 'invoiced' ? 'bg-white/20 text-white' : 'bg-purple-100 dark:bg-purple-900/60 text-purple-700 dark:text-purple-300'}`}>
+                                {categorizedProjects.invoiced.length}
+                            </span>
+                        </button>
+                    </div>
+
+                    {/* Buscador de Obras */}
+                    <div className="relative">
+                        <input 
+                            type="text" 
+                            placeholder="🔍 Buscar obra por ID, Nombre, Cliente, Nº Factura, Técnico, Presupuesto..." 
+                            value={projectSearchTerm} 
+                            onChange={(e) => setProjectSearchTerm(e.target.value)} 
+                            className="w-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl pl-10 pr-4 py-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none transition-colors shadow-sm" 
+                        />
+                        <div className="absolute left-3 top-3.5 text-gray-400"><SearchIcon className="w-4 h-4" /></div>
+                        {projectSearchTerm && (
+                            <button 
+                                onClick={() => setProjectSearchTerm('')} 
+                                className="absolute right-3 top-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+                            >
+                                <XIcon className="w-4 h-4" />
+                            </button>
+                        )}
+                    </div>
+
+                    {/* Mensaje si no hay resultados */}
                     {Object.values(categorizedProjects).every(l => (l as any[]).length === 0) && (
                         <div className="bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 p-8 rounded-2xl text-center space-y-4">
                             <div className="text-4xl">🔍</div>
                             <h4 className="text-lg font-bold text-orange-800 dark:text-orange-300">No se han encontrado obras</h4>
                             <p className="text-sm text-orange-700 dark:text-orange-400 max-w-md mx-auto">
-                                Si tus obras han desaparecido tras la última actualización, puedes intentar recuperarlas desde la última copia de seguridad.
+                                No coinciden obras con el filtro o la búsqueda actual.
                             </p>
                             {onRecoverProjects && (
                                 <button 
@@ -4175,33 +4382,176 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                         </div>
                     )}
 
-                    {Object.entries(categorizedProjects).map(([key, list]: [string, any]) => {
-                        if (list.length === 0) return null;
-                        const config: any = {
-                            green: { label: 'Obras Activas (Recientes)', color: 'text-green-600', bg: 'bg-green-100', border: 'border-green-200' },
-                            orange: { label: 'Obras Activas (+2 meses)', color: 'text-orange-600', bg: 'bg-orange-100', border: 'border-orange-200' },
-                            red: { label: 'Obras Activas (+5 meses)', color: 'text-red-600', bg: 'bg-red-100', border: 'border-red-200' },
-                            blue: { label: 'Otras Activas', color: 'text-blue-600', bg: 'bg-blue-100', border: 'border-blue-200' },
-                            finished: { label: 'Terminadas', color: 'text-gray-600', bg: 'bg-gray-200', border: 'border-gray-300' },
-                            invoiced: { label: 'Facturadas', color: 'text-purple-600', bg: 'bg-purple-100', border: 'border-purple-200' }
-                        }[key];
-                        
-                        const isExpanded = expandedProjectSections[key];
-
-                        return (
-                            <div key={key} className={`rounded-xl border ${config.border} overflow-hidden shadow-sm`}>
-                                <button onClick={() => toggleProjectSection(key)} className={`w-full flex justify-between items-center p-3 ${config.bg} ${config.color} font-black uppercase text-xs tracking-widest`}>
-                                    <span>{config.label} ({list.length})</span>
-                                    <ChevronDownIcon className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                    {/* Secciones Desplegables de Obras */}
+                    <div className="space-y-4">
+                        {/* SECCIÓN 1: Obras Activas (Recientes <= 2 meses) */}
+                        {(projectFilterTab === 'all' || projectFilterTab === 'active' || projectFilterTab === 'warning') && (
+                            <div className="space-y-3">
+                                <button 
+                                    onClick={() => toggleProjectSection('green')}
+                                    className="w-full flex items-center justify-between p-3 rounded-xl bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-900/40 text-green-800 dark:text-green-300 font-bold uppercase text-xs tracking-wider cursor-pointer hover:bg-green-100/60 transition-colors"
+                                >
+                                    <div className="flex items-center gap-2">
+                                        <ChevronDownIcon className={`w-4 h-4 transition-transform duration-200 ${expandedProjectSections.green ? '' : '-rotate-90'}`} />
+                                        <span>🟢 Obras Activas con Aviso Reciente (≤ 2 meses) ({categorizedProjects.green.length})</span>
+                                    </div>
+                                    <span className="text-[10px] font-normal lowercase text-green-700 dark:text-green-400">
+                                        {expandedProjectSections.green ? 'Plegar' : 'Desplegar'}
+                                    </span>
                                 </button>
-                                {isExpanded && (
-                                    <div className="p-3 space-y-3 bg-gray-50 dark:bg-gray-900/20">
-                                        {(list as any[]).map(p => renderProjectRow(p))}
+                                {expandedProjectSections.green && (
+                                    <div className="space-y-3 pl-1 sm:pl-2">
+                                        {categorizedProjects.green.map(p => renderProjectRow(p))}
+                                        {categorizedProjects.green.length === 0 && (
+                                            <p className="text-center py-4 text-gray-400 text-xs italic bg-gray-50/50 dark:bg-gray-900/20 rounded-xl border border-dashed border-gray-200 dark:border-gray-800">
+                                                No hay obras en este estado.
+                                            </p>
+                                        )}
                                     </div>
                                 )}
                             </div>
-                        );
-                    })}
+                        )}
+
+                        {/* SECCIÓN 2: Obras Activas (+2 meses) */}
+                        {(projectFilterTab === 'all' || projectFilterTab === 'active' || projectFilterTab === 'warning') && (
+                            <div className="space-y-3">
+                                <button 
+                                    onClick={() => toggleProjectSection('orange')}
+                                    className="w-full flex items-center justify-between p-3 rounded-xl bg-orange-50 dark:bg-orange-950/20 border border-orange-200 dark:border-orange-900/40 text-orange-800 dark:text-orange-300 font-bold uppercase text-xs tracking-wider cursor-pointer hover:bg-orange-100/60 transition-colors"
+                                >
+                                    <div className="flex items-center gap-2">
+                                        <ChevronDownIcon className={`w-4 h-4 transition-transform duration-200 ${expandedProjectSections.orange ? '' : '-rotate-90'}`} />
+                                        <span>🟠 Obras Activas (+2 meses) ({categorizedProjects.orange.length})</span>
+                                    </div>
+                                    <span className="text-[10px] font-normal lowercase text-orange-700 dark:text-orange-400">
+                                        {expandedProjectSections.orange ? 'Plegar' : 'Desplegar'}
+                                    </span>
+                                </button>
+                                {expandedProjectSections.orange && (
+                                    <div className="space-y-3 pl-1 sm:pl-2">
+                                        {categorizedProjects.orange.map(p => renderProjectRow(p))}
+                                        {categorizedProjects.orange.length === 0 && (
+                                            <p className="text-center py-4 text-gray-400 text-xs italic bg-gray-50/50 dark:bg-gray-900/20 rounded-xl border border-dashed border-gray-200 dark:border-gray-800">
+                                                No hay obras en este estado.
+                                            </p>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {/* SECCIÓN 3: Obras Activas (+5 meses) */}
+                        {(projectFilterTab === 'all' || projectFilterTab === 'active' || projectFilterTab === 'warning') && (
+                            <div className="space-y-3">
+                                <button 
+                                    onClick={() => toggleProjectSection('red')}
+                                    className="w-full flex items-center justify-between p-3 rounded-xl bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/40 text-red-800 dark:text-red-300 font-bold uppercase text-xs tracking-wider cursor-pointer hover:bg-red-100/60 transition-colors"
+                                >
+                                    <div className="flex items-center gap-2">
+                                        <ChevronDownIcon className={`w-4 h-4 transition-transform duration-200 ${expandedProjectSections.red ? '' : '-rotate-90'}`} />
+                                        <span>🔴 Obras Activas (+5 meses) ({categorizedProjects.red.length})</span>
+                                    </div>
+                                    <span className="text-[10px] font-normal lowercase text-red-700 dark:text-red-400">
+                                        {expandedProjectSections.red ? 'Plegar' : 'Desplegar'}
+                                    </span>
+                                </button>
+                                {expandedProjectSections.red && (
+                                    <div className="space-y-3 pl-1 sm:pl-2">
+                                        {categorizedProjects.red.map(p => renderProjectRow(p))}
+                                        {categorizedProjects.red.length === 0 && (
+                                            <p className="text-center py-4 text-gray-400 text-xs italic bg-gray-50/50 dark:bg-gray-900/20 rounded-xl border border-dashed border-gray-200 dark:border-gray-800">
+                                                No hay obras en este estado.
+                                            </p>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {/* SECCIÓN 4: Otras Obras Activas */}
+                        {(projectFilterTab === 'all' || projectFilterTab === 'active') && (
+                            <div className="space-y-3">
+                                <button 
+                                    onClick={() => toggleProjectSection('blue')}
+                                    className="w-full flex items-center justify-between p-3 rounded-xl bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900/40 text-blue-800 dark:text-blue-300 font-bold uppercase text-xs tracking-wider cursor-pointer hover:bg-blue-100/60 transition-colors"
+                                >
+                                    <div className="flex items-center gap-2">
+                                        <ChevronDownIcon className={`w-4 h-4 transition-transform duration-200 ${expandedProjectSections.blue ? '' : '-rotate-90'}`} />
+                                        <span>🔵 Otras Obras Activas ({categorizedProjects.blue.length})</span>
+                                    </div>
+                                    <span className="text-[10px] font-normal lowercase text-blue-700 dark:text-blue-400">
+                                        {expandedProjectSections.blue ? 'Plegar' : 'Desplegar'}
+                                    </span>
+                                </button>
+                                {expandedProjectSections.blue && (
+                                    <div className="space-y-3 pl-1 sm:pl-2">
+                                        {categorizedProjects.blue.map(p => renderProjectRow(p))}
+                                        {categorizedProjects.blue.length === 0 && (
+                                            <p className="text-center py-4 text-gray-400 text-xs italic bg-gray-50/50 dark:bg-gray-900/20 rounded-xl border border-dashed border-gray-200 dark:border-gray-800">
+                                                No hay otras obras activas.
+                                            </p>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {/* SECCIÓN 5: Obras Terminadas */}
+                        {(projectFilterTab === 'all' || projectFilterTab === 'finished') && (
+                            <div className="space-y-3">
+                                <button 
+                                    onClick={() => toggleProjectSection('finished')}
+                                    className="w-full flex items-center justify-between p-3 rounded-xl bg-teal-50 dark:bg-teal-950/20 border border-teal-200 dark:border-teal-900/40 text-teal-800 dark:text-teal-300 font-bold uppercase text-xs tracking-wider cursor-pointer hover:bg-teal-100/60 transition-colors"
+                                >
+                                    <div className="flex items-center gap-2">
+                                        <ChevronDownIcon className={`w-4 h-4 transition-transform duration-200 ${expandedProjectSections.finished ? '' : '-rotate-90'}`} />
+                                        <span>🏁 Obras Terminadas ({categorizedProjects.finished.length})</span>
+                                    </div>
+                                    <span className="text-[10px] font-normal lowercase text-teal-700 dark:text-teal-400">
+                                        {expandedProjectSections.finished ? 'Plegar' : 'Desplegar'}
+                                    </span>
+                                </button>
+                                {expandedProjectSections.finished && (
+                                    <div className="space-y-3 pl-1 sm:pl-2">
+                                        {categorizedProjects.finished.map(p => renderProjectRow(p))}
+                                        {categorizedProjects.finished.length === 0 && (
+                                            <p className="text-center py-4 text-gray-400 text-xs italic bg-gray-50/50 dark:bg-gray-900/20 rounded-xl border border-dashed border-gray-200 dark:border-gray-800">
+                                                No hay obras terminadas.
+                                            </p>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {/* SECCIÓN 6: Obras Facturadas */}
+                        {(projectFilterTab === 'all' || projectFilterTab === 'invoiced') && (
+                            <div className="space-y-3">
+                                <button 
+                                    onClick={() => toggleProjectSection('invoiced')}
+                                    className="w-full flex items-center justify-between p-3 rounded-xl bg-purple-50 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-900/40 text-purple-800 dark:text-purple-300 font-bold uppercase text-xs tracking-wider cursor-pointer hover:bg-purple-100/60 transition-colors"
+                                >
+                                    <div className="flex items-center gap-2">
+                                        <ChevronDownIcon className={`w-4 h-4 transition-transform duration-200 ${expandedProjectSections.invoiced ? '' : '-rotate-90'}`} />
+                                        <span>💰 Obras Facturadas ({categorizedProjects.invoiced.length})</span>
+                                    </div>
+                                    <span className="text-[10px] font-normal lowercase text-purple-700 dark:text-purple-400">
+                                        {expandedProjectSections.invoiced ? 'Plegar' : 'Desplegar'}
+                                    </span>
+                                </button>
+                                {expandedProjectSections.invoiced && (
+                                    <div className="space-y-3 pl-1 sm:pl-2">
+                                        {categorizedProjects.invoiced.map(p => renderProjectRow(p))}
+                                        {categorizedProjects.invoiced.length === 0 && (
+                                            <p className="text-center py-4 text-gray-400 text-xs italic bg-gray-50/50 dark:bg-gray-900/20 rounded-xl border border-dashed border-gray-200 dark:border-gray-800">
+                                                No hay obras facturadas.
+                                            </p>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
                 </div>
             </div>
         )}

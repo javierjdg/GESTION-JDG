@@ -101,6 +101,7 @@ export interface ProjectData {
   startDate: string;
   isFinished: boolean;
   isInvoiced: boolean;
+  invoiceNum?: string; // Número de factura obligatorio para dar por facturada
   hasWarning?: boolean; // Nuevo campo para check de aviso
   warningDate?: string; // Fecha en la que se activó el aviso
   notes: string;
