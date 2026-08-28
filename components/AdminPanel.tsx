@@ -4,6 +4,7 @@ import { GoogleMap, Marker, useJsApiLoader, InfoWindow } from '@react-google-map
 import { toast } from 'sonner';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { drawPdfHeaderLogo } from '../utils/pdfLogo';
 import { AppData, TechUser, WorkReport, ProjectData, Budget, ProjectAttachment } from '../App';
 import { TrashIcon, PlusIcon, DownloadIcon, UserIcon, TruckIcon, FileTextIcon, FilterIcon, EditIcon, SaveIcon, XIcon, LockIcon, UploadIcon, CloudIcon, CalendarIcon, ChartPieIcon, ClockIcon, EyeIcon, AlertIcon, ChevronDownIcon, ChevronRightIcon, BriefcaseIcon, SearchIcon, CheckCircleIcon, XCircleIcon, MapIcon, RefreshCwIcon, ShieldCheckIcon, ImageIcon } from './icons';
 import DailyOrganization, { DailyOrgData } from './DailyOrganization';
@@ -783,15 +784,39 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
   };
 
   const generateProjectPDF = (p: ProjectData) => {
-    const doc = new jsPDF();
-    const title = `FICHA DE OBRA: ${p.id}`;
+    const doc = new jsPDF({
+      orientation: 'portrait',
+      unit: 'mm',
+      format: 'a4'
+    });
+
+    // Top accent bar
+    doc.setFillColor(0, 121, 123); // Teal
+    doc.rect(0, 0, 210, 3.5, 'F');
+
+    // Logo in top-left corner
+    drawPdfHeaderLogo(doc, { isLandscape: false, x: 14, y: 7, width: 48, height: 17.14 });
     
-    doc.setFontSize(18);
-    doc.text(title, 14, 22);
+    // Right-aligned header metadata
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(14);
+    doc.setTextColor(31, 41, 55);
+    doc.text(`FICHA DE OBRA: ${p.id}`, 196, 14, { align: 'right' });
     
-    doc.setFontSize(11);
-    doc.setTextColor(100);
-    doc.text(`Generado el: ${new Date().toLocaleString()}`, 14, 30);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8.5);
+    doc.setTextColor(107, 114, 128);
+    doc.text(`Generado el: ${new Date().toLocaleString('es-ES')}`, 196, 19, { align: 'right' });
+
+    doc.setFont('helvetica', 'oblique');
+    doc.setFontSize(8.5);
+    doc.setTextColor(75, 85, 99);
+    doc.text(`Cliente: ${p.client || '-'}  |  Estado: ${p.isFinished ? 'TERMINADA' : 'ACTIVA'}`, 196, 24, { align: 'right' });
+
+    // Decorative divider line
+    doc.setDrawColor(229, 231, 235);
+    doc.setLineWidth(0.4);
+    doc.line(14, 28, 196, 28);
 
     const tableData = [
       ['ID OBRA', p.id],
@@ -807,26 +832,33 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
     ];
 
     autoTable(doc, {
-      startY: 40,
+      startY: 33,
       head: [['Campo', 'Información']],
       body: tableData,
       theme: 'striped',
-      headStyles: { fillColor: [0, 128, 128] }, // brand-teal approx
+      headStyles: { fillColor: [0, 121, 123] }, // brand-teal
+      styles: { fontSize: 9.5, cellPadding: 3.5 },
+      columnStyles: {
+        0: { fontStyle: 'bold', cellWidth: 55, textColor: [31, 41, 55] },
+        1: { cellWidth: 'auto', textColor: [55, 65, 81] }
+      }
     });
 
     if (p.notes) {
-      const finalY = (doc as any).lastAutoTable.finalY || 40;
-      doc.setFontSize(12);
-      doc.setTextColor(0);
-      doc.text('NOTAS / OBSERVACIONES:', 14, finalY + 15);
-      doc.setFontSize(10);
-      doc.setTextColor(50);
-      const splitNotes = doc.splitTextToSize(p.notes, 180);
-      doc.text(splitNotes, 14, finalY + 22);
+      const finalY = (doc as any).lastAutoTable?.finalY || 140;
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(10.5);
+      doc.setTextColor(0, 121, 123);
+      doc.text('NOTAS / OBSERVACIONES:', 14, finalY + 12);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      doc.setTextColor(55, 65, 81);
+      const splitNotes = doc.splitTextToSize(p.notes, 182);
+      doc.text(splitNotes, 14, finalY + 18);
     }
 
     doc.save(`Obra_${p.id}.pdf`);
-    toast.success("PDF generado correctamente");
+    toast.success("PDF generado correctamente con membrete oficial");
   };
 
   const handleDelete = (type: 'techs' | 'vehicles', index: number) => {
@@ -1346,37 +1378,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
       pageDoc.setFillColor(0, 121, 123); // Teal #00797b
       pageDoc.rect(0, 0, 297, 4, 'F');
 
-      // DRAW LOGO
-      // J text
-      pageDoc.setFont('helvetica', 'bold');
-      pageDoc.setFontSize(28);
-      pageDoc.setTextColor(176, 209, 42); // Lime #b0d12a
-      pageDoc.text('J', 15, 22);
-      
-      // DG text
-      pageDoc.setTextColor(0, 121, 123); // Teal #00797b
-      pageDoc.text('DG', 21, 22);
-
-      // TELECO Box
-      pageDoc.setFillColor(0, 121, 123); // Teal
-      pageDoc.rect(15, 26, 45, 6, 'F');
-      pageDoc.setFont('courier', 'bold');
-      pageDoc.setFontSize(10);
-      pageDoc.setTextColor(255, 255, 255); // White
-      pageDoc.text('TELECO', 37.5, 30.5, { align: 'center' });
-
-      // Draw Swirl Graphic
-      pageDoc.setDrawColor(0, 121, 123);
-      pageDoc.setLineWidth(0.8);
-      pageDoc.circle(70, 23, 7);
-      pageDoc.stroke();
-
-      pageDoc.setDrawColor(176, 209, 42);
-      pageDoc.circle(70, 23, 5);
-      pageDoc.stroke();
-
-      pageDoc.setFillColor(225, 29, 72); // Red/Rose
-      pageDoc.circle(70, 23, 1.5, 'F');
+      // DRAW LOGO in top-left corner
+      drawPdfHeaderLogo(pageDoc, { isLandscape: true, x: 15, y: 7, width: 56, height: 20 });
 
       // Right Side metadata/title
       pageDoc.setFont('helvetica', 'bold');
@@ -1717,32 +1720,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
       pageDoc.setFillColor(0, 121, 123); // Teal
       pageDoc.rect(0, 0, 297, 4, 'F');
 
-      pageDoc.setFont('helvetica', 'bold');
-      pageDoc.setFontSize(28);
-      pageDoc.setTextColor(176, 209, 42); // Lime
-      pageDoc.text('J', 15, 22);
-      
-      pageDoc.setTextColor(0, 121, 123); // Teal
-      pageDoc.text('DG', 21, 22);
-
-      pageDoc.setFillColor(0, 121, 123); // Teal
-      pageDoc.rect(15, 26, 45, 6, 'F');
-      pageDoc.setFont('courier', 'bold');
-      pageDoc.setFontSize(10);
-      pageDoc.setTextColor(255, 255, 255);
-      pageDoc.text('TELECO', 37.5, 30.5, { align: 'center' });
-
-      pageDoc.setDrawColor(0, 121, 123);
-      pageDoc.setLineWidth(0.8);
-      pageDoc.circle(70, 23, 7);
-      pageDoc.stroke();
-
-      pageDoc.setDrawColor(176, 209, 42);
-      pageDoc.circle(70, 23, 5);
-      pageDoc.stroke();
-
-      pageDoc.setFillColor(225, 29, 72); // Red/Rose
-      pageDoc.circle(70, 23, 1.5, 'F');
+      // DRAW LOGO in top-left corner
+      drawPdfHeaderLogo(pageDoc, { isLandscape: true, x: 15, y: 7, width: 56, height: 20 });
 
       pageDoc.setFont('helvetica', 'bold');
       pageDoc.setFontSize(14);
@@ -1942,35 +1921,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
       pageDoc.setFillColor(0, 121, 123); // Teal #00797b
       pageDoc.rect(0, 0, 297, 4, 'F');
 
-      // DRAW LOGO
-      pageDoc.setFont('helvetica', 'bold');
-      pageDoc.setFontSize(28);
-      pageDoc.setTextColor(176, 209, 42); // Lime #b0d12a
-      pageDoc.text('J', 15, 22);
-      
-      pageDoc.setTextColor(0, 121, 123); // Teal #00797b
-      pageDoc.text('DG', 21, 22);
-
-      // TELECO Box
-      pageDoc.setFillColor(0, 121, 123); // Teal
-      pageDoc.rect(15, 26, 45, 6, 'F');
-      pageDoc.setFont('courier', 'bold');
-      pageDoc.setFontSize(10);
-      pageDoc.setTextColor(255, 255, 255); // White
-      pageDoc.text('TELECO', 37.5, 30.5, { align: 'center' });
-
-      // Draw Swirl Graphic
-      pageDoc.setDrawColor(0, 121, 123);
-      pageDoc.setLineWidth(0.8);
-      pageDoc.circle(70, 23, 7);
-      pageDoc.stroke();
-
-      pageDoc.setDrawColor(176, 209, 42);
-      pageDoc.circle(70, 23, 5);
-      pageDoc.stroke();
-
-      pageDoc.setFillColor(225, 29, 72); // Red/Rose
-      pageDoc.circle(70, 23, 1.5, 'F');
+      // DRAW LOGO in top-left corner
+      drawPdfHeaderLogo(pageDoc, { isLandscape: true, x: 15, y: 7, width: 56, height: 20 });
 
       // Right Side metadata/title
       pageDoc.setFont('helvetica', 'bold');
@@ -2165,35 +2117,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
       pageDoc.setFillColor(0, 121, 123); // Teal #00797b
       pageDoc.rect(0, 0, 297, 4, 'F');
 
-      // DRAW LOGO
-      pageDoc.setFont('helvetica', 'bold');
-      pageDoc.setFontSize(28);
-      pageDoc.setTextColor(176, 209, 42); // Lime #b0d12a
-      pageDoc.text('J', 15, 22);
-      
-      pageDoc.setTextColor(0, 121, 123); // Teal #00797b
-      pageDoc.text('DG', 21, 22);
-
-      // TELECO Box
-      pageDoc.setFillColor(0, 121, 123); // Teal
-      pageDoc.rect(15, 26, 45, 6, 'F');
-      pageDoc.setFont('courier', 'bold');
-      pageDoc.setFontSize(10);
-      pageDoc.setTextColor(255, 255, 255); // White
-      pageDoc.text('TELECO', 37.5, 30.5, { align: 'center' });
-
-      // Draw Swirl Graphic
-      pageDoc.setDrawColor(0, 121, 123);
-      pageDoc.setLineWidth(0.8);
-      pageDoc.circle(70, 23, 7);
-      pageDoc.stroke();
-
-      pageDoc.setDrawColor(176, 209, 42);
-      pageDoc.circle(70, 23, 5);
-      pageDoc.stroke();
-
-      pageDoc.setFillColor(225, 29, 72); // Red/Rose
-      pageDoc.circle(70, 23, 1.5, 'F');
+      // DRAW LOGO in top-left corner
+      drawPdfHeaderLogo(pageDoc, { isLandscape: true, x: 15, y: 7, width: 56, height: 20 });
 
       // Right Side metadata/title
       pageDoc.setFont('helvetica', 'bold');
