@@ -6,7 +6,7 @@ import UserLogin from './components/UserLogin';
 import ReportForm from './components/ReportForm';
 import AdminPanel from './components/AdminPanel';
 import TechDashboard from './components/TechDashboard';
-import DailyOrganization, { DailyOrgData } from './components/DailyOrganization';
+import DailyOrganization, { DailyOrgData, getLocalDateString } from './components/DailyOrganization';
 import VacationManager from './components/VacationManager';
 import { Logo } from './components/Logo';
 import { LogOutIcon, WifiIcon, CloudIcon, AlertIcon, XIcon, CheckCircleIcon, SunIcon, MoonIcon } from './components/icons';
@@ -160,7 +160,7 @@ const DEFAULT_DAILY_ORG: DailyOrgData = {
         { id: 12, nombre: 'RDL1', color: '#003049', asignado: false },
         { id: 13, nombre: 'KIKO', color: '#073B4C', asignado: false }
     ],
-    fecha: new Date().toISOString().split('T')[0],
+    fecha: getLocalDateString(),
     lastUpdated: Date.now() // Timestamp inicial
 };
 
@@ -298,6 +298,7 @@ const App: React.FC = () => {
     let unsubConfig = () => {};
     let unsubReports = () => {};
     let unsubProjects = () => {};
+    let unsubDailyOrgs = () => {};
 
     const initializeFirebaseSync = async () => {
       const fb = (window as any).firebase;
@@ -386,8 +387,6 @@ const App: React.FC = () => {
             });
             
             setData(prev => {
-                // Si la subcolección está vacía y ya hemos sincronizado antes, permitimos que se vacíe localmente
-                // Si es la primera carga y está vacía, mantenemos lo local por seguridad
                 if (snapshot.empty && !hasSyncedWithCloud) return prev;
 
                 isInternalUpdate.current = true;
@@ -397,6 +396,91 @@ const App: React.FC = () => {
                 };
             });
         });
+
+        // Subcolección dedicada para Organización Diaria (evita límite 1MB y garantiza persistencia por fecha)
+        unsubDailyOrgs = db.collection("jdg_teleco").doc("main_db").collection("daily_orgs").onSnapshot((snapshot: any) => {
+            if (isSyncingRef.current) return;
+            if (snapshot.empty) return;
+
+            const cloudOrgs: Record<string, DailyOrgData> = {};
+            snapshot.forEach((doc: any) => {
+                const org = doc.data() as DailyOrgData;
+                if (org && org.fecha) {
+                    cloudOrgs[org.fecha] = org;
+                }
+            });
+
+            if (Object.keys(cloudOrgs).length > 0) {
+                setData(prev => {
+                    const mergedHistory = { ...(prev.dailyOrgHistory || {}), ...cloudOrgs };
+                    const currentFecha = prev.dailyOrg?.fecha;
+                    const cloudForCurrent = currentFecha ? cloudOrgs[currentFecha] : undefined;
+
+                    let updatedDailyOrg = prev.dailyOrg;
+                    if (cloudForCurrent) {
+                        if (!prev.dailyOrg?.lastUpdated || (cloudForCurrent.lastUpdated && cloudForCurrent.lastUpdated >= prev.dailyOrg.lastUpdated)) {
+                            updatedDailyOrg = cloudForCurrent;
+                        }
+                    }
+
+                    return {
+                        ...prev,
+                        dailyOrg: updatedDailyOrg,
+                        dailyOrgHistory: mergedHistory
+                    };
+                });
+            }
+        }, (error: any) => {
+            console.warn("daily_orgs listener:", error);
+        });
+
+        // Auto-recuperación de organizaciones pasadas desde backups si no están en daily_orgs
+        (async () => {
+            try {
+                const backupsSnap = await db.collection("jdg_teleco_backups").orderBy("createdAt", "desc").limit(5).get();
+                if (!backupsSnap.empty) {
+                    const recovered: Record<string, DailyOrgData> = {};
+                    for (const doc of backupsSnap.docs) {
+                        const bData = doc.data();
+                        if (bData?.dailyOrg?.fecha && bData?.dailyOrg?.trabajos?.length > 0) {
+                            recovered[bData.dailyOrg.fecha] = bData.dailyOrg;
+                        }
+                        try {
+                            const histSnap = await doc.ref.collection("history_shards").get();
+                            histSnap.forEach((shardDoc: any) => {
+                                const sData = shardDoc.data();
+                                const items = sData?.items || sData;
+                                if (items && typeof items === 'object') {
+                                    Object.keys(items).forEach(k => {
+                                        if (items[k] && items[k].fecha && items[k].trabajos) {
+                                            recovered[items[k].fecha] = items[k];
+                                        }
+                                    });
+                                }
+                            });
+                        } catch (_) {}
+                    }
+
+                    if (Object.keys(recovered).length > 0) {
+                        for (const fecha of Object.keys(recovered)) {
+                            const recOrg = recovered[fecha];
+                            try {
+                                const existingDoc = await db.collection("jdg_teleco").doc("main_db").collection("daily_orgs").doc(fecha).get();
+                                if (!existingDoc.exists) {
+                                    await db.collection("jdg_teleco").doc("main_db").collection("daily_orgs").doc(fecha).set(recOrg);
+                                }
+                            } catch (_) {}
+                        }
+                        setData(prev => ({
+                            ...prev,
+                            dailyOrgHistory: { ...recovered, ...(prev.dailyOrgHistory || {}) }
+                        }));
+                    }
+                }
+            } catch (err) {
+                console.warn("Error en auto-recuperación de organizaciones:", err);
+            }
+        })();
 
       } catch (e) {
         setIsCloudConnected(false);
@@ -408,6 +492,7 @@ const App: React.FC = () => {
         unsubConfig();
         unsubReports();
         unsubProjects();
+        unsubDailyOrgs();
     };
   }, [data.firebaseConfig]);
 
@@ -643,7 +728,7 @@ const App: React.FC = () => {
                     const fb = (window as any).firebase;
                     if (!fb) return;
                     const db = fb.app().firestore();
-                    const { reports, projectsDetailed, ...configOnly } = data;
+                    const { reports, projectsDetailed, deletedReports, ...configOnly } = data;
 
                     if ((!configOnly.technicians || configOnly.technicians.length === 0) && (!projectsDetailed || projectsDetailed.length === 0)) {
                         return;
@@ -651,6 +736,15 @@ const App: React.FC = () => {
 
                     const cleanConfig = JSON.parse(JSON.stringify(configOnly));
                     
+                    // Limpiar y reducir deletedReports para que no infle main_db y cause error de límite de 1MB
+                    cleanConfig.deletedReports = (deletedReports || []).slice(0, 10).map(r => ({
+                        id: r.id,
+                        date: r.date,
+                        technician: r.technician,
+                        project: r.project,
+                        deletedAt: (r as any).deletedAt
+                    }));
+
                     // Limitar el historial a los últimos 30 días antes de guardar
                     if (cleanConfig.dailyOrgHistory) {
                         const keys = Object.keys(cleanConfig.dailyOrgHistory).sort((a, b) => b.localeCompare(a));
@@ -659,7 +753,12 @@ const App: React.FC = () => {
                         }
                     }
 
-                    await db.collection("jdg_teleco").doc("main_db").set(cleanConfig);
+                    await db.collection("jdg_teleco").doc("main_db").set(cleanConfig, { merge: true });
+
+                    // Guardar la organización actual directamente en la subcolección daily_orgs
+                    if (data.dailyOrg && data.dailyOrg.fecha) {
+                        await db.collection("jdg_teleco").doc("main_db").collection("daily_orgs").doc(data.dailyOrg.fecha).set(data.dailyOrg);
+                    }
                 } catch (e: any) {
                     console.error("Cloud sync error", e);
                 }
@@ -973,7 +1072,9 @@ const App: React.FC = () => {
         let fullHistory: any = {};
         if (!histSnap.empty) {
             histSnap.forEach((d: any) => {
-                if(d.data().items) Object.assign(fullHistory, d.data().items);
+                const sData = d.data();
+                const items = sData?.items || sData;
+                if(items && typeof items === 'object') Object.assign(fullHistory, items);
             });
             restoredData.dailyOrgHistory = fullHistory;
         }
@@ -1157,24 +1258,23 @@ const App: React.FC = () => {
       };
   };
 
-  // Manejo de actualización de Daily Organization (CON ARMONIZACIÓN DE TRABAJADORES)
-  const handleDailyOrgUpdate = (newOrg: DailyOrgData) => {
+  // Manejo de actualización de Daily Organization (CON ARMONIZACIÓN DE TRABAJADORES Y GUARDADO DIRECTO)
+  const handleDailyOrgUpdate = async (newOrg: DailyOrgData) => {
       isSyncingRef.current = true;
       isInternalUpdate.current = false; 
+
+      const harmonizedOrg = harmonizeWorkers(newOrg, data.technicians);
+
       setData(prev => {
           const history = { ...(prev.dailyOrgHistory || {}) };
           
-          // Armonizamos la organización antes de archivarla en history
-          const harmonizedOrg = harmonizeWorkers(newOrg, prev.technicians);
-
           if (harmonizedOrg && harmonizedOrg.fecha) {
               history[harmonizedOrg.fecha] = harmonizedOrg;
           }
           
-          // Limitar el historial a los últimos 30 días para evitar exceder el límite de 1MB en Firestore
           const keys = Object.keys(history).sort((a, b) => b.localeCompare(a));
-          if (keys.length > 30) {
-              keys.slice(30).forEach(k => delete history[k]);
+          if (keys.length > 60) {
+              keys.slice(60).forEach(k => delete history[k]);
           }
 
           return {
@@ -1183,34 +1283,63 @@ const App: React.FC = () => {
               dailyOrgHistory: history
           };
       }); 
+
+      // Guardado DIRECTO e INMEDIATO en la subcolección daily_orgs de Firestore
+      if (harmonizedOrg && harmonizedOrg.fecha) {
+          try {
+              const fb = (window as any).firebase;
+              if (fb) {
+                  const db = fb.app().firestore();
+                  await db.collection("jdg_teleco").doc("main_db").collection("daily_orgs").doc(harmonizedOrg.fecha).set(harmonizedOrg);
+              }
+          } catch (e) {
+              console.error("Error guardando organización en Firestore daily_orgs:", e);
+          }
+      }
+
       setTimeout(() => { isSyncingRef.current = false; }, 2000);
   };
 
   // Manejo de cambio de fecha en Daily Organization (CARGA DE DATOS + ARMONIZACIÓN)
   const handleDailyOrgDateChange = (newDate: string) => {
-      const existingData = data.dailyOrgHistory?.[newDate];
-      let orgToLoad: DailyOrgData;
-
-      if (existingData) {
-          orgToLoad = existingData;
-      } else {
-          // Nueva fecha: mantenemos trabajadores de la organización activos pero limpios de asignaciones
-          const currentWorkers = data.dailyOrg?.trabajadores || [];
-          const cleanWorkers = currentWorkers.map(w => ({ ...w, asignado: false }));
-          orgToLoad = {
-              fecha: newDate,
-              trabajos: [],
-              trabajadores: cleanWorkers,
-              lastUpdated: Date.now()
-          };
-      }
-
-      // Armonizamos técnicos registrados en el sistema
-      const harmonizedOrg = harmonizeWorkers(orgToLoad, data.technicians);
-
       isSyncingRef.current = true;
       isInternalUpdate.current = false;
-      setData(prev => ({ ...prev, dailyOrg: harmonizedOrg }));
+
+      setData(prev => {
+          const history = { ...(prev.dailyOrgHistory || {}) };
+          // PRESERVAR LA ORG ACTUAL EN HISTORY ANTES DE CAMBIAR DE FECHA
+          if (prev.dailyOrg?.fecha) {
+              history[prev.dailyOrg.fecha] = prev.dailyOrg;
+          }
+
+          const existingData = history[newDate];
+          let orgToLoad: DailyOrgData;
+
+          if (existingData) {
+              orgToLoad = existingData;
+          } else {
+              // Nueva fecha: mantenemos trabajadores de la organización activos pero limpios de asignaciones
+              const currentWorkers = prev.dailyOrg?.trabajadores || [];
+              const cleanWorkers = currentWorkers.map(w => ({ ...w, asignado: false }));
+              orgToLoad = {
+                  fecha: newDate,
+                  trabajos: [],
+                  trabajadores: cleanWorkers,
+                  lastUpdated: Date.now()
+              };
+          }
+
+          // Armonizamos técnicos registrados en el sistema
+          const harmonizedOrg = harmonizeWorkers(orgToLoad, prev.technicians);
+          history[newDate] = harmonizedOrg;
+
+          return {
+              ...prev,
+              dailyOrg: harmonizedOrg,
+              dailyOrgHistory: history
+          };
+      });
+
       setTimeout(() => { isSyncingRef.current = false; }, 2000);
   };
 
@@ -1254,7 +1383,7 @@ const App: React.FC = () => {
   // cambiamos automáticamente la fecha por defecto a HOY para forzar la consistencia de los datos del día (SOLO PARA ADMINISTRADORES)
   useEffect(() => {
     if (isInitialLoading || userRole !== 'admin') return;
-    const today = new Date().toISOString().split('T')[0];
+    const today = getLocalDateString();
     if (data.dailyOrg?.fecha && data.dailyOrg.fecha < today) {
         handleDailyOrgDateChange(today);
     }
@@ -1345,7 +1474,7 @@ const App: React.FC = () => {
           {view === 'login' && (
             <motion.div key="login" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2 }}>
               <UserLogin onLogin={handleLogin} technicians={data.technicians} adminPwd={data.adminPassword || 'admin'} onViewDailyOrg={() => {
-                const todayStr = new Date().toISOString().split('T')[0];
+                const todayStr = getLocalDateString();
                 const existingOrg = data.dailyOrgHistory?.[todayStr];
                 const orgToLoad = existingOrg ? JSON.parse(JSON.stringify(existingOrg)) : JSON.parse(JSON.stringify(data.dailyOrg));
                 setTechViewOrg(harmonizeWorkers(orgToLoad, data.technicians));
@@ -1356,7 +1485,7 @@ const App: React.FC = () => {
           {view === 'dashboard' && (
             <motion.div key="dashboard" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }}>
               <TechDashboard reports={data.reports.filter(r => r.technician === currentUser)} projects={data.projectsDetailed} onNewReport={() => setView('form')} onEditReport={(r) => { setEditingReport(r); setView('form'); }} onViewDailyOrg={() => {
-                const todayStr = new Date().toISOString().split('T')[0];
+                const todayStr = getLocalDateString();
                 const existingOrg = data.dailyOrgHistory?.[todayStr];
                 const orgToLoad = existingOrg ? JSON.parse(JSON.stringify(existingOrg)) : JSON.parse(JSON.stringify(data.dailyOrg));
                 setTechViewOrg(harmonizeWorkers(orgToLoad, data.technicians));
@@ -1376,6 +1505,7 @@ const App: React.FC = () => {
                   key={userRole === 'admin' ? data.dailyOrg.fecha : (techViewOrg?.fecha || 'tech_default')} 
                   isReadOnly={userRole !== 'admin'} 
                   data={userRole === 'admin' ? data.dailyOrg : (techViewOrg || data.dailyOrg)} 
+                  history={data.dailyOrgHistory}
                   onUpdate={userRole === 'admin' ? handleDailyOrgUpdate : () => {}}
                   onChangeDate={userRole === 'admin' ? handleDailyOrgDateChange : handleTechDateChange}
                   onBack={() => setView(userRole ? (userRole === 'admin' ? 'admin' : 'dashboard') : 'login')}
@@ -1412,6 +1542,8 @@ const App: React.FC = () => {
                     onDeleteProject={deleteProject}
                     onRecoverProjects={recoverProjectsFromBackup}
                     onRestoreFullBackup={restoreFullBackup}
+                    onDailyOrgUpdate={handleDailyOrgUpdate}
+                    onDailyOrgDateChange={handleDailyOrgDateChange}
                 />
             </motion.div>
           )}

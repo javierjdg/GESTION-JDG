@@ -21,6 +21,8 @@ interface AdminPanelProps {
   onDeleteProject: (id: string) => Promise<void>;
   onRecoverProjects?: () => Promise<void>;
   onRestoreFullBackup?: (backupId: string) => Promise<void>;
+  onDailyOrgUpdate?: (newOrg: DailyOrgData) => void | Promise<void>;
+  onDailyOrgDateChange?: (newDate: string) => void;
 }
 
 // Helpers for calculations
@@ -250,7 +252,7 @@ const MapComponent = ({ projects, selectedProjectId, onSelectProject }: { projec
   ) : <div className="w-full h-[600px] bg-gray-100 dark:bg-gray-800 flex items-center justify-center rounded-xl border border-gray-200 dark:border-gray-700">Cargando mapa...</div>;
 };
 
-const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations, onDeleteReport, onManualBackup, onUpdateReport, onEditReport, onSaveProject, onDeleteProject, onRecoverProjects, onRestoreFullBackup }) => {
+const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations, onDeleteReport, onManualBackup, onUpdateReport, onEditReport, onSaveProject, onDeleteProject, onRecoverProjects, onRestoreFullBackup, onDailyOrgUpdate, onDailyOrgDateChange }) => {
   const [isPending, startTransition] = useTransition();
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [expandedTechId, setExpandedTechId] = useState<string | null>(null);
@@ -2395,10 +2397,21 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
 
         if (harmonizedOrg && harmonizedOrg.fecha) history[harmonizedOrg.fecha] = harmonizedOrg;
 
-        // Limita el historial a los últimos 30 días para evitar exceder el límite de 1MB en Firestore
+        // Limita el historial a los últimos 60 días
         const keys = Object.keys(history).sort((a, b) => b.localeCompare(a));
-        if (keys.length > 30) {
-            keys.slice(30).forEach(k => delete history[k]);
+        if (keys.length > 60) {
+            keys.slice(60).forEach(k => delete history[k]);
+        }
+
+        // Guardado directo en Firestore daily_orgs si está disponible
+        if (harmonizedOrg && harmonizedOrg.fecha) {
+            try {
+                const fb = (window as any).firebase;
+                if (fb) {
+                    const db = fb.app().firestore();
+                    db.collection("jdg_teleco").doc("main_db").collection("daily_orgs").doc(harmonizedOrg.fecha).set(harmonizedOrg).catch(() => {});
+                }
+            } catch (_) {}
         }
 
         return { ...prev, dailyOrg: harmonizedOrg, dailyOrgHistory: history };
@@ -2407,7 +2420,12 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
 
   const handleDailyOrgDateChange = (newDate: string) => {
     setData(prev => {
-        const existingData = prev.dailyOrgHistory?.[newDate];
+        const history = { ...(prev.dailyOrgHistory || {}) };
+        if (prev.dailyOrg?.fecha) {
+            history[prev.dailyOrg.fecha] = prev.dailyOrg;
+        }
+
+        const existingData = history[newDate];
         let orgToLoad: DailyOrgData;
         if (existingData) {
             orgToLoad = existingData;
@@ -2451,8 +2469,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
             }
         });
         const harmonizedOrg = { ...orgToLoad, trabajadores: updatedWorkers };
+        history[newDate] = harmonizedOrg;
 
-        return { ...prev, dailyOrg: harmonizedOrg };
+        return { ...prev, dailyOrg: harmonizedOrg, dailyOrgHistory: history };
     });
   };
 
@@ -4613,8 +4632,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
         {tab === 'daily' && (
              <DailyOrganization 
                 data={data.dailyOrg} 
-                onUpdate={handleDailyOrgUpdate}
-                onChangeDate={handleDailyOrgDateChange}
+                history={data.dailyOrgHistory}
+                onUpdate={onDailyOrgUpdate || handleDailyOrgUpdate}
+                onChangeDate={onDailyOrgDateChange || handleDailyOrgDateChange}
                 isReadOnly={false}
              />
         )}

@@ -27,10 +27,18 @@ export interface DailyOrgData {
   excluidos?: string[]; // Nombres de técnicos excluidos en este día
 }
 
+export const getLocalDateString = (d: Date = new Date()): string => {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 interface DailyOrganizationProps {
   isReadOnly?: boolean;
   onBack?: () => void;
   data: DailyOrgData;
+  history?: Record<string, DailyOrgData>;
   onUpdate: (newData: DailyOrgData) => void;
   onChangeDate: (newDate: string) => void;
   onMarkSeen?: () => void; // Prop para limpiar notificación
@@ -40,16 +48,16 @@ const normalizeDailyOrg = (org: any, defaultFecha?: string): DailyOrgData => {
   return {
     trabajos: Array.isArray(org?.trabajos) ? org.trabajos : [],
     trabajadores: Array.isArray(org?.trabajadores) ? org.trabajadores : [],
-    fecha: org?.fecha || defaultFecha || new Date().toISOString().split('T')[0],
+    fecha: org?.fecha || defaultFecha || getLocalDateString(),
     lastUpdated: org?.lastUpdated,
     excluidos: Array.isArray(org?.excluidos) ? org.excluidos : []
   };
 };
 
-const DailyOrganization: React.FC<DailyOrganizationProps> = ({ isReadOnly = false, onBack, data, onUpdate, onChangeDate, onMarkSeen }) => {
+const DailyOrganization: React.FC<DailyOrganizationProps> = ({ isReadOnly = false, onBack, data, history, onUpdate, onChangeDate, onMarkSeen }) => {
   // ESTADO LOCAL para edición
   const [localData, setLocalData] = useState<DailyOrgData>(() => normalizeDailyOrg(data));
-  const [isDirty, setIsDirty] = useState(false); // Para saber hay cambios sin guardar
+  const [isDirty, setIsDirty] = useState(false); // Para saber si hay cambios sin guardar
   const [isSaving, setIsSaving] = useState(false);
   const autoSaveTimeoutRef = useRef<any>(null);
 
@@ -86,10 +94,20 @@ const DailyOrganization: React.FC<DailyOrganizationProps> = ({ isReadOnly = fals
       }
   }, [isReadOnly, onMarkSeen]);
 
-  // Sincronizar data externa si cambia
+  // Sincronizar data externa:
+  // - Si cambia de fecha externa, actualizamos inmediatamente el estado local.
+  // - Si la fecha coincide pero no tenemos cambios locales pendientes sin guardar, sincronizamos.
   useEffect(() => {
-      setLocalData(normalizeDailyOrg(data));
-  }, [data]);
+      if (!data) return;
+      if (data.fecha && data.fecha !== localData.fecha) {
+          setLocalData(normalizeDailyOrg(data));
+          setIsDirty(false);
+          return;
+      }
+      if (!isDirty && data.lastUpdated && (!localData.lastUpdated || data.lastUpdated > localData.lastUpdated)) {
+          setLocalData(normalizeDailyOrg(data));
+      }
+  }, [data, localData.fecha, isDirty, localData.lastUpdated]);
 
   const updateLocal = (newData: DailyOrgData) => {
       setLocalData(newData);
@@ -100,40 +118,119 @@ const DailyOrganization: React.FC<DailyOrganizationProps> = ({ isReadOnly = fals
           clearTimeout(autoSaveTimeoutRef.current);
       }
 
-      // Guardado automático: Propagar cambios inmediatamente al componente padre
+      // Propagar cambios inmediatamente al componente padre
       onUpdate({
           ...newData,
           lastUpdated: Date.now()
       });
 
       autoSaveTimeoutRef.current = setTimeout(() => {
-          setIsDirty(false);
           setIsSaving(false);
       }, 1000);
   };
 
   const handleSave = () => {
-      // Actualizamos el timestamp para disparar notificaciones a los técnicos
+      setIsSaving(true);
       const dataToSave = {
           ...localData,
           lastUpdated: Date.now()
       };
       onUpdate(dataToSave);
       setIsDirty(false);
-      toast.success(`Organización del ${localData.fecha} guardada correctamente.`);
+      setTimeout(() => {
+          setIsSaving(false);
+      }, 800);
+      toast.success(`✓ Organización del ${localData.fecha} guardada en la nube.`);
   };
 
   const handleDateChangeInput = (e: React.ChangeEvent<HTMLInputElement>) => {
       const newVal = e.target.value;
-      if (!newVal) return; // Previene fecha vacía si el navegador fuerza el borrado
+      if (!newVal) return;
+
+      // Guardar automáticamente cualquier cambio antes de cambiar de fecha
+      if (isDirty) {
+          onUpdate({
+              ...localData,
+              lastUpdated: Date.now()
+          });
+          setIsDirty(false);
+      }
+      onChangeDate(newVal);
+  };
+
+  const cambiarDiaOffset = (offset: number) => {
+      const [year, month, day] = (localData.fecha || getLocalDateString()).split('-').map(Number);
+      const d = new Date(year, month - 1, day);
+      d.setDate(d.getDate() + offset);
+      const newFecha = getLocalDateString(d);
 
       if (isDirty) {
-          if (!window.confirm("⚠️ Tienes cambios SIN GUARDAR en este día.\n\nSi cambias de fecha sin guardar, perderás los cambios actuales.\n\n¿Continuar sin guardar?")) {
-              e.preventDefault();
+          onUpdate({
+              ...localData,
+              lastUpdated: Date.now()
+          });
+          setIsDirty(false);
+      }
+      onChangeDate(newFecha);
+  };
+
+  const irAHoy = () => {
+      const hoy = getLocalDateString();
+      if (localData.fecha === hoy) return;
+      if (isDirty) {
+          onUpdate({
+              ...localData,
+              lastUpdated: Date.now()
+          });
+          setIsDirty(false);
+      }
+      onChangeDate(hoy);
+  };
+
+  // Helper para calcular fecha anterior
+  const getPrevDateStr = (): string => {
+      const [year, month, day] = (localData.fecha || getLocalDateString()).split('-').map(Number);
+      const d = new Date(year, month - 1, day);
+      d.setDate(d.getDate() - 1);
+      return getLocalDateString(d);
+  };
+
+  const prevDateStr = getPrevDateStr();
+  const prevDateData = history?.[prevDateStr];
+
+  const copiarDelDiaAnterior = () => {
+      if (!prevDateData || !prevDateData.trabajos || prevDateData.trabajos.length === 0) {
+          toast.error(`No hay obras registradas en el día anterior (${prevDateStr})`);
+          return;
+      }
+      if (localData.trabajos.length > 0) {
+          if (!window.confirm(`¿Reemplazar la organización actual del ${localData.fecha} con las obras del día anterior (${prevDateStr})?`)) {
               return;
           }
       }
-      onChangeDate(newVal);
+
+      // Duplicar trabajos con nuevos IDs
+      const copiedJobs: JobOrg[] = prevDateData.trabajos.map(j => ({
+          ...j,
+          id: Date.now() + Math.floor(Math.random() * 10000),
+          trabajadores: j.trabajadores.map(w => ({ ...w, asignado: true }))
+      }));
+
+      // Marcar trabajadores asignados
+      const assignedIds = new Set<number>();
+      copiedJobs.forEach(j => j.trabajadores.forEach(w => assignedIds.add(w.id)));
+      const updatedWorkers = localData.trabajadores.map(w => ({
+          ...w,
+          asignado: assignedIds.has(w.id)
+      }));
+
+      updateLocal({
+          ...localData,
+          trabajos: copiedJobs,
+          trabajadores: updatedWorkers,
+          lastUpdated: Date.now()
+      });
+      toast.success(`✓ Se han copiado las obras del ${prevDateStr} al ${localData.fecha}`);
   };
 
   const colors = ['#E63946','#F77F00','#06D6A0','#118AB2','#073B4C','#D62828','#FCA311','#14213D','#00B4D8','#0077B6'];
@@ -306,37 +403,80 @@ const DailyOrganization: React.FC<DailyOrganizationProps> = ({ isReadOnly = fals
             </div>
             
             <div className="flex flex-col md:flex-row gap-4 items-end md:items-center w-full md:w-auto">
-              {/* Selector de Fecha */}
-              <div className="relative">
-                  <label className="block text-[10px] uppercase font-bold text-gray-500 mb-1">Fecha Visualizada</label>
-                  <input 
-                    type="date" 
-                    required
-                    value={localData.fecha} 
-                    onChange={handleDateChangeInput} 
-                    className={`px-4 py-2 bg-gray-50 dark:bg-gray-800 border-2 ${isDirty ? 'border-orange-400' : 'border-gray-300 dark:border-gray-600'} rounded-lg text-gray-900 dark:text-white font-bold cursor-pointer hover:border-brand-teal transition-colors shadow-sm`} 
-                  />
+              {/* Selector de Fecha con botones de navegación rápida */}
+              <div className="flex flex-col gap-1 w-full md:w-auto">
+                  <div className="flex items-center justify-between">
+                      <label className="text-[10px] uppercase font-bold text-gray-500">Fecha Visualizada</label>
+                      {!isReadOnly && prevDateData && prevDateData.trabajos && prevDateData.trabajos.length > 0 && localData.trabajos.length === 0 && (
+                          <button
+                            type="button"
+                            onClick={copiarDelDiaAnterior}
+                            className="text-[10px] font-bold text-brand-teal hover:underline flex items-center gap-1"
+                            title={`Copiar obras desde el día anterior (${prevDateStr})`}
+                          >
+                            📋 Copiar día anterior
+                          </button>
+                      )}
+                  </div>
+                  <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => cambiarDiaOffset(-1)}
+                        title="Día anterior"
+                        className="px-2 py-2 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg text-xs font-bold border border-gray-300 dark:border-gray-600 transition-colors"
+                      >
+                        ◀
+                      </button>
+                      <button
+                        type="button"
+                        onClick={irAHoy}
+                        title="Ir a Hoy"
+                        className={`px-2.5 py-2 rounded-lg text-xs font-bold border transition-colors ${
+                          localData.fecha === getLocalDateString()
+                            ? 'bg-brand-teal text-white border-brand-teal'
+                            : 'bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600'
+                        }`}
+                      >
+                        Hoy
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => cambiarDiaOffset(1)}
+                        title="Día siguiente"
+                        className="px-2 py-2 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg text-xs font-bold border border-gray-300 dark:border-gray-600 transition-colors"
+                      >
+                        ▶
+                      </button>
+                      <input 
+                        type="date" 
+                        required
+                        value={localData.fecha} 
+                        onChange={handleDateChangeInput} 
+                        className={`px-3 py-1.5 bg-gray-50 dark:bg-gray-800 border-2 ${isDirty ? 'border-orange-400' : 'border-gray-300 dark:border-gray-600'} rounded-lg text-gray-900 dark:text-white font-bold cursor-pointer hover:border-brand-teal transition-colors shadow-sm text-sm`} 
+                      />
+                  </div>
               </div>
 
               {/* Botón Guardar - SOLO ADMIN */}
               {!isReadOnly && (
                   <div className="flex items-center gap-3">
-                      <span className="text-[11px] font-bold text-gray-400 dark:text-gray-500 italic">
-                          {isSaving ? "⚡ Guardando en la nube..." : "✓ Autoguardado activo"}
+                      <span className="text-[11px] font-bold text-gray-400 dark:text-gray-500 italic hidden sm:inline">
+                          {isSaving ? "⚡ Guardando en Firestore..." : "✓ Sincronizado"}
                       </span>
                       <button 
+                        type="button"
                         onClick={handleSave}
-                        disabled={!isDirty && !isSaving}
-                        className={`px-6 py-3 rounded-xl font-black text-sm flex items-center gap-2 shadow-lg transition-all transform active:scale-95 ${
+                        disabled={isSaving}
+                        className={`px-6 py-2.5 rounded-xl font-black text-sm flex items-center gap-2 shadow-lg transition-all transform active:scale-95 ${
                             isSaving
                             ? 'bg-orange-500 text-white animate-pulse'
                             : isDirty 
                             ? 'bg-green-600 hover:bg-green-500 text-white' 
-                            : 'bg-gray-200 dark:bg-gray-800 text-gray-400 cursor-not-allowed'
+                            : 'bg-brand-teal hover:bg-brand-teal/90 text-white'
                         }`}
                       >
                         <SaveIcon className="w-5 h-5" />
-                        {isSaving ? 'GUARDANDO...' : isDirty ? 'GUARDAR' : 'GUARDADO'}
+                        {isSaving ? 'GUARDANDO...' : isDirty ? 'GUARDAR CAMBIOS' : 'GUARDAR AHORA'}
                       </button>
                   </div>
               )}
