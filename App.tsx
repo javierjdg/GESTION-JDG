@@ -328,11 +328,27 @@ const App: React.FC = () => {
                 if (Object.keys(cloudConfig).length > 0) {
                     isInternalUpdate.current = true;
                     setData(prev => {
-                        // Ignoramos projectsDetailed del documento principal ya que ahora usamos subcolección
-                        const { projectsDetailed, ...rest } = cloudConfig;
+                        // Ignoramos projectsDetailed y dailyOrgHistory (gestionados en subcolecciones)
+                        const { projectsDetailed, dailyOrgHistory, ...rest } = cloudConfig;
+                        
+                        // Protección inteligente de técnicos:
+                        // Si en local existen técnicos que no están aún en la nube o que han sido añadidos localmente,
+                        // no los borramos: los combinamos para proteger contra condiciones de carrera.
+                        let mergedTechs = rest.technicians;
+                        if (Array.isArray(rest.technicians) && Array.isArray(prev.technicians) && prev.technicians.length > 0) {
+                            const cloudNames = new Set(rest.technicians.map((t: TechUser) => t.name.trim().toUpperCase()));
+                            const localOnly = prev.technicians.filter(t => !cloudNames.has(t.name.trim().toUpperCase()));
+                            if (localOnly.length > 0) {
+                                mergedTechs = [...rest.technicians, ...localOnly];
+                            }
+                        } else if (!mergedTechs && prev.technicians) {
+                            mergedTechs = prev.technicians;
+                        }
+
                         return {
                             ...prev,
                             ...rest,
+                            technicians: mergedTechs || prev.technicians,
                             reports: prev.reports,
                             projectsDetailed: prev.projectsDetailed
                         };
@@ -345,6 +361,23 @@ const App: React.FC = () => {
                 setIsInitialLoading(false);
             }
         });
+
+        // Verificación y sincronización redundante de técnicos desde subcolección settings
+        db.collection("jdg_teleco").doc("main_db").collection("settings").doc("technicians").get().then((techSnap: any) => {
+            if (techSnap.exists && techSnap.data()?.technicians) {
+                const settingTechs: TechUser[] = techSnap.data().technicians;
+                if (Array.isArray(settingTechs) && settingTechs.length > 0) {
+                    setData(prev => {
+                        const currentNames = new Set((prev.technicians || []).map(t => t.name.trim().toUpperCase()));
+                        const missing = settingTechs.filter(t => !currentNames.has(t.name.trim().toUpperCase()));
+                        if (missing.length > 0) {
+                            return { ...prev, technicians: [...(prev.technicians || []), ...missing] };
+                        }
+                        return prev;
+                    });
+                }
+            }
+        }).catch(() => {});
 
         unsubReports = db.collection("jdg_teleco").doc("main_db").collection("reports").onSnapshot((snapshot: any) => {
             if (isSyncingRef.current) return; 
@@ -728,7 +761,7 @@ const App: React.FC = () => {
                     const fb = (window as any).firebase;
                     if (!fb) return;
                     const db = fb.app().firestore();
-                    const { reports, projectsDetailed, deletedReports, ...configOnly } = data;
+                    const { reports, projectsDetailed, deletedReports, dailyOrgHistory, ...configOnly } = data;
 
                     if ((!configOnly.technicians || configOnly.technicians.length === 0) && (!projectsDetailed || projectsDetailed.length === 0)) {
                         return;
@@ -737,7 +770,7 @@ const App: React.FC = () => {
                     const cleanConfig = JSON.parse(JSON.stringify(configOnly));
                     
                     // Limpiar y reducir deletedReports para que no infle main_db y cause error de límite de 1MB
-                    cleanConfig.deletedReports = (deletedReports || []).slice(0, 10).map(r => ({
+                    cleanConfig.deletedReports = (deletedReports || []).slice(-5).map(r => ({
                         id: r.id,
                         date: r.date,
                         technician: r.technician,
@@ -745,13 +778,8 @@ const App: React.FC = () => {
                         deletedAt: (r as any).deletedAt
                     }));
 
-                    // Limitar el historial a los últimos 30 días antes de guardar
-                    if (cleanConfig.dailyOrgHistory) {
-                        const keys = Object.keys(cleanConfig.dailyOrgHistory).sort((a, b) => b.localeCompare(a));
-                        if (keys.length > 30) {
-                            keys.slice(30).forEach(k => delete cleanConfig.dailyOrgHistory[k]);
-                        }
-                    }
+                    // Eliminar dailyOrgHistory del documento raíz (ahora gestionado de forma robusta en la subcolección daily_orgs)
+                    delete cleanConfig.dailyOrgHistory;
 
                     await db.collection("jdg_teleco").doc("main_db").set(cleanConfig, { merge: true });
 
@@ -954,6 +982,92 @@ const App: React.FC = () => {
         }
     } finally {
         isSyncingRef.current = false;
+    }
+  };
+
+  const updateTechnicians = async (newTechs: TechUser[]) => {
+    isSyncingRef.current = true;
+    isInternalUpdate.current = false;
+
+    try {
+      setData(prev => ({
+        ...prev,
+        technicians: newTechs
+      }));
+
+      // Guardar inmediatamente en localStorage
+      try {
+        const local = localStorage.getItem('workerApp_db');
+        if (local) {
+          const parsed = JSON.parse(local);
+          parsed.technicians = newTechs;
+          localStorage.setItem('workerApp_db', JSON.stringify(parsed));
+        }
+      } catch (_) {}
+
+      if (isCloudConnected) {
+        try {
+          const fb = (window as any).firebase;
+          if (fb) {
+            const db = fb.app().firestore();
+            // 1. Guardar en main_db directamente solo technicians
+            await db.collection("jdg_teleco").doc("main_db").set({ technicians: newTechs }, { merge: true });
+            // 2. Guardar en subcolección settings para respaldo redundante
+            await db.collection("jdg_teleco").doc("main_db").collection("settings").doc("technicians").set({
+              technicians: newTechs,
+              lastUpdated: Date.now()
+            });
+            toast.success("Técnicos sincronizados con la nube");
+          }
+        } catch (e: any) {
+          console.error("Firebase save technicians error", e);
+          toast.error("Error al sincronizar técnicos con la nube");
+        }
+      } else {
+        toast.success("Técnico guardado localmente");
+      }
+    } finally {
+      setTimeout(() => {
+        isSyncingRef.current = false;
+      }, 1500);
+    }
+  };
+
+  const updateVehicles = async (newVehicles: string[]) => {
+    isSyncingRef.current = true;
+    isInternalUpdate.current = false;
+
+    try {
+      setData(prev => ({
+        ...prev,
+        vehicles: newVehicles
+      }));
+
+      try {
+        const local = localStorage.getItem('workerApp_db');
+        if (local) {
+          const parsed = JSON.parse(local);
+          parsed.vehicles = newVehicles;
+          localStorage.setItem('workerApp_db', JSON.stringify(parsed));
+        }
+      } catch (_) {}
+
+      if (isCloudConnected) {
+        try {
+          const fb = (window as any).firebase;
+          if (fb) {
+            const db = fb.app().firestore();
+            await db.collection("jdg_teleco").doc("main_db").set({ vehicles: newVehicles }, { merge: true });
+            toast.success("Vehículos sincronizados con la nube");
+          }
+        } catch (e: any) {
+          console.error("Firebase save vehicles error", e);
+        }
+      }
+    } finally {
+      setTimeout(() => {
+        isSyncingRef.current = false;
+      }, 1500);
     }
   };
 
@@ -1544,6 +1658,8 @@ const App: React.FC = () => {
                     onRestoreFullBackup={restoreFullBackup}
                     onDailyOrgUpdate={handleDailyOrgUpdate}
                     onDailyOrgDateChange={handleDailyOrgDateChange}
+                    onUpdateTechnicians={updateTechnicians}
+                    onUpdateVehicles={updateVehicles}
                 />
             </motion.div>
           )}

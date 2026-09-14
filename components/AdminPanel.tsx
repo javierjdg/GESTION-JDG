@@ -23,6 +23,8 @@ interface AdminPanelProps {
   onRestoreFullBackup?: (backupId: string) => Promise<void>;
   onDailyOrgUpdate?: (newOrg: DailyOrgData) => void | Promise<void>;
   onDailyOrgDateChange?: (newDate: string) => void;
+  onUpdateTechnicians?: (newTechs: TechUser[]) => Promise<void>;
+  onUpdateVehicles?: (newVehicles: string[]) => Promise<void>;
 }
 
 // Helpers for calculations
@@ -252,7 +254,23 @@ const MapComponent = ({ projects, selectedProjectId, onSelectProject }: { projec
   ) : <div className="w-full h-[600px] bg-gray-100 dark:bg-gray-800 flex items-center justify-center rounded-xl border border-gray-200 dark:border-gray-700">Cargando mapa...</div>;
 };
 
-const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations, onDeleteReport, onManualBackup, onUpdateReport, onEditReport, onSaveProject, onDeleteProject, onRecoverProjects, onRestoreFullBackup, onDailyOrgUpdate, onDailyOrgDateChange }) => {
+const AdminPanel: React.FC<AdminPanelProps> = ({ 
+  data, 
+  setData, 
+  onGoToVacations, 
+  onDeleteReport, 
+  onManualBackup, 
+  onUpdateReport, 
+  onEditReport, 
+  onSaveProject, 
+  onDeleteProject, 
+  onRecoverProjects, 
+  onRestoreFullBackup, 
+  onDailyOrgUpdate, 
+  onDailyOrgDateChange,
+  onUpdateTechnicians,
+  onUpdateVehicles
+}) => {
   const [isPending, startTransition] = useTransition();
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [expandedTechId, setExpandedTechId] = useState<string | null>(null);
@@ -265,6 +283,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
   const [selectedMonthForReport, setSelectedMonthForReport] = useState('');
   const [newItemName, setNewItemName] = useState('');
   const [newTechPwd, setNewTechPwd] = useState('');
+  const [editingTechId, setEditingTechId] = useState<string | null>(null);
+  const [editTechName, setEditTechName] = useState('');
+  const [editTechPwd, setEditTechPwd] = useState('');
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editValue, setEditValue] = useState(''); 
   const [editPwdValue, setEditPwdValue] = useState('');
@@ -626,16 +647,48 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
       toast.success(newFinished ? "Presupuesto marcado como Terminado" : "Presupuesto desmarcado de Terminado");
   };
 
-  const handleAdd = (type: 'techs' | 'vehicles') => {
-    if (!newItemName.trim()) return;
-    setData(prev => {
-      if (type === 'techs') {
-        const newTech: TechUser = { id: Date.now().toString(), name: newItemName, password: newTechPwd || '1234', active: true };
-        return { ...prev, technicians: [...prev.technicians, newTech] };
+  const handleAdd = async (type: 'techs' | 'vehicles') => {
+    const trimmedName = newItemName.trim();
+    if (!trimmedName) return;
+
+    if (type === 'techs') {
+      const existing = (data.technicians || []).some(
+        t => t.name.trim().toUpperCase() === trimmedName.toUpperCase()
+      );
+      if (existing) {
+        toast.error(`Ya existe un técnico con el nombre "${trimmedName}".`);
+        return;
       }
-      if (type === 'vehicles') return { ...prev, vehicles: [...prev.vehicles, newItemName] };
-      return prev;
-    });
+      const newTech: TechUser = {
+        id: Date.now().toString(),
+        name: trimmedName,
+        password: newTechPwd.trim() || '1234',
+        active: true
+      };
+      const updatedTechs = [...(data.technicians || []), newTech];
+      if (onUpdateTechnicians) {
+        await onUpdateTechnicians(updatedTechs);
+      } else {
+        setData(prev => ({ ...prev, technicians: updatedTechs }));
+      }
+      toast.success(`Técnico ${newTech.name} añadido`);
+    } else if (type === 'vehicles') {
+      const existing = (data.vehicles || []).some(
+        v => v.trim().toUpperCase() === trimmedName.toUpperCase()
+      );
+      if (existing) {
+        toast.error(`Ya existe un vehículo con el nombre "${trimmedName}".`);
+        return;
+      }
+      const updatedVehicles = [...(data.vehicles || []), trimmedName];
+      if (onUpdateVehicles) {
+        await onUpdateVehicles(updatedVehicles);
+      } else {
+        setData(prev => ({ ...prev, vehicles: updatedVehicles }));
+      }
+      toast.success(`Vehículo ${trimmedName} añadido`);
+    }
+
     setNewItemName('');
     setNewTechPwd('');
   };
@@ -863,43 +916,124 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
     toast.success("PDF generado correctamente con membrete oficial");
   };
 
-  const handleDelete = (type: 'techs' | 'vehicles', index: number) => {
-    if (!window.confirm(`¿Eliminar elemento?`)) return;
-    setData(prev => {
-      if (type === 'techs') return { ...prev, technicians: prev.technicians.filter((_, i) => i !== index) };
-      if (type === 'vehicles') return { ...prev, vehicles: prev.vehicles.filter((_, i) => i !== index) };
-      return prev;
-    });
+  const handleDeleteTech = async (tech: TechUser) => {
+    if (!window.confirm(`¿Eliminar al técnico "${tech.name}"?`)) return;
+    const updated = (data.technicians || []).filter(t => t.id !== tech.id);
+    if (onUpdateTechnicians) {
+      await onUpdateTechnicians(updated);
+    } else {
+      setData(prev => ({ ...prev, technicians: updated }));
+    }
+    toast.success(`Técnico ${tech.name} eliminado`);
   };
 
-  const startEditing = (index: number, item: any, type: 'techs' | 'vehicles') => {
-    setEditingIndex(index);
-    if (type === 'techs') { const t = item as TechUser; setEditValue(t.name); setEditPwdValue(t.password); }
-    else { setEditValue(item as string); }
+  const startEditingTech = (tech: TechUser) => {
+    setEditingTechId(tech.id);
+    setEditTechName(tech.name);
+    setEditTechPwd(tech.password || '');
   };
 
-  const cancelEditing = () => { setEditingIndex(null); setEditValue(''); setEditPwdValue(''); };
+  const cancelEditingTech = () => {
+    setEditingTechId(null);
+    setEditTechName('');
+    setEditTechPwd('');
+  };
 
-  const saveEditing = (type: 'techs' | 'vehicles') => {
-    if (!editValue.trim() || editingIndex === null) return;
-    setData(prev => {
-      let newData = { ...prev };
-      if (type === 'techs') {
-        const originalTech = prev.technicians[editingIndex];
-        const newArr = [...prev.technicians];
-        newArr[editingIndex] = { ...originalTech, name: editValue, password: editPwdValue };
-        newData.technicians = newArr;
-        newData.reports = prev.reports.map(r => r.technician === originalTech.name ? { ...r, technician: editValue } : r);
-      } else if (type === 'vehicles') {
-        const originalValue = prev.vehicles[editingIndex];
-        const newArr = [...prev.vehicles];
-        newArr[editingIndex] = editValue;
-        newData.vehicles = newArr;
-        newData.reports = prev.reports.map(r => r.vehicle === originalValue ? { ...r, vehicle: editValue } : r);
+  const saveEditingTech = async () => {
+    if (!editTechName.trim() || !editingTechId) return;
+    const originalTech = (data.technicians || []).find(t => t.id === editingTechId);
+    if (!originalTech) return;
+
+    const trimmedNewName = editTechName.trim();
+    const updatedTechs = (data.technicians || []).map(t => {
+      if (t.id === editingTechId) {
+        return { ...t, name: trimmedNewName, password: editTechPwd.trim() || '1234' };
       }
-      return newData;
+      return t;
     });
-    cancelEditing();
+
+    if (onUpdateTechnicians) {
+      await onUpdateTechnicians(updatedTechs);
+    } else {
+      setData(prev => ({
+        ...prev,
+        technicians: updatedTechs,
+        reports: prev.reports.map(r => r.technician === originalTech.name ? { ...r, technician: trimmedNewName } : r)
+      }));
+    }
+    cancelEditingTech();
+    toast.success("Técnico actualizado correctamente");
+  };
+
+  const handleToggleTechActive = async (tech: TechUser) => {
+    const updatedTechs = (data.technicians || []).map(t => {
+      if (t.id === tech.id) {
+        return { ...t, active: t.active === false ? true : false };
+      }
+      return t;
+    });
+    if (onUpdateTechnicians) {
+      await onUpdateTechnicians(updatedTechs);
+    } else {
+      setData(prev => ({ ...prev, technicians: updatedTechs }));
+    }
+    toast.success(`Estado de ${tech.name} actualizado`);
+  };
+
+  const handleToggleTechVacations = async (tech: TechUser) => {
+    const updatedTechs = (data.technicians || []).map(t => {
+      if (t.id === tech.id) {
+        return { ...t, hideInVacations: !t.hideInVacations };
+      }
+      return t;
+    });
+    if (onUpdateTechnicians) {
+      await onUpdateTechnicians(updatedTechs);
+    } else {
+      setData(prev => ({ ...prev, technicians: updatedTechs }));
+    }
+    toast.success(`Visibilidad en vacaciones de ${tech.name} actualizada`);
+  };
+
+  const handleDeleteVehicle = async (vehicleName: string) => {
+    if (!window.confirm(`¿Eliminar vehículo "${vehicleName}"?`)) return;
+    const updated = (data.vehicles || []).filter(v => v !== vehicleName);
+    if (onUpdateVehicles) {
+      await onUpdateVehicles(updated);
+    } else {
+      setData(prev => ({ ...prev, vehicles: updated }));
+    }
+    toast.success("Vehículo eliminado");
+  };
+
+  const startEditingVehicle = (index: number, v: string) => {
+    setEditingIndex(index);
+    setEditValue(v);
+  };
+
+  const cancelEditingVehicle = () => {
+    setEditingIndex(null);
+    setEditValue('');
+  };
+
+  const saveEditingVehicle = async () => {
+    if (!editValue.trim() || editingIndex === null) return;
+    const originalValue = (data.vehicles || [])[editingIndex];
+    const trimmedNew = editValue.trim();
+    const updatedVehicles = [...(data.vehicles || [])];
+    updatedVehicles[editingIndex] = trimmedNew;
+
+    if (onUpdateVehicles) {
+      await onUpdateVehicles(updatedVehicles);
+    } else {
+      setData(prev => ({
+        ...prev,
+        vehicles: updatedVehicles,
+        reports: prev.reports.map(r => r.vehicle === originalValue ? { ...r, vehicle: trimmedNew } : r)
+      }));
+    }
+    cancelEditingVehicle();
+    toast.success("Vehículo actualizado");
   };
 
   const savePasswords = () => {
@@ -3483,7 +3617,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                     <button onClick={() => handleAdd('techs')} className="bg-brand-teal text-white px-6 py-2 rounded-lg font-bold shadow-md hover:bg-teal-600 transition-colors">Añadir</button>
                 </div>
                 <div className="grid grid-cols-1 gap-4">
-                {[...(data.technicians || [])].sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' })).map((t, i) => {
+                {[...(data.technicians || [])].sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' })).map((t) => {
                     const techReports = data.reports.filter(r => r.technician === t.name);
                     const groupedByMonth: Record<string, { label: string, reports: WorkReport[] }> = {};
                     techReports.forEach(r => {
@@ -3495,16 +3629,17 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                     });
                     const sortedMonths = Object.entries(groupedByMonth).sort((a, b) => (b[0] || '').localeCompare(a[0] || ''));
                     const isExpanded = expandedTechId === t.id;
+                    const isEditing = editingTechId === t.id;
 
                     return (
-                        <div key={t.id || i} className="space-y-2">
+                        <div key={t.id || t.name} className="space-y-2">
                             <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 flex justify-between items-center group shadow-sm hover:border-brand-teal/50 transition-all">
-                                {editingIndex === i ? (
+                                {isEditing ? (
                                     <div className="flex-1 flex gap-2">
-                                        <input value={editValue} onChange={e => setEditValue(e.target.value)} className="flex-1 bg-gray-50 dark:bg-gray-900 border border-brand-teal rounded px-2 py-1 text-xs text-gray-900 dark:text-white" />
-                                        <input value={editPwdValue} onChange={e => setEditPwdValue(e.target.value)} className="flex-1 bg-gray-50 dark:bg-gray-900 border border-brand-teal rounded px-2 py-1 text-xs text-gray-900 dark:text-white" />
-                                        <button onClick={() => saveEditing('techs')} className="text-green-500"><SaveIcon className="w-4 h-4" /></button>
-                                        <button onClick={cancelEditing} className="text-red-500"><XIcon className="w-4 h-4" /></button>
+                                        <input value={editTechName} onChange={e => setEditTechName(e.target.value)} className="flex-1 bg-gray-50 dark:bg-gray-900 border border-brand-teal rounded px-2 py-1 text-xs text-gray-900 dark:text-white" placeholder="Nombre" />
+                                        <input value={editTechPwd} onChange={e => setEditTechPwd(e.target.value)} className="flex-1 bg-gray-50 dark:bg-gray-900 border border-brand-teal rounded px-2 py-1 text-xs text-gray-900 dark:text-white" placeholder="Contraseña" />
+                                        <button onClick={saveEditingTech} className="text-green-500 hover:text-green-600 p-1"><SaveIcon className="w-4 h-4" /></button>
+                                        <button onClick={cancelEditingTech} className="text-red-500 hover:text-red-600 p-1"><XIcon className="w-4 h-4" /></button>
                                     </div>
                                 ) : (
                                     <>
@@ -3530,18 +3665,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                                                 <input 
                                                     type="checkbox" 
                                                     checked={t.active !== false} 
-                                                    onChange={() => {
-                                                        setData(prev => {
-                                                            const technicians = (prev.technicians || []).map(tech => {
-                                                                if (tech.id === t.id) {
-                                                                    return { ...tech, active: tech.active === false ? true : false };
-                                                                }
-                                                                return tech;
-                                                            });
-                                                            return { ...prev, technicians };
-                                                        });
-                                                        toast.success(`Estado de ${t.name} actualizado`);
-                                                    }}
+                                                    onChange={() => handleToggleTechActive(t)}
                                                     className="w-3.5 h-3.5 rounded border-gray-300 dark:border-gray-700 text-brand-teal focus:ring-brand-teal focus:ring-0 cursor-pointer" 
                                                 />
                                                 <span className="text-[10px] uppercase font-black text-gray-600 dark:text-gray-400">Activo</span>
@@ -3550,18 +3674,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                                                 <input 
                                                     type="checkbox" 
                                                     checked={!t.hideInVacations} 
-                                                    onChange={() => {
-                                                        setData(prev => {
-                                                            const technicians = (prev.technicians || []).map(tech => {
-                                                                if (tech.id === t.id) {
-                                                                    return { ...tech, hideInVacations: !tech.hideInVacations };
-                                                                }
-                                                                return tech;
-                                                            });
-                                                            return { ...prev, technicians };
-                                                        });
-                                                        toast.success(`Visibilidad en vacaciones de ${t.name} actualizada`);
-                                                    }}
+                                                    onChange={() => handleToggleTechVacations(t)}
                                                     className="w-3.5 h-3.5 rounded border-gray-300 dark:border-gray-700 text-brand-teal focus:ring-brand-teal focus:ring-0 cursor-pointer" 
                                                 />
                                                 <span className="text-[10px] uppercase font-black text-gray-600 dark:text-gray-400">Vacaciones</span>
@@ -3573,8 +3686,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                                                 {isExpanded ? 'Ocultar Historial' : 'Ver Historial'}
                                             </button>
                                             <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                <button onClick={() => startEditing(i, t, 'techs')} className="text-gray-400 dark:text-gray-500 hover:text-brand-teal"><EditIcon className="w-4 h-4" /></button>
-                                                <button onClick={() => handleDelete('techs', i)} className="text-gray-400 dark:text-gray-500 hover:text-red-500"><TrashIcon className="w-4 h-4" /></button>
+                                                <button onClick={() => startEditingTech(t)} className="text-gray-400 dark:text-gray-500 hover:text-brand-teal" title="Editar técnico"><EditIcon className="w-4 h-4" /></button>
+                                                <button onClick={() => handleDeleteTech(t)} className="text-gray-400 dark:text-gray-500 hover:text-red-500" title="Eliminar técnico"><TrashIcon className="w-4 h-4" /></button>
                                             </div>
                                         </div>
                                     </>
@@ -3667,12 +3780,12 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {(data.vehicles || []).map((v, i) => (
-                    <div key={i} className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 flex justify-between items-center group shadow-sm hover:border-brand-teal/50 transition-all">
+                    <div key={v || i} className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 flex justify-between items-center group shadow-sm hover:border-brand-teal/50 transition-all">
                         {editingIndex === i ? (
                             <div className="flex-1 flex gap-2">
                                 <input value={editValue} onChange={e => setEditValue(e.target.value)} className="flex-1 bg-gray-50 dark:bg-gray-900 border border-brand-teal rounded px-2 py-1 text-xs text-gray-900 dark:text-white" />
-                                <button onClick={() => saveEditing('vehicles')} className="text-green-500"><SaveIcon className="w-4 h-4" /></button>
-                                <button onClick={cancelEditing} className="text-red-500"><XIcon className="w-4 h-4" /></button>
+                                <button onClick={saveEditingVehicle} className="text-green-500 hover:text-green-600 p-1"><SaveIcon className="w-4 h-4" /></button>
+                                <button onClick={cancelEditingVehicle} className="text-red-500 hover:text-red-600 p-1"><XIcon className="w-4 h-4" /></button>
                             </div>
                         ) : (
                             <>
@@ -3681,8 +3794,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ data, setData, onGoToVacations,
                                     <p className="font-bold text-sm text-gray-800 dark:text-gray-200">{v}</p>
                                 </div>
                                 <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <button onClick={() => startEditing(i, v, 'vehicles')} className="text-gray-400 dark:text-gray-500 hover:text-brand-teal"><EditIcon className="w-4 h-4" /></button>
-                                    <button onClick={() => handleDelete('vehicles', i)} className="text-gray-400 dark:text-gray-500 hover:text-red-500"><TrashIcon className="w-4 h-4" /></button>
+                                    <button onClick={() => startEditingVehicle(i, v)} className="text-gray-400 dark:text-gray-500 hover:text-brand-teal" title="Editar vehículo"><EditIcon className="w-4 h-4" /></button>
+                                    <button onClick={() => handleDeleteVehicle(v)} className="text-gray-400 dark:text-gray-500 hover:text-red-500" title="Eliminar vehículo"><TrashIcon className="w-4 h-4" /></button>
                                 </div>
                             </>
                         )}
