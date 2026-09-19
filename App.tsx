@@ -1547,8 +1547,10 @@ const App: React.FC = () => {
       {view !== 'login' && (
         <header className="bg-white dark:bg-brand-panel border-b border-gray-200 dark:border-gray-700 p-4 sticky top-0 z-10 shadow-md transition-colors duration-300">
           <div className="container mx-auto flex justify-between items-center">
-            <div className="flex items-center gap-2 cursor-pointer" onClick={() => setView(userRole === 'admin' ? 'admin' : 'dashboard')}>
-              <Logo className="h-8 w-auto" />
+            <div className="flex items-center gap-3 cursor-pointer" onClick={() => setView(userRole === 'admin' ? 'admin' : 'dashboard')}>
+              <div className="bg-white rounded-lg p-1 shadow-sm border border-gray-200/80 dark:border-gray-600 flex items-center justify-center shrink-0">
+                <Logo className="h-7 w-auto" />
+              </div>
               <div>
                 <h1 className="font-bold text-lg leading-tight text-gray-900 dark:text-white hidden sm:block">Control de Obras</h1>
                 <div className="flex items-center gap-2">
