@@ -54,7 +54,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, technicians, adminPwd = 'admin' 
         
         <div className="text-center mb-10">
           <div className="flex justify-center mb-6">
-            <div className="bg-white p-2.5 rounded-2xl shadow-sm border border-gray-700 flex items-center justify-center">
+            <div className="flex items-center justify-center bg-transparent">
               <Logo className="h-16 w-auto" />
             </div>
           </div>
