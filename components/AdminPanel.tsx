@@ -403,6 +403,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     } catch (err: any) {
       if (err?.code === 'auth/popup-closed-by-user') {
         toast.info("Ventana de inicio de sesión cerrada por el usuario.");
+      } else if (err?.code === 'auth/unauthorized-domain') {
+        const currentDomain = typeof window !== 'undefined' ? window.location.hostname : '';
+        toast.error(`⚠️ Dominio no autorizado en Firebase: Añade "${currentDomain}" en Firebase Console > Authentication > Settings > Authorized Domains`, { duration: 10000 });
       } else {
         console.error(err);
         toast.error(`Error al conectar con Google: ${err.message || 'Operación cancelada'}`);
@@ -929,6 +932,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
           if (err?.code === 'auth/popup-closed-by-user') {
               toast.dismiss('send-completion');
               toast.info("Ventana de Google cerrada. Pulsa de nuevo para autorizar el envío cuando desees.");
+          } else if (err?.code === 'auth/unauthorized-domain') {
+              toast.dismiss('send-completion');
+              const currentDomain = typeof window !== 'undefined' ? window.location.hostname : '';
+              toast.error(`⚠️ Dominio no autorizado en Firebase Auth: Añade "${currentDomain}" en Firebase Console > Authentication > Settings > Authorized Domains para permitir autenticación en esta URL.`, { duration: 12000 });
           } else {
               console.error("Error al enviar email de finalización:", err);
               toast.error(`Error al enviar el correo: ${err.message || 'Error de conexión'}`, { id: 'send-completion', duration: 6000 });
