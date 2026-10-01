@@ -289,8 +289,8 @@ const VacationManager: React.FC<VacationManagerProps> = ({ role, currentUser, cu
                                     <label className="block text-[10px] text-gray-500 uppercase mb-1 font-bold">Técnico</label>
                                     <select required value={adminSelectedTech} onChange={e => setAdminSelectedTech(e.target.value)} className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg p-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none">
                                         <option value="">Seleccionar técnico...</option>
-                                        {sortedTechnicians.map(t => (
-                                            <option key={t.id} value={t.name}>
+                                        {sortedTechnicians.map((t, idx) => (
+                                            <option key={`${t.id || 'tech'}-${idx}`} value={t.name}>
                                                 {t.name}{t.hideInVacations ? ' (Oculto en Vacaciones)' : ''}
                                             </option>
                                         ))}
@@ -475,8 +475,8 @@ const VacationManager: React.FC<VacationManagerProps> = ({ role, currentUser, cu
                         <UserIcon className="w-4 h-4" /> Código de Colores Equipo
                     </h3>
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
-                        {visibleTechnicians.map(t => (
-                            <div key={t.id} className="flex items-center gap-2 bg-gray-50 dark:bg-gray-900/40 p-2 rounded-lg border border-gray-200 dark:border-gray-800">
+                        {visibleTechnicians.map((t, idx) => (
+                            <div key={`${t.id}-${idx}`} className="flex items-center gap-2 bg-gray-50 dark:bg-gray-900/40 p-2 rounded-lg border border-gray-200 dark:border-gray-800">
                                 <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: getTechColor(t.name, data.technicians) }}></div>
                                 <span className="text-[10px] font-bold text-gray-700 dark:text-gray-300 truncate">{t.name}</span>
                             </div>
@@ -488,11 +488,11 @@ const VacationManager: React.FC<VacationManagerProps> = ({ role, currentUser, cu
                 <div className="space-y-4">
                     <h3 className="text-sm font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest">Bandeja de Entrada ({inbox.length})</h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {inbox.map(r => {
+                        {inbox.map((r, idx) => {
                             const config = getTypeConfig(r.type);
                             const color = getTechColor(r.userName, data.technicians);
                             return (
-                                <div key={r.id} className={`bg-white dark:bg-brand-panel p-4 rounded-xl border flex justify-between items-center shadow-lg ${r.status === 'cancel_requested' ? 'border-orange-400 dark:border-orange-500' : 'border-gray-200 dark:border-gray-700'}`}>
+                                <div key={`${r.id}-${idx}`} className={`bg-white dark:bg-brand-panel p-4 rounded-xl border flex justify-between items-center shadow-lg ${r.status === 'cancel_requested' ? 'border-orange-400 dark:border-orange-500' : 'border-gray-200 dark:border-gray-700'}`}>
                                     <div className="flex gap-3">
                                         <div className="w-1.5 rounded-full" style={{ backgroundColor: color }}></div>
                                         <div>
@@ -683,10 +683,10 @@ const VacationManager: React.FC<VacationManagerProps> = ({ role, currentUser, cu
                         <ClockIcon className="w-4 h-4" /> Historial y Estado
                     </h3>
                     <div className="space-y-3">
-                        {userRequests.map(r => {
+                        {userRequests.map((r, idx) => {
                             const config = getTypeConfig(r.type);
                             return (
-                                <div key={r.id} className="bg-gray-50 dark:bg-gray-900/50 p-4 rounded-xl border border-gray-200 dark:border-gray-800 flex justify-between items-center group shadow-sm">
+                                <div key={`${r.id}-${idx}`} className="bg-gray-50 dark:bg-gray-900/50 p-4 rounded-xl border border-gray-200 dark:border-gray-800 flex justify-between items-center group shadow-sm">
                                     <div className="flex-1 min-w-0 pr-2">
                                         <div className="flex items-center gap-2">
                                             <p className="text-gray-900 dark:text-white font-bold text-sm font-mono truncate">{formatDateToSpanish(r.startDate)} al {formatDateToSpanish(r.endDate)}</p>
@@ -738,8 +738,8 @@ const VacationManager: React.FC<VacationManagerProps> = ({ role, currentUser, cu
                             Los técnicos marcados como <strong>Oculto</strong> no se mostrarán en el cuadrante de vacaciones ni en la leyenda. Este ajuste se guarda y sincroniza para todos los administradores.
                         </p>
                         <div className="max-h-72 overflow-y-auto space-y-2 custom-scrollbar pr-1">
-                            {sortedTechnicians.map(t => (
-                                <div key={t.id} className="flex items-center justify-between bg-gray-50 dark:bg-gray-800/60 p-3 rounded-xl border border-gray-200 dark:border-gray-700/60">
+                            {sortedTechnicians.map((t, idx) => (
+                                <div key={`${t.id}-${idx}`} className="flex items-center justify-between bg-gray-50 dark:bg-gray-800/60 p-3 rounded-xl border border-gray-200 dark:border-gray-700/60">
                                     <div className="flex items-center gap-2">
                                         <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: getTechColor(t.name, data.technicians) }}></div>
                                         <span className="text-xs font-bold text-gray-800 dark:text-gray-200">{t.name}</span>

@@ -555,9 +555,9 @@ const DailyOrganization: React.FC<DailyOrganizationProps> = ({ isReadOnly = fals
           <div className="bg-white dark:bg-brand-panel rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 p-6 order-2 lg:order-1">
             <h2 className="text-xl font-bold mb-4 text-gray-800 dark:text-white">👥 Disponibles <span className="text-sm bg-gray-200 dark:bg-gray-700 px-2 py-1 rounded-full text-gray-700 dark:text-white">{disponibles.length}</span></h2>
             <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
-              {disponibles.map(t => (
+              {disponibles.map((t, idx) => (
                 <div 
-                    key={t.id} 
+                    key={`${t.id}-${idx}`} 
                     draggable={!isReadOnly} 
                     onDragStart={() => !isReadOnly && setDragged(t)} 
                     className={`flex items-center justify-between p-4 rounded-xl border-2 border-dashed transition-all transform ${!isReadOnly ? 'cursor-move hover:shadow-lg hover:bg-gray-50 dark:hover:bg-gray-800 hover:-translate-y-1' : ''}`} 
@@ -579,9 +579,9 @@ const DailyOrganization: React.FC<DailyOrganizationProps> = ({ isReadOnly = fals
           </div>
 
           <div className="lg:col-span-3 grid md:grid-cols-2 xl:grid-cols-3 gap-6 order-1 lg:order-2">
-            {localData.trabajos.map(trabajo => (
+            {localData.trabajos.map((trabajo, idx) => (
               <div 
-                key={trabajo.id} 
+                key={`${trabajo.id}-${idx}`} 
                 onDragOver={(e) => e.preventDefault()} 
                 onDrop={(e) => drop(e, trabajo)} 
                 className="bg-white dark:bg-brand-panel rounded-xl shadow-lg overflow-hidden border-2 border-dashed flex flex-col" 
@@ -635,8 +635,8 @@ const DailyOrganization: React.FC<DailyOrganizationProps> = ({ isReadOnly = fals
                     <span className="bg-gray-200 dark:bg-gray-800 px-2 py-1 rounded-full text-xs text-gray-600 dark:text-gray-300">{(trabajo.trabajadores || []).length}</span>
                   </div>
                   <div className="space-y-3 min-h-[100px]">
-                    {(trabajo.trabajadores || []).map(t => (
-                      <div key={t.id} className="flex items-center justify-between p-3 rounded-lg shadow-sm bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
+                    {(trabajo.trabajadores || []).map((t, idx) => (
+                      <div key={`${t.id}-${idx}`} className="flex items-center justify-between p-3 rounded-lg shadow-sm bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
                         <div className="flex items-center gap-3">
                           <div className="w-4 h-4 rounded-full flex-shrink-0" style={{ backgroundColor: t.color }}></div>
                           <span className="text-base font-bold text-gray-800 dark:text-gray-100 break-words">{t.nombre}</span>

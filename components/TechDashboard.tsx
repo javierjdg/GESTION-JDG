@@ -232,8 +232,8 @@ const TechDashboard: React.FC<TechDashboardProps> = ({ reports, projects, onNewR
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100 dark:divide-gray-800 bg-white dark:bg-gray-900/30">
-                        {summariesByWeek.map((data) => (
-                            <tr key={`hours-${data.timestamp}`} className="hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors">
+                        {summariesByWeek.map((data, idx) => (
+                            <tr key={`hours-${data.timestamp}-${idx}`} className="hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors">
                                 <td className="px-3 py-3 text-[10px] font-mono text-gray-500 dark:text-gray-400">{data.label}</td>
                                 <td className="px-2 py-3 text-center text-xs text-gray-900 dark:text-white font-bold">{data.regHours.toFixed(1)}h</td>
                                 <td className="px-2 py-3 text-center text-xs text-yellow-600 dark:text-yellow-500">{data.otNorm > 0 ? `${data.otNorm}h` : '-'}</td>
@@ -252,8 +252,8 @@ const TechDashboard: React.FC<TechDashboardProps> = ({ reports, projects, onNewR
                 <ChartPieIcon className="w-4 h-4" /> Gastos Semanales
             </h4>
             <div className="space-y-3 max-h-[250px] overflow-y-auto pr-2 custom-scrollbar">
-                {summariesByWeek.map((data) => (
-                    <div key={`exp-${data.timestamp}`} className="flex justify-between items-center bg-gray-50 dark:bg-gray-950/80 px-4 py-4 rounded-xl border border-gray-200 dark:border-gray-800 group hover:border-brand-teal dark:hover:border-brand-lime/30 transition-all">
+                {summariesByWeek.map((data, idx) => (
+                    <div key={`exp-${data.timestamp}-${idx}`} className="flex justify-between items-center bg-gray-50 dark:bg-gray-950/80 px-4 py-4 rounded-xl border border-gray-200 dark:border-gray-800 group hover:border-brand-teal dark:hover:border-brand-lime/30 transition-all">
                         <div className="flex items-center gap-3">
                             <div className="p-2 bg-white dark:bg-gray-800 rounded-lg text-gray-400 dark:text-gray-500 group-hover:text-brand-teal dark:group-hover:text-brand-lime border border-gray-100 dark:border-gray-700">
                                 <CalendarIcon className="w-4 h-4" />
@@ -321,8 +321,8 @@ const TechDashboard: React.FC<TechDashboardProps> = ({ reports, projects, onNewR
                                         <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">{weekRange}</span>
                                         <div className="h-px flex-1 bg-gray-200 dark:bg-gray-800"></div>
                                     </div>
-                                    {reportsInWeek.map(report => (
-                                        <div key={report.id} className="bg-white dark:bg-brand-panel p-5 rounded-3xl border border-gray-200 dark:border-gray-800 flex justify-between items-center group shadow-md hover:border-brand-teal/30 dark:hover:border-gray-700 transition-all">
+                                    {reportsInWeek.map((report, rIdx) => (
+                                        <div key={`${report.id || 'techrep'}-${rIdx}`} className="bg-white dark:bg-brand-panel p-5 rounded-3xl border border-gray-200 dark:border-gray-800 flex justify-between items-center group shadow-md hover:border-brand-teal/30 dark:hover:border-gray-700 transition-all">
                                             <div className="flex-1 min-w-0 pr-4">
                                                 <div className="flex items-center gap-2 flex-wrap">
                                                     <span className="font-black text-gray-900 dark:text-gray-100 text-sm">{formatDateToSpanish(report.date)}</span>

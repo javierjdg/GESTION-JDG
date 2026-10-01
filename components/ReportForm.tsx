@@ -321,8 +321,8 @@ const ReportForm: React.FC<ReportFormProps> = ({ projects, vehicles, technicians
                   className={`w-full bg-gray-50 dark:bg-gray-900 border ${errors.technician ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'} rounded-lg pl-4 pr-10 py-3 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-teal outline-none appearance-none`}
                 >
                   <option value="">Seleccionar Técnico...</option>
-                  {technicians.filter(t => t.active !== false).map(t => (
-                    <option key={t.id} value={t.name}>{t.name}</option>
+                  {technicians.filter(t => t.active !== false).map((t, idx) => (
+                    <option key={`${t.id || 'tech'}-${idx}`} value={t.name}>{t.name}</option>
                   ))}
                 </select>
                 <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-gray-400">
@@ -350,8 +350,8 @@ const ReportForm: React.FC<ReportFormProps> = ({ projects, vehicles, technicians
                 className={`w-full bg-gray-50 dark:bg-gray-900 border ${errors.projectNum ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'} rounded-lg pl-4 pr-10 py-3 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-teal outline-none appearance-none`}
                 >
                 <option value="">Seleccionar Obra...</option>
-                {availableProjects.map(p => (
-                    <option key={p.id} value={p.id}>{p.id} - {p.name}</option>
+                {availableProjects.map((p, idx) => (
+                    <option key={`${p.id || 'proj'}-${idx}`} value={p.id}>{p.id} - {p.name}</option>
                 ))}
                 </select>
                 <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-gray-400">
@@ -506,7 +506,7 @@ const ReportForm: React.FC<ReportFormProps> = ({ projects, vehicles, technicians
                 className={`w-full bg-white dark:bg-gray-800 border ${errors.vehicle ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'} rounded-lg pl-4 pr-10 py-3 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-teal outline-none appearance-none mb-3`}
             >
                 <option value="">Seleccionar vehículo...</option>
-                {vehicles.map(v => <option key={v} value={v}>{v}</option>)}
+                {vehicles.map((v, idx) => <option key={`${v}-${idx}`} value={v}>{v}</option>)}
             </select>
             <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-gray-400 pb-3">
                 <ChevronDownIcon className="w-5 h-5" />
@@ -605,8 +605,8 @@ const ReportForm: React.FC<ReportFormProps> = ({ projects, vehicles, technicians
              <div className="mt-6 pt-4 border-t border-gray-200 dark:border-gray-700">
                 <h4 className="text-[10px] uppercase font-bold text-gray-500 mb-3 tracking-widest">Tickets Adjuntos</h4>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                  {formData.tickets.map((t) => (
-                    <div key={t.timestamp} className="relative aspect-square bg-gray-100 dark:bg-gray-950 rounded-lg overflow-hidden border border-gray-300 dark:border-gray-700 group">
+                  {formData.tickets.map((t, idx) => (
+                    <div key={`${t.timestamp}-${idx}`} className="relative aspect-square bg-gray-100 dark:bg-gray-950 rounded-lg overflow-hidden border border-gray-300 dark:border-gray-700 group">
                       {t.data && <img src={t.data} className="w-full h-full object-cover opacity-90 dark:opacity-70 group-hover:opacity-100 transition-opacity" />}
                       <div className="absolute top-1 left-1 bg-brand-teal/80 px-1.5 py-0.5 rounded text-[8px] font-bold text-white shadow-sm">{t.type}</div>
                       <button onClick={() => removeTicket(t.timestamp)} className="absolute top-1 right-1 bg-red-600/80 hover:bg-red-600 p-1.5 rounded-full text-white shadow-lg backdrop-blur-sm transition-all"><TrashIcon className="w-3 h-3"/></button>
@@ -635,8 +635,8 @@ const ReportForm: React.FC<ReportFormProps> = ({ projects, vehicles, technicians
 
           {formData.materials.length > 0 ? (
             <div className="space-y-3">
-              {formData.materials.map((m) => (
-                <div key={m.id} className="flex gap-2 items-center">
+              {formData.materials.map((m, idx) => (
+                <div key={`${m.id}-${idx}`} className="flex gap-2 items-center">
                   <input
                     type="text"
                     placeholder="Cantidad"

@@ -164,6 +164,37 @@ const DEFAULT_DAILY_ORG: DailyOrgData = {
     lastUpdated: Date.now() // Timestamp inicial
 };
 
+/**
+ * Recursively sanitizes any payload destined for Firestore by eliminating all 'undefined' values
+ * which otherwise trigger "Function DocumentReference.set() called with invalid data. Unsupported field value: undefined"
+ */
+export function sanitizeForFirestore<T>(input: T): T {
+  if (input === undefined) {
+    return null as any;
+  }
+  if (input === null || typeof input !== 'object') {
+    return input;
+  }
+  if (input instanceof Date) {
+    return input.toISOString() as any;
+  }
+  if (Array.isArray(input)) {
+    return input
+      .filter(item => item !== undefined)
+      .map(item => sanitizeForFirestore(item)) as any;
+  }
+  const result: Record<string, any> = {};
+  for (const [key, value] of Object.entries(input)) {
+    if (value !== undefined) {
+      const sanitized = sanitizeForFirestore(value);
+      if (sanitized !== undefined) {
+        result[key] = sanitized;
+      }
+    }
+  }
+  return result as any;
+}
+
 const INITIAL_DATA: AppData = {
   technicians: [],
   projectsDetailed: [],
@@ -500,7 +531,7 @@ const App: React.FC = () => {
                             try {
                                 const existingDoc = await db.collection("jdg_teleco").doc("main_db").collection("daily_orgs").doc(fecha).get();
                                 if (!existingDoc.exists) {
-                                    await db.collection("jdg_teleco").doc("main_db").collection("daily_orgs").doc(fecha).set(recOrg);
+                                    await db.collection("jdg_teleco").doc("main_db").collection("daily_orgs").doc(fecha).set(sanitizeForFirestore(recOrg));
                                 }
                             } catch (_) {}
                         }
@@ -586,7 +617,7 @@ const App: React.FC = () => {
       };
       
       // 1. Guardar documento raíz (configuración, techs, vehicles, etc.) 
-      currentBatch.set(rootRef, coreData);
+      currentBatch.set(rootRef, sanitizeForFirestore(coreData));
       operationCount++;
 
       // 2. Guardar Reports en subcolección 'reports_shards' (Chunking)
@@ -597,7 +628,7 @@ const App: React.FC = () => {
           await commitBatchIfNeeded();
           const chunk = cleanedReports.slice(i, i + CHUNK_SIZE_REPORTS);
           const chunkRef = reportsRef.doc(`chunk_${Math.floor(i / CHUNK_SIZE_REPORTS)}`);
-          currentBatch.set(chunkRef, { items: chunk });
+          currentBatch.set(chunkRef, sanitizeForFirestore({ items: chunk }));
           operationCount++;
       }
 
@@ -610,7 +641,7 @@ const App: React.FC = () => {
               await commitBatchIfNeeded();
               const chunk = cleanedProjectsDetailed.slice(i, i + CHUNK_SIZE_PROJECTS);
               const chunkRef = projectsShardsRef.doc(`chunk_${Math.floor(i / CHUNK_SIZE_PROJECTS)}`);
-              currentBatch.set(chunkRef, { items: chunk });
+              currentBatch.set(chunkRef, sanitizeForFirestore({ items: chunk }));
               operationCount++;
           }
       }
@@ -628,7 +659,7 @@ const App: React.FC = () => {
               keysChunk.forEach(k => chunkObj[k] = dailyOrgHistory[k]);
               
               const chunkRef = historyRef.doc(`chunk_${Math.floor(i / CHUNK_SIZE_HISTORY)}`);
-              currentBatch.set(chunkRef, { items: chunkObj });
+              currentBatch.set(chunkRef, sanitizeForFirestore({ items: chunkObj }));
               operationCount++;
           }
       }
@@ -771,21 +802,23 @@ const App: React.FC = () => {
                     
                     // Limpiar y reducir deletedReports para que no infle main_db y cause error de límite de 1MB
                     cleanConfig.deletedReports = (deletedReports || []).slice(-5).map(r => ({
-                        id: r.id,
-                        date: r.date,
-                        technician: r.technician,
-                        project: (r as any).project || r.projectNum,
-                        deletedAt: (r as any).deletedAt
+                        id: r.id || '',
+                        date: r.date || '',
+                        technician: r.technician || '',
+                        project: (r as any).project || r.projectNum || '',
+                        deletedAt: (r as any).deletedAt || new Date().toISOString()
                     }));
 
                     // Eliminar dailyOrgHistory del documento raíz (ahora gestionado de forma robusta en la subcolección daily_orgs)
                     delete cleanConfig.dailyOrgHistory;
 
-                    await db.collection("jdg_teleco").doc("main_db").set(cleanConfig, { merge: true });
+                    const safeConfig = sanitizeForFirestore(cleanConfig);
+                    await db.collection("jdg_teleco").doc("main_db").set(safeConfig, { merge: true });
 
                     // Guardar la organización actual directamente en la subcolección daily_orgs
                     if (data.dailyOrg && data.dailyOrg.fecha) {
-                        await db.collection("jdg_teleco").doc("main_db").collection("daily_orgs").doc(data.dailyOrg.fecha).set(data.dailyOrg);
+                        const safeDailyOrg = sanitizeForFirestore(data.dailyOrg);
+                        await db.collection("jdg_teleco").doc("main_db").collection("daily_orgs").doc(data.dailyOrg.fecha).set(safeDailyOrg);
                     }
                 } catch (e: any) {
                     console.error("Cloud sync error", e);
@@ -842,10 +875,10 @@ const App: React.FC = () => {
             
             // Opcional: Guardar en una colección de "papelera" en la nube
             if (reportToDelete) {
-                await db.collection("jdg_teleco_trash").doc(reportId).set({
+                await db.collection("jdg_teleco_trash").doc(reportId).set(sanitizeForFirestore({
                     ...reportToDelete,
                     deletedAt: new Date().toISOString()
-                });
+                }));
             }
             
             toast.success("Parte movido a la papelera");
@@ -930,7 +963,7 @@ const App: React.FC = () => {
             try {
                 const fb = (window as any).firebase;
                 const db = fb.app().firestore();
-                const firestorePayload = JSON.parse(JSON.stringify(finalReport));
+                const firestorePayload = sanitizeForFirestore(finalReport);
                 await db.collection("jdg_teleco").doc("main_db").collection("reports").doc(finalReport.id).set(firestorePayload);
                 toast.success("Parte guardado en la nube");
             } catch (e: any) {
@@ -970,7 +1003,7 @@ const App: React.FC = () => {
             try {
                 const fb = (window as any).firebase;
                 const db = fb.app().firestore();
-                const firestorePayload = JSON.parse(JSON.stringify(project));
+                const firestorePayload = sanitizeForFirestore(project);
                 await db.collection("jdg_teleco").doc("main_db").collection("projects").doc(project.id).set(firestorePayload);
                 toast.success("Obra guardada en la nube");
             } catch (e: any) {
@@ -1011,12 +1044,12 @@ const App: React.FC = () => {
           if (fb) {
             const db = fb.app().firestore();
             // 1. Guardar en main_db directamente solo technicians
-            await db.collection("jdg_teleco").doc("main_db").set({ technicians: newTechs }, { merge: true });
+            await db.collection("jdg_teleco").doc("main_db").set(sanitizeForFirestore({ technicians: newTechs }), { merge: true });
             // 2. Guardar en subcolección settings para respaldo redundante
-            await db.collection("jdg_teleco").doc("main_db").collection("settings").doc("technicians").set({
+            await db.collection("jdg_teleco").doc("main_db").collection("settings").doc("technicians").set(sanitizeForFirestore({
               technicians: newTechs,
               lastUpdated: Date.now()
-            });
+            }));
             toast.success("Técnicos sincronizados con la nube");
           }
         } catch (e: any) {
@@ -1057,7 +1090,7 @@ const App: React.FC = () => {
           const fb = (window as any).firebase;
           if (fb) {
             const db = fb.app().firestore();
-            await db.collection("jdg_teleco").doc("main_db").set({ vehicles: newVehicles }, { merge: true });
+            await db.collection("jdg_teleco").doc("main_db").set(sanitizeForFirestore({ vehicles: newVehicles }), { merge: true });
             toast.success("Vehículos sincronizados con la nube");
           }
         } catch (e: any) {
@@ -1272,7 +1305,7 @@ const App: React.FC = () => {
             (configOnly as any).dailyOrgHistory = limitedHistory;
         }
 
-        const cleanConfig = JSON.parse(JSON.stringify(configOnly));
+        const cleanConfig = sanitizeForFirestore(configOnly);
         await db.collection("jdg_teleco").doc("main_db").set(cleanConfig);
 
         // 5. Actualizar estado local

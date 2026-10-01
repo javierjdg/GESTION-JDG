@@ -8,6 +8,9 @@ import { drawPdfHeaderLogo } from '../utils/pdfLogo';
 import { AppData, TechUser, WorkReport, ProjectData, Budget, ProjectAttachment } from '../App';
 import { TrashIcon, PlusIcon, DownloadIcon, UserIcon, TruckIcon, FileTextIcon, FilterIcon, EditIcon, SaveIcon, XIcon, LockIcon, UploadIcon, CloudIcon, CalendarIcon, ChartPieIcon, ClockIcon, EyeIcon, AlertIcon, ChevronDownIcon, ChevronRightIcon, BriefcaseIcon, SearchIcon, CheckCircleIcon, XCircleIcon, MapIcon, RefreshCwIcon, ShieldCheckIcon, ImageIcon } from './icons';
 import DailyOrganization, { DailyOrgData } from './DailyOrganization';
+import { User } from 'firebase/auth';
+import { initAuth, googleSignIn, googleLogout, isGoogleConnected, verifyGmailScope } from '../utils/authService';
+import { sendFinishedProjectEmail, DEFAULT_COMPLETION_RECIPIENT, generateFinishedProjectPDF } from '../utils/gmailService';
 
 interface AdminPanelProps {
   data: AppData;
@@ -217,9 +220,9 @@ const MapComponent = ({ projects, selectedProjectId, onSelectProject }: { projec
       zoom={6}
       onLoad={onMapLoad}
     >
-      {markers.map(m => (
+      {markers.map((m, mIdx) => (
         <Marker 
-          key={m.id} 
+          key={`${m.id}-${mIdx}`} 
           position={m.position} 
           title={m.name} 
           onClick={() => {
@@ -346,6 +349,80 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     rejected: true
   });
   const [mapSearchTerm, setMapSearchTerm] = useState('');
+
+  // Google Workspace / Gmail OAuth State
+  const [googleUser, setGoogleUser] = useState<User | null>(null);
+  const [googleToken, setGoogleToken] = useState<string | null>(null);
+  const [hasGmailPermission, setHasGmailPermission] = useState<boolean>(false);
+  const [isGoogleLoggingIn, setIsGoogleLoggingIn] = useState(false);
+
+  // Completion Email Modal State
+  const [showCompletionModal, setShowCompletionModal] = useState(false);
+  const [completionModalProject, setCompletionModalProject] = useState<ProjectData | null>(null);
+  const [completionRecipient, setCompletionRecipient] = useState<string>(DEFAULT_COMPLETION_RECIPIENT);
+  const [completionCustomNotes, setCompletionCustomNotes] = useState<string>('');
+  const [isSendingCompletionEmail, setIsSendingCompletionEmail] = useState(false);
+  const [isResendMode, setIsResendMode] = useState(false);
+
+  useEffect(() => {
+    const unsubscribe = initAuth(
+      async (user, token) => {
+        setGoogleUser(user);
+        setGoogleToken(token);
+        if (token) {
+          const hasScope = await verifyGmailScope(token);
+          setHasGmailPermission(hasScope);
+        } else {
+          setHasGmailPermission(false);
+        }
+      },
+      () => {
+        setGoogleUser(null);
+        setGoogleToken(null);
+        setHasGmailPermission(false);
+      }
+    );
+    return () => unsubscribe();
+  }, []);
+
+  const handleGoogleLogin = async () => {
+    setIsGoogleLoggingIn(true);
+    try {
+      const res = await googleSignIn(true);
+      if (res) {
+        setGoogleUser(res.user);
+        setGoogleToken(res.accessToken);
+        const hasScope = await verifyGmailScope(res.accessToken);
+        setHasGmailPermission(hasScope);
+        if (hasScope) {
+          toast.success(`Conectado a Gmail como ${res.user.email} con permisos de envío`);
+        } else {
+          toast.warning(`Conectado como ${res.user.email}. Por favor asegúrate de conceder permisos de envío en Google.`);
+        }
+      }
+    } catch (err: any) {
+      if (err?.code === 'auth/popup-closed-by-user') {
+        toast.info("Ventana de inicio de sesión cerrada por el usuario.");
+      } else {
+        console.error(err);
+        toast.error(`Error al conectar con Google: ${err.message || 'Operación cancelada'}`);
+      }
+    } finally {
+      setIsGoogleLoggingIn(false);
+    }
+  };
+
+  const handleGoogleLogout = async () => {
+    try {
+      await googleLogout();
+      setGoogleUser(null);
+      setGoogleToken(null);
+      setHasGmailPermission(false);
+      toast.success("Desconectado de Google");
+    } catch (err: any) {
+      toast.error("Error al desconectar de Google");
+    }
+  };
 
   // Refs de inputs
   const reportImportInputRef = useRef<HTMLInputElement>(null);
@@ -743,6 +820,18 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
           finalProject.warningDate = '';
       }
 
+      const existingProject = data.projectsDetailed.find(p => p.id === finalProject.id);
+      const isNewlyFinished = finalProject.isFinished && (!existingProject || !existingProject.isFinished);
+
+      if (isNewlyFinished) {
+          setCompletionModalProject(finalProject);
+          setCompletionRecipient(DEFAULT_COMPLETION_RECIPIENT);
+          setCompletionCustomNotes('');
+          setIsResendMode(false);
+          setShowCompletionModal(true);
+          return;
+      }
+
       setIsSavingProject(true);
       setTimeout(async () => {
           try {
@@ -752,6 +841,131 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
               setIsSavingProject(false);
           }
       }, 10);
+  };
+
+  const handleToggleFinished = (p: ProjectData) => {
+      setCompletionModalProject(p);
+      setCompletionRecipient(DEFAULT_COMPLETION_RECIPIENT);
+      setCompletionCustomNotes('');
+      if (p.isFinished) {
+          setIsResendMode(true);
+          setShowCompletionModal(true);
+      } else {
+          setIsResendMode(false);
+          setShowCompletionModal(true);
+      }
+  };
+
+  const handleConfirmSendCompletion = async () => {
+      if (!completionModalProject) return;
+      setIsSendingCompletionEmail(true);
+
+      try {
+          let token = googleToken;
+          let hasScope = token ? await verifyGmailScope(token) : false;
+
+          // Si no hay token o no tiene permisos de envío de Gmail, solicitar consentimiento explícito
+          if (!token || !hasScope) {
+              toast.info("Solicitando permisos de Gmail a Google para poder enviar el correo...", { duration: 4000 });
+              const authRes = await googleSignIn(true);
+              if (!authRes?.accessToken) {
+                  toast.error("No se pudo obtener la autorización de Google.");
+                  setIsSendingCompletionEmail(false);
+                  return;
+              }
+              token = authRes.accessToken;
+              setGoogleUser(authRes.user);
+              setGoogleToken(token);
+              hasScope = await verifyGmailScope(token);
+              setHasGmailPermission(hasScope);
+          }
+
+          const projectReports = data.reports.filter(r => r.projectNum === completionModalProject.id);
+
+          toast.loading(`Generando informe PDF y enviando correo a ${completionRecipient}...`, { id: 'send-completion' });
+
+          try {
+              await sendFinishedProjectEmail({
+                  project: completionModalProject,
+                  reports: projectReports,
+                  recipientEmail: completionRecipient,
+                  additionalNotes: completionCustomNotes,
+                  accessToken: token
+              });
+          } catch (sendErr: any) {
+              const isScopeError = sendErr?.isScopeError || sendErr?.message?.includes('insufficient') || sendErr?.message?.includes('scope') || sendErr?.status === 403;
+              if (isScopeError) {
+                  toast.loading("Actualizando permisos de Gmail con Google...", { id: 'send-completion' });
+                  const reAuth = await googleSignIn(true);
+                  if (reAuth?.accessToken) {
+                      token = reAuth.accessToken;
+                      setGoogleUser(reAuth.user);
+                      setGoogleToken(token);
+                      setHasGmailPermission(true);
+                      await sendFinishedProjectEmail({
+                          project: completionModalProject,
+                          reports: projectReports,
+                          recipientEmail: completionRecipient,
+                          additionalNotes: completionCustomNotes,
+                          accessToken: token
+                      });
+                  } else {
+                      throw sendErr;
+                  }
+              } else {
+                  throw sendErr;
+              }
+          }
+
+          const updatedProject: ProjectData = { ...completionModalProject, isFinished: true };
+          await onSaveProject(updatedProject);
+
+          toast.success(`✅ Correo enviado a ${completionRecipient} con el PDF de partes y albaranes. Obra marcada como terminada.`, { id: 'send-completion', duration: 5000 });
+          setShowCompletionModal(false);
+          if (isEditingProject && projectForm.id === completionModalProject.id) {
+              resetProjectForm();
+          }
+      } catch (err: any) {
+          if (err?.code === 'auth/popup-closed-by-user') {
+              toast.dismiss('send-completion');
+              toast.info("Ventana de Google cerrada. Pulsa de nuevo para autorizar el envío cuando desees.");
+          } else {
+              console.error("Error al enviar email de finalización:", err);
+              toast.error(`Error al enviar el correo: ${err.message || 'Error de conexión'}`, { id: 'send-completion', duration: 6000 });
+          }
+      } finally {
+          setIsSendingCompletionEmail(false);
+      }
+  };
+
+  const handleFinishWithoutEmail = async () => {
+      if (!completionModalProject) return;
+      try {
+          const updatedProject: ProjectData = { ...completionModalProject, isFinished: true };
+          await onSaveProject(updatedProject);
+          toast.success(`Obra ${updatedProject.id} guardada como TERMINADA (sin enviar correo).`);
+          setShowCompletionModal(false);
+          if (isEditingProject && projectForm.id === completionModalProject.id) {
+              resetProjectForm();
+          }
+      } catch (err: any) {
+          toast.error("Error al guardar la obra.");
+      }
+  };
+
+  const handleReactivateProject = async () => {
+      if (!completionModalProject) return;
+      try {
+          const updatedProject: ProjectData = { ...completionModalProject, isFinished: false };
+          await onSaveProject(updatedProject);
+          toast.success(`Obra ${updatedProject.id} reactivada (marcada como activa).`);
+          setShowCompletionModal(false);
+          if (isEditingProject && projectForm.id === completionModalProject.id) {
+              setProjectForm(prev => ({ ...prev, isFinished: false }));
+          }
+      } catch (err: any) {
+          toast.error("Error al reactivar la obra.");
+      }
   };
 
   const handleSaveBudget = () => {
@@ -2543,7 +2757,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                 const fb = (window as any).firebase;
                 if (fb) {
                     const db = fb.app().firestore();
-                    db.collection("jdg_teleco").doc("main_db").collection("daily_orgs").doc(harmonizedOrg.fecha).set(harmonizedOrg).catch(() => {});
+                    const safeOrg = JSON.parse(JSON.stringify(harmonizedOrg));
+                    db.collection("jdg_teleco").doc("main_db").collection("daily_orgs").doc(harmonizedOrg.fecha).set(safeOrg).catch(() => {});
                 }
             } catch (_) {}
         }
@@ -2610,12 +2825,12 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   };
 
   // RENDER DE FILA DE OBRA
-  const renderProjectRow = (p: ProjectData) => {
+  const renderProjectRow = (p: ProjectData, keyPrefix: string | number = 0) => {
       const isInactive = p.isFinished || p.isInvoiced;
       const warningStyle = !isInactive && p.hasWarning ? getWarningStyle(p.warningDate) : '';
       
       return (
-          <div key={p.id} className={`bg-white dark:bg-brand-panel p-5 rounded-xl border flex flex-col md:flex-row justify-between items-start md:items-center gap-4 group hover:border-brand-teal/50 transition-all ${isInactive ? 'opacity-70 border-gray-300 dark:border-gray-800 bg-gray-50/80 dark:bg-gray-900/20' : warningStyle ? warningStyle : 'border-gray-200 dark:border-gray-700'}`}>
+          <div key={`${p.id}-${keyPrefix}`} className={`bg-white dark:bg-brand-panel p-5 rounded-xl border flex flex-col md:flex-row justify-between items-start md:items-center gap-4 group hover:border-brand-teal/50 transition-all ${isInactive ? 'opacity-70 border-gray-300 dark:border-gray-800 bg-gray-50/80 dark:bg-gray-900/20' : warningStyle ? warningStyle : 'border-gray-200 dark:border-gray-700'}`}>
               <div className="flex-1 min-w-0 w-full">
                   <div className="flex flex-wrap items-center gap-2 mb-1">
                       <button onClick={() => viewProjectHistory(p.id)} className={`font-black px-2 py-0.5 rounded text-sm tracking-wider hover:scale-105 transition-transform cursor-pointer ${isInactive ? 'bg-gray-200 dark:bg-gray-800 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300' : 'bg-brand-teal/10 dark:bg-brand-teal/20 text-brand-teal hover:bg-brand-teal hover:text-white'}`} title="Ver historial de partes">{p.id}</button>
@@ -2664,6 +2879,17 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
               </div>
               <div className="flex items-center gap-2 self-end md:self-center flex-shrink-0">
                   <button 
+                      onClick={() => handleToggleFinished(p)} 
+                      className={`p-2 rounded-lg transition-all cursor-pointer ${
+                          p.isFinished 
+                              ? 'text-teal-700 bg-teal-100 dark:bg-teal-900/40 hover:bg-teal-200 dark:hover:bg-teal-900/60 border border-teal-300 dark:border-teal-800 shadow-sm' 
+                              : 'text-gray-400 hover:text-teal-600 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700'
+                      }`} 
+                      title={p.isFinished ? "Obra Terminada (Clic para reenviar informe con partes a m.domingogarcia29@gmail.com o reactivar)" : "Dar obra por Terminada y enviar correo con partes a m.domingogarcia29@gmail.com"}
+                  >
+                      <CheckCircleIcon className="w-4 h-4" />
+                  </button>
+                  <button 
                       onClick={() => handleQuickInvoice(p)} 
                       className={`p-2 rounded-lg transition-all cursor-pointer ${
                           p.isInvoiced 
@@ -2683,10 +2909,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   };
 
   // RENDER DE FILA DE PRESUPUESTO
-  const renderBudgetRow = (b: Budget) => {
+  const renderBudgetRow = (b: Budget, keyPrefix: string | number = 0) => {
       const budgetStyle = getBudgetStyle(b);
       return (
-          <div key={b.id} className={`p-5 rounded-xl border flex flex-col md:flex-row justify-between items-start md:items-center gap-4 group hover:border-brand-teal/50 transition-all shadow-sm ${budgetStyle}`}>
+          <div key={`${b.id}-${keyPrefix}`} className={`p-5 rounded-xl border flex flex-col md:flex-row justify-between items-start md:items-center gap-4 group hover:border-brand-teal/50 transition-all shadow-sm ${budgetStyle}`}>
               <div className="flex-1 min-w-0 w-full">
                   <div className="flex flex-wrap items-center gap-2 mb-1.5">
                       {b.budgetNum && (
@@ -2796,7 +3022,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                 <span className="text-[10px] font-black uppercase tracking-widest text-brand-teal dark:text-brand-lime">Próximas Ausencias (4 días)</span>
             </div>
             <div className="flex flex-wrap gap-2">
-                {upcomingAbsences.map(r => {
+                {upcomingAbsences.map((r, idx) => {
                     if (!r.startDate || !r.startDate.includes('-')) return null;
                     const [y, m, d] = r.startDate.split('-').map(Number);
                     const start = new Date(y, m-1, d);
@@ -2808,7 +3034,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                     if (diff <= 1) colorClass = "bg-red-100 text-red-800 border-red-200 animate-pulse";
 
                     return (
-                        <div key={r.id} className={`px-3 py-1.5 rounded-lg border text-xs font-bold flex items-center gap-2 shadow-sm ${colorClass}`}>
+                        <div key={`${r.id || 'vac'}-${idx}`} className={`px-3 py-1.5 rounded-lg border text-xs font-bold flex items-center gap-2 shadow-sm ${colorClass}`}>
                             <span className="uppercase">{r.userName}</span>
                             <span>➜</span>
                             <span>{diff === 1 ? 'MAÑANA' : `en ${diff} días`}</span>
@@ -2887,6 +3113,44 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         <button onClick={() => setTab('techs')} className={`px-4 md:px-6 py-4 font-medium flex items-center gap-2 whitespace-nowrap transition-colors ${tab === 'techs' ? 'text-brand-teal dark:text-brand-teal border-b-2 border-brand-teal dark:border-brand-teal bg-white dark:bg-brand-panel' : 'text-gray-500 dark:text-gray-400'}`}><UserIcon className="w-4 h-4" /> Técnicos</button>
         <button onClick={() => setTab('vehicles')} className={`px-4 md:px-6 py-4 font-medium flex items-center gap-2 whitespace-nowrap transition-colors ${tab === 'vehicles' ? 'text-brand-teal dark:text-brand-teal border-b-2 border-brand-teal dark:border-brand-teal bg-white dark:bg-brand-panel' : 'text-gray-500 dark:text-gray-400'}`}><TruckIcon className="w-4 h-4" /> Vehículos</button>
         <button onClick={() => setTab('settings')} className={`px-4 md:px-6 py-4 font-medium flex items-center gap-2 whitespace-nowrap transition-colors ${tab === 'settings' ? 'text-brand-teal dark:text-brand-teal border-b-2 border-brand-teal dark:border-brand-teal bg-white dark:bg-brand-panel' : 'text-gray-500 dark:text-gray-400'}`}><LockIcon className="w-4 h-4" /> Configuración</button>
+        
+        {/* Google Workspace / Gmail status */}
+        <div className="ml-auto flex items-center pr-4 py-2">
+          {googleUser && hasGmailPermission ? (
+            <div className="flex items-center gap-2 text-xs bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-200 px-3 py-1.5 rounded-xl border border-emerald-200 dark:border-emerald-800 shadow-sm">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+              <span className="font-semibold hidden sm:inline">Gmail:</span>
+              <span className="truncate max-w-[130px]" title={googleUser.email || ''}>{googleUser.email}</span>
+              <button onClick={handleGoogleLogout} className="text-gray-400 hover:text-red-500 ml-1 text-xs font-bold" title="Desconectar cuenta Google">✕</button>
+            </div>
+          ) : googleUser && !hasGmailPermission ? (
+            <button
+              onClick={handleGoogleLogin}
+              disabled={isGoogleLoggingIn}
+              className="flex items-center gap-2 text-xs bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700 px-3 py-1.5 rounded-xl text-amber-800 dark:text-amber-200 hover:bg-amber-100 shadow-sm font-bold transition-all whitespace-nowrap cursor-pointer"
+              title="Cuenta conectada, pero falta autorizar permiso de envío de correos"
+            >
+              <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+              <span className="truncate max-w-[110px]">{googleUser.email}</span>
+              <span className="bg-amber-200 dark:bg-amber-900/60 px-1.5 py-0.5 rounded text-[10px] font-black text-amber-900 dark:text-amber-100">Autorizar Gmail</span>
+            </button>
+          ) : (
+            <button 
+              onClick={handleGoogleLogin} 
+              disabled={isGoogleLoggingIn}
+              className="flex items-center gap-2 text-xs bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 px-3 py-1.5 rounded-xl text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 shadow-sm font-bold transition-all whitespace-nowrap cursor-pointer" 
+              title="Conectar con Google para permitir envío de correos de obras terminadas a m.domingogarcia29@gmail.com"
+            >
+              <svg className="w-3.5 h-3.5" viewBox="0 0 48 48">
+                <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+                <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+                <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+                <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+              </svg>
+              <span>{isGoogleLoggingIn ? 'Conectando...' : 'Conectar Gmail'}</span>
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="p-6">
@@ -2906,17 +3170,17 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                  <select value={filterTech} onChange={e => setFilterTech(e.target.value)} className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-sm rounded-lg p-2.5 text-gray-900 dark:text-white outline-none">
                     <option value="">Técnicos...</option>
                     <option value="__NO_TECH__">⚠️ Sin Técnico Asignado</option>
-                    {data.technicians.filter(t => t.active !== false).map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
+                    {data.technicians.filter(t => t.active !== false).map((t, idx) => <option key={`${t.id}-${idx}`} value={t.name}>{t.name}</option>)}
                  </select>
                  <select value={filterClient} onChange={e => setFilterClient(e.target.value)} className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-sm rounded-lg p-2.5 text-gray-900 dark:text-white outline-none">
                     <option value="">Clientes...</option>
-                    {uniqueClients.map(c => <option key={c} value={c}>{c}</option>)}
+                    {uniqueClients.map((c, idx) => <option key={`${c}-${idx}`} value={c}>{c}</option>)}
                  </select>
                  <select value={filterProject} onChange={e => setFilterProject(e.target.value)} className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-sm rounded-lg p-2.5 text-gray-900 dark:text-white outline-none">
                     <option value="">Obras...</option>
                     {data.projectsDetailed
                         .filter(p => !filterClient || (p.client && p.client.toLowerCase() === filterClient.toLowerCase()))
-                        .map(p => <option key={p.id} value={p.id}>{p.id} - {p.name}</option>)}
+                        .map((p, idx) => <option key={`${p.id}-${idx}`} value={p.id}>{p.id} - {p.name}</option>)}
                  </select>
                  <input type="date" value={filterDateStart} onChange={e => setFilterDateStart(e.target.value)} className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-sm rounded-lg p-2.5 text-gray-900 dark:text-white outline-none dark:[color-scheme:dark]" />
                  <input type="date" value={filterDateEnd} onChange={e => setFilterDateEnd(e.target.value)} className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-sm rounded-lg p-2.5 text-gray-900 dark:text-white outline-none dark:[color-scheme:dark]" />
@@ -2961,10 +3225,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                     <div className="space-y-4 mt-4">
                       {data.reports
                         .filter(r => r.overtimeHours > 0 && r.overtimeStatus !== 'validated')
-                        .map(r => {
+                        .map((r, rIdx) => {
                           console.log('Report ID:', r.id, 'Status:', r.overtimeStatus);
                           return (
-                          <div key={r.id} className="p-4 rounded-lg border bg-orange-50 dark:bg-orange-900/20 border-orange-200 dark:border-orange-800">
+                          <div key={`${r.id || 'ot'}-${rIdx}`} className="p-4 rounded-lg border bg-orange-50 dark:bg-orange-900/20 border-orange-200 dark:border-orange-800">
                             <div className="flex justify-between items-center">
                               <div>
                                 <p className="font-bold text-gray-800 dark:text-white">{r.technician} - {r.projectNum}</p>
@@ -3009,8 +3273,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                     <div className="space-y-4 mt-4">
                       {data.reports
                         .filter(r => r.overtimeHours > 0 && r.overtimeStatus === 'validated')
-                        .map(r => (
-                          <div key={r.id} className="p-4 rounded-lg border bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800">
+                        .map((r, rIdx) => (
+                          <div key={`${r.id || 'otv'}-${rIdx}`} className="p-4 rounded-lg border bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800">
                             <div className="flex justify-between items-center">
                               <div>
                                 <p className="font-bold text-gray-800 dark:text-white">{r.technician} - {r.projectNum}</p>
@@ -3122,7 +3386,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                   </div>
 
                   <div className="grid grid-cols-1 gap-8 mt-4">
-                    {data.technicians.map(tech => {
+                    {data.technicians.map((tech, techIdx) => {
                       // Agrupación por MESES para este técnico
                       const techReports = data.reports.filter(r => r.technician === tech.name && r.overtimeHours > 0);
                       if (techReports.length === 0) return null;
@@ -3146,7 +3410,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                       const sortedMonths = Object.entries(monthlyGroups).sort((a, b) => (b[0] || '').localeCompare(a[0] || ''));
 
                       return (
-                        <div key={tech.id} className="bg-white dark:bg-gray-800/40 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden shadow-sm">
+                        <div key={`${tech.id || 'tech'}-${techIdx}`} className="bg-white dark:bg-gray-800/40 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden shadow-sm">
                           <div className="bg-gray-50 dark:bg-gray-800 p-4 border-b border-gray-200 dark:border-gray-700 flex items-center gap-3">
                             <div className="w-10 h-10 rounded-full bg-brand-teal/10 flex items-center justify-center text-brand-teal font-bold">
                               {tech.name.charAt(0)}
@@ -3226,8 +3490,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                   <div className="mt-4 pt-4 border-t border-white/10 space-y-2 animate-fade-in text-left w-full">
                                     <h6 className="text-[10px] font-black tracking-wider uppercase text-gray-400 mb-2">Partes de {tech.name} - {monthData.label}</h6>
                                     <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
-                                      {monthReports.map(r => (
-                                        <div key={r.id} className="bg-white/5 p-3 rounded-lg border border-white/5 flex flex-col justify-between items-start gap-2 hover:bg-white/10 transition-colors">
+                                      {monthReports.map((r, rIdx) => (
+                                        <div key={`${r.id || 'mr'}-${rIdx}`} className="bg-white/5 p-3 rounded-lg border border-white/5 flex flex-col justify-between items-start gap-2 hover:bg-white/10 transition-colors">
                                           <div className="w-full">
                                             <div className="flex justify-between items-center gap-2">
                                               <span className="text-[11px] font-black text-brand-lime">{formatDateToSpanish(r.date)}</span>
@@ -3340,11 +3604,11 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                                             </tr>
                                                         </thead>
                                                         <tbody className="divide-y divide-gray-200 dark:divide-gray-800/50">
-                                                            {reports.map((report) => {
+                                                            {reports.map((report, rIdx) => {
                                                                 const total = Object.values(report.expenses).reduce((a: number, b: any) => (typeof b === 'number' ? a + b : a), 0) as number;
                                                                 const isReportExpanded = expandedReportId === report.id;
                                                                 return (
-                                                                    <React.Fragment key={report.id}>
+                                                                    <React.Fragment key={`${report.id || 'rep'}-${rIdx}`}>
                                                                         <tr className={`${report.overtimeHours > 0 ? (report.overtimeStatus === 'validated' ? 'bg-green-50 dark:bg-green-900/20' : 'bg-orange-50 dark:bg-orange-900/20') : 'bg-white dark:bg-gray-800/20'} hover:bg-gray-50 dark:hover:bg-gray-800/60 transition-colors group`}>
                                                                             <td className="px-3 py-3">
                                                                                 <button onClick={() => toggleExpandReport(report.id)} className="text-gray-400 hover:text-brand-teal transition-colors"><EyeIcon className="w-4 h-4" /></button>
@@ -3369,8 +3633,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                                                                             className="text-xs bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded p-1 text-gray-900 dark:text-white outline-none cursor-pointer"
                                                                                         >
                                                                                             <option value="" disabled>Asignar...</option>
-                                                                                            {data.technicians.filter(t => t.active !== false).map(t => (
-                                                                                                <option key={t.id} value={t.name}>{t.name}</option>
+                                                                                            {data.technicians.filter(t => t.active !== false).map((t, tIdx) => (
+                                                                                                <option key={`${t.id || 'tech'}-${tIdx}`} value={t.name}>{t.name}</option>
                                                                                             ))}
                                                                                         </select>
                                                                                     </div>
@@ -3500,8 +3764,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
             )}
             {reportViewMode === 'by_project' && (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {projectsSummary.map(([projectNum, summary]) => (
-                        <div key={projectNum} className="bg-gray-50 dark:bg-gray-900/50 p-4 rounded-xl border border-gray-200 dark:border-gray-700">
+                    {projectsSummary.map(([projectNum, summary], pIdx) => (
+                        <div key={`psum-${projectNum}-${pIdx}`} className="bg-gray-50 dark:bg-gray-900/50 p-4 rounded-xl border border-gray-200 dark:border-gray-700">
                             <h4 className="text-brand-teal font-black text-sm mb-2">{resolveProjectFullName(projectNum)}</h4>
                             <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400">
                                 <span>Partes: {summary.count}</span>
@@ -3513,14 +3777,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
             )}
             {reportViewMode === 'by_hours' && (
                 <div className="space-y-6">
-                    {hoursSummary.map(([week, techs]) => (
-                        <div key={week} className="bg-gray-50 dark:bg-gray-900/30 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+                    {hoursSummary.map(([week, techs], wIdx) => (
+                        <div key={`hsum-${week}-${wIdx}`} className="bg-gray-50 dark:bg-gray-900/30 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
                             <div className="bg-gray-100 dark:bg-gray-800 p-3 text-xs font-bold text-brand-teal uppercase">Semana: {week}</div>
                             <table className="w-full text-xs text-left">
                                 <thead><tr className="text-gray-500 bg-black/5 dark:bg-black/20"><th className="px-4 py-2">Técnico</th><th className="px-4 py-2 text-right">Horas</th><th className="px-4 py-2 text-right">Extras</th></tr></thead>
                                 <tbody>
-                                    {(Object.entries(techs) as [string, any][]).map(([tech, h]) => (
-                                        <tr key={tech} className="border-t border-gray-200 dark:border-gray-800"><td className="px-4 py-2 font-bold text-gray-700 dark:text-gray-300">{tech}</td><td className="px-4 py-2 text-right text-gray-600 dark:text-gray-400">{h.reg.toFixed(1)}h</td><td className="px-4 py-2 text-right text-yellow-600 dark:text-yellow-500">+{h.ot.toFixed(1)}h</td></tr>
+                                    {(Object.entries(techs) as [string, any][]).map(([tech, h], tIdx) => (
+                                        <tr key={`htech-${tech}-${tIdx}`} className="border-t border-gray-200 dark:border-gray-800"><td className="px-4 py-2 font-bold text-gray-700 dark:text-gray-300">{tech}</td><td className="px-4 py-2 text-right text-gray-600 dark:text-gray-400">{h.reg.toFixed(1)}h</td><td className="px-4 py-2 text-right text-yellow-600 dark:text-yellow-500">+{h.ot.toFixed(1)}h</td></tr>
                                     ))}
                                 </tbody>
                             </table>
@@ -3534,21 +3798,21 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         {tab === 'expenses' && (
             <div className="space-y-6">
                 <h3 className="text-lg font-bold text-gray-800 dark:text-white mb-4">Control de Gastos</h3>
-                {Object.keys(groupedExpenses.tree).sort((a,b) => (groupedExpenses.dateMap[b] || '').localeCompare(groupedExpenses.dateMap[a] || '')).map((month) => {
+                {Object.keys(groupedExpenses.tree).sort((a,b) => (groupedExpenses.dateMap[b] || '').localeCompare(groupedExpenses.dateMap[a] || '')).map((month, mIdx) => {
                     const weeksInMonth = groupedExpenses.tree[month];
                     return (
-                        <div key={month} className="space-y-4">
+                        <div key={`exp-m-${month}-${mIdx}`} className="space-y-4">
                             <div className="bg-brand-teal/10 dark:bg-brand-teal/20 border-l-4 border-brand-teal px-4 py-3 flex items-center gap-3">
                                 <h4 className="text-brand-teal dark:text-brand-teal font-black text-xl tracking-widest">{month}</h4>
                             </div>
                             
-                            {Object.keys(weeksInMonth).sort((a,b) => (groupedExpenses.dateMap[b] || '').localeCompare(groupedExpenses.dateMap[a] || '')).map((week) => {
+                            {Object.keys(weeksInMonth).sort((a,b) => (groupedExpenses.dateMap[b] || '').localeCompare(groupedExpenses.dateMap[a] || '')).map((week, wIdx) => {
                                 const isExpanded = !!expandedWeeks[week];
                                 const techs = weeksInMonth[week];
                                 const totalWeek: number = (Object.values(techs) as number[]).reduce((a, b) => a + b, 0);
 
                                 return (
-                                    <div key={week} className="bg-gray-50 dark:bg-gray-900/30 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden shadow-sm">
+                                    <div key={`exp-w-${week}-${wIdx}`} className="bg-gray-50 dark:bg-gray-900/30 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden shadow-sm">
                                         <div onClick={() => toggleWeekExpansion(week)} className="bg-gray-100 dark:bg-gray-800 p-3 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">
                                             <div className="flex items-center gap-3">
                                                 <ChartPieIcon className="w-4 h-4 text-brand-teal dark:text-brand-lime" />
@@ -3562,13 +3826,13 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                         
                                         {isExpanded && (
                                             <div className="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 animate-fade-in">
-                                                {Object.entries(techs).map(([tech, rawTotal]) => {
+                                                {Object.entries(techs).map(([tech, rawTotal], tIdx) => {
                                                     const total = Number(rawTotal);
                                                     const paymentKey = `${week}_${tech}`;
                                                     const isPaid = data.expensesPayments?.[paymentKey] || false;
                                                     
                                                     return (
-                                                        <div key={tech} className={`p-4 rounded-xl border transition-all flex flex-col justify-between gap-3 group relative ${isPaid ? 'bg-green-50 dark:bg-green-900/20 border-green-500 dark:border-green-600' : 'bg-white dark:bg-gray-950 border-gray-200 dark:border-gray-800 hover:border-brand-teal'}`}>
+                                                        <div key={`exp-t-${tech}-${tIdx}`} className={`p-4 rounded-xl border transition-all flex flex-col justify-between gap-3 group relative ${isPaid ? 'bg-green-50 dark:bg-green-900/20 border-green-500 dark:border-green-600' : 'bg-white dark:bg-gray-950 border-gray-200 dark:border-gray-800 hover:border-brand-teal'}`}>
                                                             <div className="flex justify-between items-start">
                                                                 <span className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest">{tech}</span>
                                                                 {isPaid && <CheckCircleIcon className="w-4 h-4 text-green-600 dark:text-green-400" />}
@@ -3719,9 +3983,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                                     
                                                     {isMonthExpanded && (
                                                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pl-2 animate-fade-in">
-                                                            {monthData.reports.sort((a,b) => (b.date || '').localeCompare(a.date || '')).map(r => (
+                                                            {monthData.reports.sort((a,b) => (b.date || '').localeCompare(a.date || '')).map((r, rIdx) => (
                                                                 <div 
-                                                                    key={r.id} 
+                                                                    key={`${r.id || 'techrep'}-${rIdx}`} 
                                                                     onClick={() => {
                                                                         setFilterTech(t.name);
                                                                         setFilterDateStart(r.date);
@@ -4028,7 +4292,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                 </button>
                                 {expandedBudgetSections.active && (
                                     <div className="space-y-3 pl-1 sm:pl-2">
-                                        {categorizedBudgets.active.map(b => renderBudgetRow(b))}
+                                        {categorizedBudgets.active.map((b, idx) => renderBudgetRow(b, `b-act-${idx}`))}
                                         {categorizedBudgets.active.length === 0 && (
                                             <p className="text-center py-4 text-gray-400 text-xs italic bg-gray-50/50 dark:bg-gray-900/20 rounded-xl border border-dashed border-gray-200 dark:border-gray-800">
                                                 No hay presupuestos pendientes.
@@ -4056,7 +4320,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                 </button>
                                 {expandedBudgetSections.finished && (
                                     <div className="space-y-3 pl-1 sm:pl-2">
-                                        {categorizedBudgets.finished.map(b => renderBudgetRow(b))}
+                                        {categorizedBudgets.finished.map((b, idx) => renderBudgetRow(b, `b-fin-${idx}`))}
                                         {categorizedBudgets.finished.length === 0 && (
                                             <p className="text-center py-4 text-gray-400 text-xs italic bg-gray-50/50 dark:bg-gray-900/20 rounded-xl border border-dashed border-gray-200 dark:border-gray-800">
                                                 No hay presupuestos terminados.
@@ -4084,7 +4348,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                 </button>
                                 {expandedBudgetSections.accepted && (
                                     <div className="space-y-3 pl-1 sm:pl-2">
-                                        {categorizedBudgets.accepted.map(b => renderBudgetRow(b))}
+                                        {categorizedBudgets.accepted.map((b, idx) => renderBudgetRow(b, `b-acc-${idx}`))}
                                         {categorizedBudgets.accepted.length === 0 && (
                                             <p className="text-center py-4 text-gray-400 text-xs italic bg-gray-50/50 dark:bg-gray-900/20 rounded-xl border border-dashed border-gray-200 dark:border-gray-800">
                                                 No hay presupuestos aceptados.
@@ -4112,7 +4376,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                 </button>
                                 {expandedBudgetSections.rejected && (
                                     <div className="space-y-3 pl-1 sm:pl-2">
-                                        {categorizedBudgets.rejected.map(b => renderBudgetRow(b))}
+                                        {categorizedBudgets.rejected.map((b, idx) => renderBudgetRow(b, `b-rej-${idx}`))}
                                         {categorizedBudgets.rejected.length === 0 && (
                                             <p className="text-center py-4 text-gray-400 text-xs italic bg-gray-50/50 dark:bg-gray-900/20 rounded-xl border border-dashed border-gray-200 dark:border-gray-800">
                                                 No hay presupuestos rechazados.
@@ -4192,7 +4456,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                  <label className="block text-[10px] text-gray-500 uppercase font-black mb-1">Técnico Responsable</label>
                                  <select value={projectForm.responsibleTech} onChange={e => setProjectForm({...projectForm, responsibleTech: e.target.value})} className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-xl p-3 text-sm text-gray-900 dark:text-white focus:border-brand-teal outline-none">
                                      <option value="">Sin Asignar</option>
-                                     {data.technicians.filter(t => t.active !== false).map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
+                                     {data.technicians.filter(t => t.active !== false).map((t, idx) => <option key={`${t.id || 'tech'}-${idx}`} value={t.name}>{t.name}</option>)}
                                  </select>
                             </div>
                         </div>
@@ -4217,6 +4481,16 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                  </label>
                              </div>
                         </div>
+
+                        {projectForm.isFinished && (
+                            <div className="md:col-span-2 p-3 rounded-xl bg-teal-50 dark:bg-teal-950/40 border border-teal-300 dark:border-teal-800 text-teal-800 dark:text-teal-200 text-xs flex items-center gap-2 animate-fade-in shadow-sm">
+                                <span className="text-base">✉️</span>
+                                <div>
+                                    <p className="font-bold">Notificación por Correo al Guardar:</p>
+                                    <p className="text-[11px] opacity-90">Se abrirá la confirmación para enviar el correo a <strong>{DEFAULT_COMPLETION_RECIPIENT}</strong> con el PDF oficial de partes y albaranes.</p>
+                                </div>
+                            </div>
+                        )}
 
                         {/* Campo obligatorio de Número de Factura si la obra está marcada como facturada */}
                         {projectForm.isInvoiced && (
@@ -4458,7 +4732,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                 </button>
                                 {expandedProjectSections.green && (
                                     <div className="space-y-3 pl-1 sm:pl-2">
-                                        {categorizedProjects.green.map(p => renderProjectRow(p))}
+                                        {categorizedProjects.green.map((p, idx) => renderProjectRow(p, `p-grn-${idx}`))}
                                         {categorizedProjects.green.length === 0 && (
                                             <p className="text-center py-4 text-gray-400 text-xs italic bg-gray-50/50 dark:bg-gray-900/20 rounded-xl border border-dashed border-gray-200 dark:border-gray-800">
                                                 No hay obras en este estado.
@@ -4486,7 +4760,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                 </button>
                                 {expandedProjectSections.orange && (
                                     <div className="space-y-3 pl-1 sm:pl-2">
-                                        {categorizedProjects.orange.map(p => renderProjectRow(p))}
+                                        {categorizedProjects.orange.map((p, idx) => renderProjectRow(p, `p-org-${idx}`))}
                                         {categorizedProjects.orange.length === 0 && (
                                             <p className="text-center py-4 text-gray-400 text-xs italic bg-gray-50/50 dark:bg-gray-900/20 rounded-xl border border-dashed border-gray-200 dark:border-gray-800">
                                                 No hay obras en este estado.
@@ -4514,7 +4788,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                 </button>
                                 {expandedProjectSections.red && (
                                     <div className="space-y-3 pl-1 sm:pl-2">
-                                        {categorizedProjects.red.map(p => renderProjectRow(p))}
+                                        {categorizedProjects.red.map((p, idx) => renderProjectRow(p, `p-red-${idx}`))}
                                         {categorizedProjects.red.length === 0 && (
                                             <p className="text-center py-4 text-gray-400 text-xs italic bg-gray-50/50 dark:bg-gray-900/20 rounded-xl border border-dashed border-gray-200 dark:border-gray-800">
                                                 No hay obras en este estado.
@@ -4542,7 +4816,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                 </button>
                                 {expandedProjectSections.blue && (
                                     <div className="space-y-3 pl-1 sm:pl-2">
-                                        {categorizedProjects.blue.map(p => renderProjectRow(p))}
+                                        {categorizedProjects.blue.map((p, idx) => renderProjectRow(p, `p-blu-${idx}`))}
                                         {categorizedProjects.blue.length === 0 && (
                                             <p className="text-center py-4 text-gray-400 text-xs italic bg-gray-50/50 dark:bg-gray-900/20 rounded-xl border border-dashed border-gray-200 dark:border-gray-800">
                                                 No hay otras obras activas.
@@ -4570,7 +4844,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                 </button>
                                 {expandedProjectSections.finished && (
                                     <div className="space-y-3 pl-1 sm:pl-2">
-                                        {categorizedProjects.finished.map(p => renderProjectRow(p))}
+                                        {categorizedProjects.finished.map((p, idx) => renderProjectRow(p, `p-fin-${idx}`))}
                                         {categorizedProjects.finished.length === 0 && (
                                             <p className="text-center py-4 text-gray-400 text-xs italic bg-gray-50/50 dark:bg-gray-900/20 rounded-xl border border-dashed border-gray-200 dark:border-gray-800">
                                                 No hay obras terminadas.
@@ -4598,7 +4872,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                 </button>
                                 {expandedProjectSections.invoiced && (
                                     <div className="space-y-3 pl-1 sm:pl-2">
-                                        {categorizedProjects.invoiced.map(p => renderProjectRow(p))}
+                                        {categorizedProjects.invoiced.map((p, idx) => renderProjectRow(p, `p-inv-${idx}`))}
                                         {categorizedProjects.invoiced.length === 0 && (
                                             <p className="text-center py-4 text-gray-400 text-xs italic bg-gray-50/50 dark:bg-gray-900/20 rounded-xl border border-dashed border-gray-200 dark:border-gray-800">
                                                 No hay obras facturadas.
@@ -4635,8 +4909,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                     </div>
                 ) : (
                     <div className="grid grid-cols-1 gap-3">
-                        {[...data.deletedReports].reverse().map((r: any) => (
-                            <div key={r.id} className="bg-white dark:bg-brand-panel p-4 rounded-xl border border-gray-200 dark:border-gray-700 flex justify-between items-center shadow-sm">
+                        {[...data.deletedReports].reverse().map((r: any, idx: number) => (
+                            <div key={`${r.id || 'del'}-${idx}`} className="bg-white dark:bg-brand-panel p-4 rounded-xl border border-gray-200 dark:border-gray-700 flex justify-between items-center shadow-sm">
                                 <div>
                                     <div className="flex items-center gap-2 mb-1">
                                         <span className="text-xs font-black text-brand-teal">{r.date}</span>
@@ -4699,9 +4973,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                 return <p className="text-gray-500 text-sm">No se han encontrado obras con esos criterios.</p>;
                             }
                             
-                            return filtered.map(p => (
+                            return filtered.map((p, idx) => (
                                 <div 
-                                    key={p.id} 
+                                    key={`${p.id}-${idx}`} 
                                     onClick={() => setSelectedProjectId(p.id)}
                                     className={`p-4 rounded-xl border transition-all cursor-pointer hover:shadow-md ${selectedProjectId === p.id ? 'bg-brand-teal/10 border-brand-teal shadow-md' : 'bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700'}`}
                                 >
@@ -4851,8 +5125,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                         <div className="space-y-3">
                             <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Copias disponibles en Firestore</p>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-80 overflow-y-auto pr-2 custom-scrollbar">
-                                {backupsList.map((bk) => (
-                                    <div key={bk.id} className="flex justify-between items-center p-4 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm hover:border-brand-teal/30 transition-all">
+                                {backupsList.map((bk, idx) => (
+                                    <div key={`${bk.id}-${idx}`} className="flex justify-between items-center p-4 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm hover:border-brand-teal/30 transition-all">
                                         <div>
                                             <p className="font-bold text-sm text-gray-800 dark:text-white">{bk.id}</p>
                                             <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">{(bk.technicians || []).length} técnicos • {(bk.projectsDetailed || []).length} obras</p>
@@ -4870,6 +5144,297 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         )}
 
       </div>
+
+      {/* MODAL DE CONFIRMACIÓN DE ENVÍO DE CORREO DE OBRA TERMINADA */}
+      {showCompletionModal && completionModalProject && (
+        <div className="fixed inset-0 z-[120] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white dark:bg-brand-panel w-full max-w-2xl rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden flex flex-col max-h-[92vh]">
+            
+            {/* Header del Modal */}
+            <div className="bg-gradient-to-r from-teal-700 to-teal-900 p-5 text-white flex justify-between items-start">
+              <div>
+                <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-teal-500/30 text-teal-100 text-xs font-bold uppercase mb-1">
+                  <span>✉️</span>
+                  <span>{isResendMode ? 'Reenviar Notificación' : 'Certificación y Notificación de Obra'}</span>
+                </div>
+                <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                  <span>Obra: {completionModalProject.id}</span>
+                  <span className="text-sm font-normal opacity-90 truncate max-w-xs">- {completionModalProject.name}</span>
+                </h3>
+                <p className="text-xs text-teal-100 mt-0.5">
+                  Cliente: <strong className="text-white">{completionModalProject.client || '-'}</strong> | Técnico: <strong className="text-white">{completionModalProject.responsibleTech || 'Sin asignar'}</strong>
+                </p>
+              </div>
+              <button 
+                onClick={() => !isSendingCompletionEmail && setShowCompletionModal(false)}
+                className="text-teal-200 hover:text-white p-1 rounded-lg hover:bg-white/10 transition-colors cursor-pointer"
+                disabled={isSendingCompletionEmail}
+              >
+                <XIcon className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Contenido con scroll */}
+            <div className="p-6 overflow-y-auto space-y-4 flex-1 custom-scrollbar text-sm">
+              
+              {/* Notificación informativa */}
+              <div className="p-3.5 bg-teal-50/70 dark:bg-teal-950/30 border border-teal-200 dark:border-teal-800 rounded-xl text-teal-900 dark:text-teal-200 text-xs flex items-start gap-2.5">
+                <span className="text-base">📢</span>
+                <div>
+                  <p className="font-bold">Notificación de Obra Terminada:</p>
+                  <p className="mt-0.5 text-gray-600 dark:text-gray-300">
+                    Se enviará un correo oficial a la dirección indicada adjuntando el <strong>documento PDF con todos los partes de trabajo</strong> de esta obra, junto a los <strong>textos/observaciones y albaranes</strong> registrados.
+                  </p>
+                </div>
+              </div>
+
+              {/* Destinatario */}
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-gray-700 dark:text-gray-300 mb-1">
+                  Enviar Correo a:
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="email"
+                    value={completionRecipient}
+                    onChange={e => setCompletionRecipient(e.target.value)}
+                    className="flex-1 bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-xl px-4 py-2.5 text-gray-900 dark:text-white focus:border-brand-teal outline-none font-medium"
+                    placeholder="m.domingogarcia29@gmail.com"
+                    disabled={isSendingCompletionEmail}
+                  />
+                  {completionRecipient !== DEFAULT_COMPLETION_RECIPIENT && (
+                    <button 
+                      type="button" 
+                      onClick={() => setCompletionRecipient(DEFAULT_COMPLETION_RECIPIENT)}
+                      className="text-xs text-brand-teal hover:underline px-2 cursor-pointer font-bold"
+                    >
+                      Restablecer
+                    </button>
+                  )}
+                </div>
+                <p className="text-[11px] text-gray-500 mt-1">
+                  Dirección configurada: <strong>{DEFAULT_COMPLETION_RECIPIENT}</strong>
+                </p>
+              </div>
+
+              {/* Resumen de partes de trabajo a adjuntar */}
+              {(() => {
+                const projectReports = data.reports.filter(r => r.projectNum === completionModalProject.id);
+                let totalWorkHrs = 0;
+                let totalOtHrs = 0;
+                let totalExp = 0;
+                projectReports.forEach(r => {
+                  totalWorkHrs += calculateDuration(r.startTime, r.endTime);
+                  totalOtHrs += Number(r.overtimeHours || 0);
+                  totalExp += (Number(r.expenses?.food || 0) + Number(r.expenses?.gas || 0) + Number(r.expenses?.parking || 0) + Number(r.expenses?.others || 0));
+                });
+
+                return (
+                  <div className="bg-gray-50 dark:bg-gray-800/60 rounded-xl p-4 border border-gray-200 dark:border-gray-700">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xs font-bold uppercase text-gray-700 dark:text-gray-300">
+                        📄 Partes de Trabajo de la Obra ({projectReports.length})
+                      </span>
+                      <span className="text-xs font-bold text-teal-700 dark:text-teal-400">
+                        {totalWorkHrs.toFixed(1)}h normales · {totalOtHrs.toFixed(1)}h extra · {totalExp.toFixed(2)}€
+                      </span>
+                    </div>
+
+                    {projectReports.length > 0 ? (
+                      <div className="max-h-28 overflow-y-auto space-y-1.5 pr-1 custom-scrollbar text-xs">
+                        {projectReports.slice(0, 6).map((r, rIdx) => (
+                          <div key={`${r.id || 'rep'}-${rIdx}`} className="flex items-center justify-between bg-white dark:bg-gray-900 px-3 py-1.5 rounded-lg border border-gray-100 dark:border-gray-800">
+                            <span className="font-mono text-gray-500">{formatDateToSpanish(r.date)}</span>
+                            <span className="font-medium text-gray-800 dark:text-gray-200">{r.technician}</span>
+                            <span className="text-gray-500 truncate max-w-[200px]">{r.description || 'Sin descripción'}</span>
+                          </div>
+                        ))}
+                        {projectReports.length > 6 && (
+                          <p className="text-[11px] text-center text-gray-500 italic pt-1">
+                            ... y {projectReports.length - 6} parte(s) más incluidos en el PDF
+                          </p>
+                        )}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-amber-600 dark:text-amber-400 italic">
+                        ⚠️ No se han registrado partes para esta obra. Se enviará la ficha técnica completa con las observaciones.
+                      </p>
+                    )}
+                  </div>
+                );
+              })()}
+
+              {/* Textos y notas de la obra */}
+              {completionModalProject.notes && completionModalProject.notes.trim() && (
+                <div className="bg-teal-50/50 dark:bg-teal-950/20 rounded-xl p-3.5 border border-teal-200 dark:border-teal-900/40">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-teal-800 dark:text-teal-300 block mb-1">
+                    📝 Texto / Observaciones registradas en la obra:
+                  </span>
+                  <p className="text-xs text-gray-700 dark:text-gray-300 italic whitespace-pre-wrap">
+                    "{completionModalProject.notes}"
+                  </p>
+                </div>
+              )}
+
+              {/* Albaranes y adjuntos */}
+              <div>
+                <span className="text-xs font-bold uppercase text-gray-700 dark:text-gray-300 block mb-1.5">
+                  📎 Archivos y Albaranes que se enviarán adjuntos:
+                </span>
+                <div className="flex flex-wrap gap-2">
+                  <div className="inline-flex items-center gap-1.5 bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800 px-3 py-1.5 rounded-lg text-xs font-bold shadow-sm">
+                    <FileTextIcon className="w-3.5 h-3.5" />
+                    <span>Obra_{completionModalProject.id}_Partes.pdf (PDF Oficial)</span>
+                  </div>
+                  {completionModalProject.attachments && completionModalProject.attachments.length > 0 ? (
+                    completionModalProject.attachments.map((att, idx) => (
+                      <div key={`att-${att.name || ''}-${idx}`} className="inline-flex items-center gap-1.5 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 px-3 py-1.5 rounded-lg text-xs font-medium shadow-sm">
+                        {att.type?.includes('pdf') ? <FileTextIcon className="w-3.5 h-3.5" /> : <ImageIcon className="w-3.5 h-3.5" />}
+                        <span className="truncate max-w-[150px]">{att.name}</span>
+                      </div>
+                    ))
+                  ) : (
+                    <span className="text-xs text-gray-400 italic">No hay albaranes adicionales en la ficha de la obra.</span>
+                  )}
+                </div>
+              </div>
+
+              {/* Comentarios o texto extra opcional */}
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-gray-700 dark:text-gray-300 mb-1">
+                  Texto o Comentario adicional para el correo (opcional):
+                </label>
+                <textarea
+                  rows={2}
+                  value={completionCustomNotes}
+                  onChange={e => setCompletionCustomNotes(e.target.value)}
+                  placeholder="Detalles adicionales sobre la finalización o entrega..."
+                  className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-xl p-3 text-xs text-gray-900 dark:text-white focus:border-brand-teal outline-none"
+                  disabled={isSendingCompletionEmail}
+                />
+              </div>
+
+              {/* Estado de conexión con Google / Gmail */}
+              <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
+                {googleUser && hasGmailPermission ? (
+                  <div className="flex items-center justify-between bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 p-3 rounded-xl">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                      <span className="text-xs text-emerald-800 dark:text-emerald-200 font-medium">
+                        Conectado a Gmail como <strong>{googleUser.email}</strong> (Permisos de envío activos)
+                      </span>
+                    </div>
+                    <button 
+                      type="button" 
+                      onClick={handleGoogleLogout} 
+                      className="text-xs text-gray-500 hover:text-red-500 font-bold cursor-pointer"
+                    >
+                      Cambiar cuenta
+                    </button>
+                  </div>
+                ) : googleUser && !hasGmailPermission ? (
+                  <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 p-3.5 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                    <div className="text-xs text-amber-800 dark:text-amber-200">
+                      <strong>Permiso de envío pendiente:</strong> Conectado como <strong>{googleUser.email}</strong>, pero se requiere autorizar el permiso de envío de correos por Gmail.
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={handleGoogleLogin}
+                        disabled={isGoogleLoggingIn}
+                        className="bg-amber-600 hover:bg-amber-500 text-white px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm whitespace-nowrap cursor-pointer transition-colors"
+                      >
+                        <span>{isGoogleLoggingIn ? 'Autorizando...' : 'Conceder Permiso Gmail'}</span>
+                      </button>
+                      <button 
+                        type="button" 
+                        onClick={handleGoogleLogout} 
+                        className="text-xs text-gray-500 hover:text-red-500 font-bold cursor-pointer px-1"
+                      >
+                        Cambiar
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 p-3.5 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                    <div className="text-xs text-amber-800 dark:text-amber-200">
+                      <strong>Conexión con Gmail requerida:</strong> Se necesita conectar tu cuenta de Google para enviar el correo a {completionRecipient}.
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleGoogleLogin}
+                      disabled={isGoogleLoggingIn}
+                      className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 hover:bg-gray-50 shadow-sm whitespace-nowrap cursor-pointer"
+                    >
+                      <svg className="w-4 h-4" viewBox="0 0 48 48">
+                        <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+                        <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+                        <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+                        <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+                      </svg>
+                      <span>{isGoogleLoggingIn ? 'Conectando...' : 'Conectar con Google'}</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+
+            </div>
+
+            {/* Footer con botones de confirmación */}
+            <div className="bg-gray-50 dark:bg-gray-800/80 p-4 border-t border-gray-200 dark:border-gray-700 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowCompletionModal(false)}
+                  disabled={isSendingCompletionEmail}
+                  className="px-4 py-2 text-xs font-bold text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-xl transition-colors cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                {isResendMode ? (
+                  <button
+                    type="button"
+                    onClick={handleReactivateProject}
+                    disabled={isSendingCompletionEmail}
+                    className="px-4 py-2 text-xs font-bold text-amber-700 bg-amber-100 hover:bg-amber-200 dark:bg-amber-900/40 dark:text-amber-300 rounded-xl transition-colors cursor-pointer"
+                  >
+                    Reactivar Obra (Marcar Activa)
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleFinishWithoutEmail}
+                    disabled={isSendingCompletionEmail}
+                    className="px-4 py-2 text-xs font-bold text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-xl transition-colors cursor-pointer"
+                  >
+                    Marcar Terminada (Sin Correo)
+                  </button>
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={handleConfirmSendCompletion}
+                disabled={isSendingCompletionEmail}
+                className="bg-brand-teal hover:bg-teal-700 text-white px-5 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 shadow-lg transition-all hover:scale-[1.02] cursor-pointer disabled:opacity-50"
+              >
+                {isSendingCompletionEmail ? (
+                  <>
+                    <RefreshCwIcon className="w-4 h-4 animate-spin" />
+                    <span>Enviando correo y PDF...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>✉️</span>
+                    <span>{isResendMode ? `Reenviar Correo a ${completionRecipient}` : 'Confirmar, Enviar Correo y Finalizar'}</span>
+                  </>
+                )}
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
     </div>
   );
 };

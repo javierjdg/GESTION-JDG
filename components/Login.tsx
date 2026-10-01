@@ -85,9 +85,9 @@ const Login: React.FC<LoginProps> = ({ onLogin, technicians, adminPwd = 'admin' 
           <div>
             <label className="block text-sm font-medium text-brand-lime mb-3 uppercase tracking-wider">Selecciona tu perfil</label>
             <div className="space-y-2 mb-4 max-h-60 overflow-y-auto pr-1 custom-scrollbar">
-              {technicians.map(tech => (
+              {technicians.map((tech, idx) => (
                 <button
-                  key={tech.id}
+                  key={`${tech.id}-${idx}`}
                   onClick={() => handleTechSelect(tech)}
                   className="w-full text-left p-4 rounded-lg bg-gray-800 hover:bg-gray-700 transition-colors border-l-4 border-transparent hover:border-brand-lime flex items-center justify-between group"
                 >
