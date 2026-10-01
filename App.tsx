@@ -774,7 +774,7 @@ const App: React.FC = () => {
                         id: r.id,
                         date: r.date,
                         technician: r.technician,
-                        project: r.project,
+                        project: (r as any).project || r.projectNum,
                         deletedAt: (r as any).deletedAt
                     }));
 
